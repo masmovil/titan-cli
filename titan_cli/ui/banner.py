@@ -7,6 +7,7 @@ ASCII art banners with gradient colors using Rich.
 from typing import List, Optional
 from rich.text import Text
 from .console import console
+from ..messages import msg
 
 
 def render_ascii_banner(
@@ -52,25 +53,30 @@ def render_ascii_banner(
     console.print(banner, justify=justify)
 
     if subtitle:
-        console.print(subtitle, style="dim italic", justify=justify)
+        console.print(Text(subtitle, style="dim italic"), justify=justify)
 
     print()
 
 
-def render_titan_banner(subtitle: str = "Development Tools Orchestrator") -> None:
+def render_titan_banner(subtitle: str = None) -> None:
     """
     Render TITAN CLI banner with default styling
 
     Args:
-        subtitle: Subtitle text (default: "Development Tools Orchestrator")
+        subtitle: Subtitle text (default from messages.py)
 
     Examples:
         >>> render_titan_banner()
         >>> render_titan_banner("Custom subtitle")
+        >>> render_titan_banner(msg.UI.BANNER_WORKFLOW)
     """
     lines = [
         "▀█▀ █ ▀█▀ ▄▀█ █▄ █   █▀▀ █   █",
         " █  █  █  █▀█ █ ▀█   █▄▄ █▄▄ █"
     ]
+
+    # Use default subtitle from messages if not provided
+    if subtitle is None:
+        subtitle = msg.UI.BANNER_DEFAULT
 
     render_ascii_banner(lines, subtitle=subtitle)

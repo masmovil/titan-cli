@@ -7,10 +7,11 @@ Combines all tool commands into a single CLI interface.
 import typer
 import importlib.metadata
 from titan_cli.ui.banner import render_titan_banner
+from titan_cli.messages import msg
 
 app = typer.Typer(
-    name="titan",
-    help="Titan CLI - Development tools orchestrator",
+    name=msg.CLI.APP_NAME,
+    help=msg.CLI.APP_DESCRIPTION,
     invoke_without_command=True,
     no_args_is_help=False,
 )
@@ -18,11 +19,7 @@ app = typer.Typer(
 
 @app.callback()
 def main(ctx: typer.Context):
-    """
-    Titan CLI - Development tools orchestrator
-
-    When run without arguments, shows interactive menu.
-    """
+    """Titan CLI - Main entry point"""
     # If no subcommand was invoked, show interactive menu
     if ctx.invoked_subcommand is None:
         show_interactive_menu()
@@ -34,12 +31,16 @@ def version():
     Show Titan CLI version.
     """
     cli_version = importlib.metadata.version("titan-cli")
-    typer.echo(f"Titan CLI v{cli_version}")
+    typer.echo(msg.CLI.VERSION.format(version=cli_version))
 
 
 def show_interactive_menu():
     """Display interactive menu system"""
     
+    # Get version for subtitle
+    version = importlib.metadata.version("titan-cli")
+    subtitle = f"Development Tools Orchestrator v{version}"
+
     # Show welcome banner
-    render_titan_banner()
+    render_titan_banner(subtitle=subtitle)
 
