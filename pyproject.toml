@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "titan-cli"
+version = "0.1.0"
+description = "Extensible CLI workflow orchestrator"
+authors = [
+{name = "finxo", email = "finxeto@gmail.com"}, 
+{name = "r-pedraza", email = "raulpedrazaleon@gmail.com"}
+]
+requires-python = ">=3.10"
+
+dependencies = [
+    "typer>=0.20.0,<1.0.0",
+    "rich>=14.2.0,<15.0.0",
+]
+
+[project.scripts]
+titan = "titan_cli.__main__:app"
+
+[tool.setuptools]
+packages = ["titan_cli"]
