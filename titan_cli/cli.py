@@ -6,7 +6,7 @@ Combines all tool commands into a single CLI interface.
 
 import typer
 import importlib.metadata
-from titan_cli.ui.banner import render_titan_banner
+from titan_cli.ui.views.banner import render_titan_banner
 from titan_cli.messages import msg
 
 app = typer.Typer(

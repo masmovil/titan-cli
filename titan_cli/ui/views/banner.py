@@ -6,8 +6,9 @@ ASCII art banners with gradient colors using Rich.
 
 from typing import List, Optional
 from rich.text import Text
-from .console import console
-from ..messages import msg
+from ..console import console
+from ...messages import msg
+from ..theme import BANNER_GRADIENT_COLORS # Import from theme
 
 
 def render_ascii_banner(
@@ -22,7 +23,7 @@ def render_ascii_banner(
     Args:
         lines: List of ASCII art lines
         subtitle: Optional subtitle below the banner
-        colors: List of hex colors for gradient (default: blue to pink)
+        colors: List of hex colors for gradient (default from theme)
         justify: Text alignment (left, center, right)
 
     Examples:
@@ -32,9 +33,9 @@ def render_ascii_banner(
         ... ]
         >>> render_ascii_banner(lines, subtitle="My App")
     """
-    # Default gradient: blue → purple → pink
+    # Default gradient from theme
     if colors is None:
-        colors = ["#3B82F6", "#6366F1", "#8B5CF6", "#A855F7", "#C026D3", "#DB2777", "#E11D48"]
+        colors = BANNER_GRADIENT_COLORS
 
     banner = Text()
 
