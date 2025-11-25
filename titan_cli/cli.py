@@ -6,6 +6,7 @@ Combines all tool commands into a single CLI interface.
 
 import typer
 import importlib.metadata
+from titan_cli.ui.banner import render_titan_banner
 
 app = typer.Typer(
     name="titan",
@@ -23,8 +24,8 @@ def main(ctx: typer.Context):
     When run without arguments, shows interactive menu.
     """
     # If no subcommand was invoked, show interactive menu
-    # if ctx.invoked_subcommand is None:
-    # show_interactive_menu()
+    if ctx.invoked_subcommand is None:
+        show_interactive_menu()
 
 
 @app.command()
@@ -36,10 +37,9 @@ def version():
     typer.echo(f"Titan CLI v{cli_version}")
 
 
-@app.command()
-def hello():
-    """
-    Prints a greeting message.
-    """
-    print("Hola Mundo")
+def show_interactive_menu():
+    """Display interactive menu system"""
+    
+    # Show welcome banner
+    render_titan_banner()
 
