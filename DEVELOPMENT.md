@@ -27,7 +27,7 @@ titan-cli/titan_cli/
 │   │   ├── panel.py        # Wrapper for rich.panel.Panel
 │   │   ├── table.py        # Wrapper for rich.table.Table
 │   │   ├── typography.py   # Wrapper for styled text
-│   │   ├── spacer.py       # Wrapper for vertical spacing
+│   │   ├── spacer.py       # Wrapper for SpacerRenderer (vertical spacing)
 │   │   └── ... (other atomic components)
 │   │
 │   └── views/              # Composite UI elements (e.g., Banner, Menus)

@@ -4,13 +4,13 @@ Spacer Component Preview
 Run this script to preview the Spacer component.
 """
 
-from titan_cli.ui.components.spacer import Spacer
+from titan_cli.ui.components.spacer import SpacerRenderer
 from titan_cli.ui.components.typography import TextRenderer
 
 def preview_all():
     """Showcases various spacing options."""
     text = TextRenderer()
-    spacer = Spacer() # Instantiate Spacer directly
+    spacer = SpacerRenderer() # Instantiate SpacerRenderer directly
 
     text.title("Spacer Component Preview")
     text.subtitle("A demonstration of the Spacer component.")

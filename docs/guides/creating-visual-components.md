@@ -68,9 +68,9 @@ if __name__ == "__main__":
 
 ---
 
-## Example 2: `Spacer` Component
+## Example 2: `SpacerRenderer` Component
 
-Here is a simpler component example, the `Spacer`.
+Here is a simpler component example, the `SpacerRenderer`.
 
 ### `spacer.py` Implementation
 
@@ -81,7 +81,7 @@ from typing import Optional
 from rich.console import Console
 from ..console import get_console
 
-class Spacer:
+class SpacerRenderer:
     def __init__(self, console: Optional[Console] = None):
         if console is None:
             console = get_console()
@@ -100,12 +100,12 @@ class Spacer:
 ```python
 # titan_cli/ui/components/__previews__/spacer_preview.py
 
-from titan_cli.ui.components.spacer import Spacer
+from titan_cli.ui.components.spacer import SpacerRenderer
 from titan_cli.ui.components.typography import TextRenderer
 
 def preview_all():
     text = TextRenderer()
-    spacer = Spacer()
+    spacer = SpacerRenderer()
     text.title("Spacer Component Preview")
     text.body("Text before small space.")
     spacer.small() # .small() is an alias for .lines(1)

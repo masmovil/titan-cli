@@ -1,12 +1,12 @@
 """
-Spacing Component
+Spacer Component
 
 Simple, reusable component for managing vertical whitespace in terminal output.
 Provides consistent spacing throughout the application.
 
 Examples:
     >>> # Basic usage
-    >>> spacer = Spacer()
+    >>> spacer = SpacerRenderer()
     >>>
     >>> # Print single line
     >>> spacer.line()
@@ -25,14 +25,14 @@ from rich.console import Console
 from ..console import get_console # Import our global theme-aware console
 
 
-class Spacer:
+class SpacerRenderer:
     """
-    Simple spacing component for managing vertical whitespace
+    Reusable wrapper for managing vertical whitespace in the console.
 
     Provides consistent, reusable spacing between UI components.
 
     Usage:
-        >>> spacer = Spacer()
+        >>> spacer = SpacerRenderer()
         >>> spacer.line()      # 1 line
         >>> spacer.small()     # 1 line
         >>> spacer.medium()    # 2 lines
@@ -42,7 +42,7 @@ class Spacer:
 
     def __init__(self, console: Optional[Console] = None):
         """
-        Initialize spacer
+        Initialize SpacerRenderer
 
         Args:
             console: Rich Console instance (uses global theme-aware console if None)
