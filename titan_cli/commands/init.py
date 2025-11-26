@@ -67,7 +67,7 @@ def init():
     except (EOFError, KeyboardInterrupt):
         # Handle non-interactive environment or user cancellation (Ctrl+C)
         text.warning(msg.Errors.OPERATION_CANCELLED_NO_CHANGES, show_emoji=False)
-        raise typer.Exit()
+        raise typer.Exit(0)
     except (OSError, PermissionError) as e:
         error = ConfigWriteError(file_path=str(global_config_path), original_exception=e)
         text.error(str(error))

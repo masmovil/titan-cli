@@ -68,8 +68,19 @@ class TitanConfig:
         # Project config overrides global
         for key, value in project_cfg.items():
             if key == "plugins" and isinstance(value, dict) and isinstance(merged.get("plugins"), dict):
-                # Merge plugins separately
-                merged.setdefault("plugins", {}).update(value)
+                # Deep merge plugins
+                for plugin_name, plugin_cfg in value.items():
+                    if plugin_name in merged["plugins"]:
+                        # Merge individual plugin config
+                        merged["plugins"][plugin_name] = {**merged["plugins"][plugin_name], **plugin_cfg}
+                        # Deep merge nested 'config' dict if present
+                        if "config" in merged["plugins"][plugin_name] and "config" in plugin_cfg:
+                            merged["plugins"][plugin_name]["config"] = {
+                                **merged["plugins"][plugin_name].get("config", {}),
+                                **plugin_cfg.get("config", {})
+                            }
+                    else:
+                        merged["plugins"][plugin_name] = plugin_cfg
             else:
                 merged[key] = value
 

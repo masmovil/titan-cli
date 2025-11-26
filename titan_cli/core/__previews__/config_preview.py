@@ -58,21 +58,23 @@ def preview_all():
     
     # Test project config path discovery
     text.info("5. Testing Project Config Discovery (Current Dir)")
-    # Temporarily create a dummy config file
     temp_dir = Path("./temp_project_with_titan")
-    temp_dir.mkdir(exist_ok=True)
-    temp_titan_dir = temp_dir / ".titan"
-    temp_titan_dir.mkdir(exist_ok=True)
-    temp_config_path = temp_titan_dir / "config.toml"
-    temp_config_path.write_text('[project]\nname = "Temp Project"\ntype = "test"')
+    try:
+        # Temporarily create a dummy config file
+        temp_dir.mkdir(exist_ok=True)
+        temp_titan_dir = temp_dir / ".titan"
+        temp_titan_dir.mkdir(exist_ok=True)
+        temp_config_path = temp_titan_dir / "config.toml"
+        temp_config_path.write_text('[project]\nname = "Temp Project"\ntype = "test"')
 
-    temp_config_instance = TitanConfig(project_path=temp_dir)
-    text.body(f"Simulated Project Root: {temp_dir}")
-    text.body(f"Discovered Project Config: {temp_config_instance.project_config_path}")
-    text.body(f"Project Name from Config: {temp_config_instance.config.project.name}")
+        temp_config_instance = TitanConfig(project_path=temp_dir)
+        text.body(f"Simulated Project Root: {temp_dir}")
+        text.body(f"Discovered Project Config: {temp_config_instance.project_config_path}")
+        text.body(f"Project Name from Config: {temp_config_instance.config.project.name}")
+    finally:
+        # Clean up the temporary directory, ignoring errors if it doesn't exist
+        shutil.rmtree(temp_dir, ignore_errors=True)
     
-    # Clean up
-    shutil.rmtree(temp_dir) # Use rmtree for robust cleanup
     spacer.line()
 
     text.success("TitanConfig Preview Complete")

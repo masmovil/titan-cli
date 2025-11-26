@@ -169,3 +169,42 @@ def test_load_toml_handles_decode_error(tmp_path: Path, capsys, monkeypatch):
     output = captured.err + captured.out
     assert "Warning: Failed to parse configuration file" in output
     assert str(malformed_toml_path) in output
+
+def test_config_deep_merges_plugins(tmp_path: Path, monkeypatch):
+    """
+    Test that the plugin configuration is deep-merged, not just overridden.
+    """
+    # 1. Global config defines a plugin with 'enabled' and a nested 'config' key
+    global_config_path = tmp_path / "global_config.toml"
+    global_config_data = {
+        "plugins": {
+            "github": {"enabled": True, "config": {"user": "global-user"}}
+        }
+    }
+    with open(global_config_path, "wb") as f:
+        tomli_w.dump(global_config_data, f)
+
+    # 2. Project config overrides only the nested 'user' key
+    project_config_path = tmp_path / "project_config.toml"
+    project_config_data = {
+        "project": {"name": "Test Project"},
+        "plugins": {
+            "github": {"config": {"user": "project-user"}}
+        }
+    }
+    with open(project_config_path, "wb") as f:
+        tomli_w.dump(project_config_data, f)
+    
+    # 3. Patch config paths and initialize
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
+    # Mock _find_project_config to return our specific project config
+    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: project_config_path)
+    
+    config_instance = TitanConfig()
+
+    # 4. Assert that the 'enabled' key from global is preserved
+    #    and the nested 'user' key is overridden.
+    github_plugin_config = config_instance.config.plugins.get("github")
+    assert github_plugin_config is not None
+    assert github_plugin_config.enabled is True  # This should be preserved from global
+    assert github_plugin_config.config["user"] == "project-user" # This should be overridden by project
