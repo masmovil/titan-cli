@@ -7,11 +7,6 @@ Titan projects in the configured project root.
 
 import typer
 from pathlib import Path
-from rich.panel import Panel
-from rich.prompt import Prompt
-from rich.table import Table
-from rich.text import Text
-from rich import box as rich_box
 
 from ..core.config import TitanConfig
 from ..core.discovery import discover_projects
@@ -60,7 +55,13 @@ def list_projects():
     text.success("Configured Projects:")
     if configured_projects:
         headers = ["Project Name", "Path"]
-        rows = [[p.name, str(p.relative_to(project_root))] for p in configured_projects]
+        rows = []
+        for p in configured_projects:
+            try:
+                rel_path = str(p.relative_to(project_root))
+            except ValueError:
+                rel_path = str(p) # Fallback to absolute path
+            rows.append([p.name, rel_path])
         table_renderer.print_table(headers=headers, rows=rows, show_lines=True)
     else:
         text.body("No configured Titan projects found.")
@@ -70,7 +71,13 @@ def list_projects():
     text.warning("Unconfigured Git Projects (candidates for 'titan init'):")
     if unconfigured_projects:
         headers = ["Project Name", "Path"]
-        rows = [[p.name, str(p.relative_to(project_root))] for p in unconfigured_projects]
+        rows = []
+        for p in unconfigured_projects:
+            try:
+                rel_path = str(p.relative_to(project_root))
+            except ValueError:
+                rel_path = str(p) # Fallback to absolute path
+            rows.append([p.name, rel_path])
         table_renderer.print_table(headers=headers, rows=rows, show_lines=True)
     else:
         text.body("No unconfigured Git projects found.")

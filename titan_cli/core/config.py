@@ -4,6 +4,7 @@ from typing import Optional, List
 import tomli
 from .models import TitanConfigModel
 from .plugin_registry import PluginRegistry
+from .errors import ConfigParseError # Import the custom exception
 
 class TitanConfig:
     """Manages Titan configuration with global + project merge"""
@@ -47,16 +48,17 @@ class TitanConfig:
         return None
 
     def _load_toml(self, path: Optional[Path]) -> dict:
-        """Load TOML file"""
+        """Load TOML file, returning an empty dict on failure."""
         if not path or not path.exists():
             return {}
 
         with open(path, "rb") as f:
             try:
                 return tomli.load(f)
-            except tomli.TOMLDecodeError:
-                # In a real app, you'd use a proper logger here
-                print(f"Warning: Could not decode TOML file at {path}")
+            except tomli.TOMLDecodeError as e:
+                # Wrap the generic exception and print a warning.
+                error = ConfigParseError(file_path=str(path), original_exception=e)
+                print(f"Warning: {error}")
                 return {}
 
     def _merge_configs(self, global_cfg: dict, project_cfg: dict) -> dict:
@@ -72,7 +74,6 @@ class TitanConfig:
                 merged[key] = value
 
         return merged
-
     def get_enabled_plugins(self) -> List[str]:
         """Get list of enabled plugins"""
         if not self.config or not self.config.plugins:

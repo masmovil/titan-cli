@@ -31,12 +31,35 @@ class ConfigNotFoundError(ConfigError, FileNotFoundError):
     pass
 
 class ConfigParseError(ConfigError):
+
     """Raised when a config file cannot be parsed."""
+
     def __init__(self, file_path: str, original_exception: Exception):
+
         self.file_path = file_path
         self.original_exception = original_exception
+
         message = msg.Errors.CONFIG_PARSE_ERROR.format(
             file_path=file_path,
             error=original_exception
         )
+
+        super().__init__(message)
+
+
+
+class ConfigWriteError(ConfigError):
+
+    """Raised when writing to a configuration file fails."""
+
+    def __init__(self, file_path: str, original_exception: Exception):
+
+        self.file_path = file_path
+        self.original_exception = original_exception
+
+        message = msg.Errors.CONFIG_WRITE_FAILED.format(
+            path=file_path,
+            error=original_exception
+        )
+
         super().__init__(message)

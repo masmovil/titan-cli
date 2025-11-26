@@ -335,6 +335,10 @@ class Messages:
         UNKNOWN_ERROR = "❌ An unknown error occurred: {error}"
         NOT_IMPLEMENTED = "❌ Feature not implemented yet"
         OPERATION_CANCELLED = "🚫 Operation cancelled"
+        OPERATION_CANCELLED_NO_CHANGES = "🚫 Operation cancelled. No changes were made."
+
+        # Config specific
+        CONFIG_WRITE_FAILED = "Failed to write configuration file: {error}"
 
 
 # Singleton instance for easy access

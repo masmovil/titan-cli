@@ -32,16 +32,20 @@ def discover_projects(root_path_str: str) -> Tuple[List[Path], List[Path]]:
 
     # Iterate through items in the root directory
     for item in root_path.iterdir():
-        # We only care about directories
-        if item.is_dir():
-            is_git_repo = (item / ".git").is_dir()
-            is_titan_project = (item / ".titan" / "config.toml").is_file()
+        try:
+            # We only care about directories
+            if item.is_dir():
+                is_git_repo = (item / ".git").is_dir()
+                is_titan_project = (item / ".titan" / "config.toml").is_file()
 
-            if is_titan_project:
-                # If it has a titan config, it's definitely a configured project
-                configured_projects.append(item)
-            elif is_git_repo:
-                # If it's a git repo but not a titan project, it's unconfigured
-                unconfigured_projects.append(item)
+                if is_titan_project:
+                    # If it has a titan config, it's definitely a configured project
+                    configured_projects.append(item)
+                elif is_git_repo:
+                    # If it's a git repo but not a titan project, it's unconfigured
+                    unconfigured_projects.append(item)
+        except PermissionError:
+            # Skip directories we don't have permission to access
+            continue
 
     return sorted(configured_projects), sorted(unconfigured_projects)

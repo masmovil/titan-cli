@@ -5,6 +5,7 @@ from pathlib import Path
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.models import TitanConfigModel
 from titan_cli.core.plugin_registry import PluginRegistry # Import PluginRegistry for mocking
+from titan_cli.core.errors import ConfigParseError # Import custom error
 
 def test_config_initialization_no_files(monkeypatch):
     """
@@ -144,3 +145,27 @@ def test_config_dependency_injection(mocker, monkeypatch):
     # 4. Assert that the TitanConfig instance is using our injected mock object
     #    instead of creating its own.
     assert config_instance.registry is mock_registry
+
+def test_load_toml_handles_decode_error(tmp_path: Path, capsys, monkeypatch):
+    """
+    Test that _load_toml returns an empty dict and prints a warning for a malformed file.
+    """
+    # 1. Create a malformed TOML file
+    malformed_toml_path = tmp_path / "invalid.toml"
+    malformed_toml_path.write_text("this is not valid toml = ")
+
+    # Patch global config to use this malformed file
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", malformed_toml_path)
+    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: None) # Disable project config for this test
+
+    # 2. Instantiate TitanConfig, which will call _load_toml internally
+    config_instance = TitanConfig()
+
+    # 3. Assert that the global config is empty (because of the error)
+    assert config_instance.global_config == {}
+
+    # 4. Assert that a warning was printed to stderr/stdout
+    captured = capsys.readouterr()
+    output = captured.err + captured.out
+    assert "Warning: Failed to parse configuration file" in output
+    assert str(malformed_toml_path) in output

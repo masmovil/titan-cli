@@ -6,6 +6,8 @@ from pathlib import Path
 from rich.prompt import Prompt
 from ..core.config import TitanConfig
 from ..ui.components.typography import TextRenderer
+from ..core.errors import ConfigWriteError
+from ..messages import msg
 
 # Create a new Typer app for the 'init' command to live in
 init_app = typer.Typer(name="init", help="Initialize Titan's global configuration.")
@@ -62,8 +64,11 @@ def init():
 
         text.success(f"Global configuration updated. Project root set to: {project_root}")
 
-    except Exception:
-        # In non-interactive environments, this will likely fail.
-        # We'll just inform the user and not set the value.
-        text.warning("Could not set project root in non-interactive environment.", show_emoji=False)
-        text.info("You can set it manually in ~/.titan/config.toml", show_emoji=False)
+    except (EOFError, KeyboardInterrupt):
+        # Handle non-interactive environment or user cancellation (Ctrl+C)
+        text.warning(msg.Errors.OPERATION_CANCELLED_NO_CHANGES, show_emoji=False)
+        raise typer.Exit()
+    except (OSError, PermissionError) as e:
+        error = ConfigWriteError(file_path=str(global_config_path), original_exception=e)
+        text.error(str(error))
+        raise typer.Exit(1)
