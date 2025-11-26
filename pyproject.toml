@@ -15,7 +15,15 @@ requires-python = ">=3.10"
 dependencies = [
     "typer>=0.20.0,<1.0.0",
     "rich>=14.2.0,<15.0.0",
+    "tomli>=2.0.0",        # TOML reading
+    "pydantic>=2.0.0",     # Validation
 ]
+
+[project.optional-dependencies]
+dev = [
+    "tomli-w>=1.0.0",      # TOML writing (for init/config generation)
+]
+
 
 [project.scripts]
 titan = "titan_cli.cli:app"

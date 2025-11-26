@@ -9,6 +9,7 @@ import importlib.metadata
 from titan_cli.ui.views.banner import render_titan_banner
 from titan_cli.messages import msg
 from titan_cli.preview import preview_app # Import the preview subcommand
+from titan_cli.commands.init import init_app # Import the init subcommand
 
 # Main Typer Application
 app = typer.Typer(
@@ -20,6 +21,7 @@ app = typer.Typer(
 
 # Add subcommands from other modules
 app.add_typer(preview_app)
+app.add_typer(init_app)
 
 
 # --- Helper function for version retrieval ---
