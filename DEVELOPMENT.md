@@ -4,6 +4,8 @@
 
 The UI components are organized to ensure consistency, reusability, and maintainability.
 
+For a detailed guide on creating new components that follow these patterns, see [Guide: Creating a New Visual Component](docs/guides/creating-visual-components.md).
+
 ### 📦 Component Structure (`titan_cli/`)
 
 The `titan_cli/` package is structured as follows:

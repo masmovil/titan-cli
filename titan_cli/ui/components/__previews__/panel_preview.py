@@ -10,6 +10,7 @@ in isolation without running the full app.
 """
 
 from titan_cli.ui.components.panel import PanelRenderer
+from titan_cli.ui.components.typography import TextRenderer
 from titan_cli.ui.console import get_console
 from titan_cli.messages import msg
 from rich import box as rich_box
@@ -17,55 +18,56 @@ from rich import box as rich_box
 
 def preview_all():
     """Preview all panel variations"""
-    console = get_console()
     renderer = PanelRenderer()
+    text = TextRenderer()  # ✅ Usa clase en vez de módulo
 
-    console.print("\n[bold]Panel Component Preview[/bold]")
-    console.print("[dim]Preview of all panel variations\n[/dim]")
+    text.title("Panel Component Preview")
+    text.subtitle("Preview of all panel variations")
+    text.line()
 
     # 1. Info Panel
-    console.print("[bold cyan]1. Info Panel[/bold cyan]")
+    text.info("1. Info Panel", show_emoji=False)
     renderer.print(
         "This is an informational message.\nIt uses cyan color and rounded borders.",
         panel_type="info"
     )
-    console.print()
+    text.line()
 
     # 2. Success Panel
-    console.print("[bold green]2. Success Panel[/bold green]")
+    text.success("2. Success Panel", show_emoji=False)
     renderer.print(
         "Operation completed successfully!\nGreen border indicates success.",
         panel_type="success"
     )
-    console.print()
+    text.line()
 
     # 3. Error Panel
-    console.print("[bold red]3. Error Panel[/bold red]")
+    text.error("3. Error Panel", show_emoji=False)
     renderer.print(
         "An error occurred!\nRed border with heavy box style.",
         panel_type="error"
     )
-    console.print()
+    text.line()
 
     # 4. Warning Panel
-    console.print("[bold yellow]4. Warning Panel[/bold yellow]")
+    text.warning("4. Warning Panel", show_emoji=False)
     renderer.print(
         "Proceed with caution.\nYellow border indicates warning.",
         panel_type="warning"
     )
-    console.print()
+    text.line()
 
     # 5. Default Panel
-    console.print("[bold]5. Default Panel[/bold]")
+    text.title("5. Default Panel")
     renderer.print(
         "Standard panel with no special styling.",
         panel_type="default",
         title="Custom Title"
     )
-    console.print()
+    text.line()
 
     # 6. Custom Styling
-    console.print("[bold magenta]6. Custom Styling[/bold magenta]")
+    text.title("6. Custom Styling")
     panel = renderer.render(
         "Custom panel with:\n• Primary color\n• Double border\n• Center-aligned title",
         title="Custom Panel",
@@ -73,11 +75,11 @@ def preview_all():
         border_style="double",
         title_align="center"
     )
-    console.print(panel)
-    console.print()
+    get_console().print(panel)
+    text.line()
 
     # 7. With Subtitle
-    console.print("[bold]7. Panel with Subtitle[/bold]")
+    text.title("7. Panel with Subtitle")
     panel = renderer.render(
         "Panel with both title and subtitle.",
         title="Main Title",
@@ -85,22 +87,22 @@ def preview_all():
         style="info",
         border_style="rounded"
     )
-    console.print(panel)
-    console.print()
+    get_console().print(panel)
+    text.line()
 
     # 8. Expanded Panel
-    console.print("[bold]8. Expanded Panel (Full Width)[/bold]")
+    text.title("8. Expanded Panel (Full Width)")
     panel = renderer.render(
         "This panel expands to full console width.",
         title="Full Width",
         style="success",
         expand=True
     )
-    console.print(panel)
-    console.print()
+    get_console().print(panel)
+    text.line()
 
     # 9. Different Border Styles
-    console.print("[bold]9. Border Styles Comparison[/bold]")
+    text.title("9. Border Styles Comparison")
 
     borders = [
         ("ascii", rich_box.ASCII),
@@ -116,20 +118,20 @@ def preview_all():
             border_style=border_box,
             style="dim"
         )
-        console.print(panel)
-    console.print()
+        get_console().print(panel)
+    text.line()
 
     # 10. Using Messages
-    console.print("[bold]10. Using Centralized Messages[/bold]")
+    text.title("10. Using Centralized Messages")
     renderer.print(
         msg.Workflow.COMPLETED,
         panel_type="success",
         title="Workflow Status"
     )
-    console.print()
+    text.line()
 
     # 11. Long Content
-    console.print("[bold]11. Panel with Long Content[/bold]")
+    text.title("11. Panel with Long Content")
     long_content = """
 This is a panel with longer content to test wrapping and formatting.
 
@@ -147,31 +149,34 @@ Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
         panel_type="info",
         title="Documentation"
     )
-    console.print()
+    text.line()
 
-    console.print("[bold green]✅ Preview Complete[/bold green]\n")
+    text.success("Preview Complete")
+    text.line()
 
 
 def preview_interactive():
     """Interactive preview - prompt for panel type"""
-    console = get_console()
     renderer = PanelRenderer()
+    text = TextRenderer()
 
-    console.print("\n[bold]Interactive Panel Preview[/bold]")
-    console.print("[dim]Choose a panel type to preview[/dim]\n")
+    text.title("Interactive Panel Preview")
+    text.subtitle("Choose a panel type to preview")
+    text.line()
 
-    console.print("1. Info")
-    console.print("2. Success")
-    console.print("3. Error")
-    console.print("4. Warning")
-    console.print("5. Default")
-    console.print("0. Exit\n")
+    text.body("1. Info")
+    text.body("2. Success")
+    text.body("3. Error")
+    text.body("4. Warning")
+    text.body("5. Default")
+    text.body("0. Exit")
+    text.line()
 
     while True:
         choice = input("Select option (0-5): ").strip()
 
         if choice == "0":
-            console.print("\n[dim]Exiting preview[/dim]")
+            text.subtitle("Exiting preview")
             break
         elif choice == "1":
             renderer.print("This is an info message", panel_type="info")
@@ -184,9 +189,9 @@ def preview_interactive():
         elif choice == "5":
             renderer.print("This is a default message", panel_type="default")
         else:
-            console.print("[red]Invalid choice[/red]")
+            text.error("Invalid choice", show_emoji=False)
 
-        console.print()
+        text.line()
 
 
 if __name__ == "__main__":
