@@ -14,10 +14,22 @@ The `titan_cli/` package is structured as follows:
 titan-cli/titan_cli/
 ├── __init__.py
 ├── cli.py              # Main CLI application definition
-├── preview.py          # Preview commands for UI components
+├── preview.py          # Preview commands module
 ├── messages.py         # Centralized user-facing strings
 │
-├── ui/                 # UI components and views
+├── core/               # Core application logic and services
+│   ├── __init__.py
+│   ├── config.py           # TitanConfig: manages global and project config
+│   ├── models.py           # Pydantic models for config validation
+│   ├── plugin_registry.py  # Discovers installed plugins
+│   └── discovery.py        # Project discovery logic
+│
+├── commands/           # CLI command implementations
+│   ├── __init__.py
+│   ├── init.py             # 'titan init' command for global setup
+│   └── projects.py         # 'titan projects' command for project management
+│
+├── ui/                 # User Interface components and views
 │   ├── __init__.py
 │   ├── console.py          # Singleton Rich Console instance
 │   ├── theme.py            # Centralized theming configuration
@@ -36,8 +48,11 @@ titan-cli/titan_cli/
 │       └── ... (other complex views)
 ```
 
--   **`components/`**: Contains simple, atomic wrappers around single `rich` elements (e.g., a styled Panel, a custom Table). These are the "building blocks" of your UI.
--   **`views/`**: Contains more complex, composite UI elements that typically use multiple components. These represent larger portions of the UI that users interact with (e.g., the application banner, interactive menus, status displays).
+-   **`core/`**: Contains the core business logic and foundational services of the Titan CLI, such as configuration management, plugin discovery, and project scanning.
+-   **`commands/`**: Houses the implementations for individual CLI commands (e.g., `titan init`, `titan projects`). Each command or group of commands is typically in its own module.
+-   **`ui/`**: Contains all user interface related components, abstracting Rich functionalities for consistent visual output.
+    -   **`components/`**: Simple, atomic wrappers around single `rich` elements (e.g., `PanelRenderer`, `TextRenderer`). These are the "building blocks" of your UI.
+    -   **`views/`**: More complex, composite UI elements that typically use multiple components. These represent larger portions of the UI (e.g., the application banner, interactive menus).
 
 ### 🎨 Centralized Theming (`titan_cli/ui/theme.py`)
 

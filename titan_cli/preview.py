@@ -58,3 +58,15 @@ def preview_spacer():
     except ModuleNotFoundError:
         typer.secho("Error: Preview script not found.", fg=typer.colors.RED)
         raise typer.Exit(1)
+
+
+@preview_app.command("config")
+def preview_config():
+    """
+    Shows a preview of the TitanConfig component.
+    """
+    try:
+        runpy.run_module("titan_cli.core.__previews__.config_preview", run_name="__main__")
+    except ModuleNotFoundError:
+        typer.secho("Error: Preview script not found.", fg=typer.colors.RED)
+        raise typer.Exit(1)

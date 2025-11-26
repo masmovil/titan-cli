@@ -310,6 +310,10 @@ class Messages:
     class Errors:
         """Generic error messages"""
 
+        # Plugin / Core Errors
+        PLUGIN_LOAD_FAILED = "Failed to load plugin '{plugin_name}': {error}"
+        CONFIG_PARSE_ERROR = "Failed to parse configuration file at {file_path}: {error}"
+
         # File system
         FILE_NOT_FOUND = "❌ File not found: {path}"
         FILE_READ_ERROR = "❌ Cannot read file: {path}"
@@ -331,6 +335,10 @@ class Messages:
         UNKNOWN_ERROR = "❌ An unknown error occurred: {error}"
         NOT_IMPLEMENTED = "❌ Feature not implemented yet"
         OPERATION_CANCELLED = "🚫 Operation cancelled"
+        OPERATION_CANCELLED_NO_CHANGES = "🚫 Operation cancelled. No changes were made."
+
+        # Config specific
+        CONFIG_WRITE_FAILED = "Failed to write configuration file: {error}"
 
 
 # Singleton instance for easy access
