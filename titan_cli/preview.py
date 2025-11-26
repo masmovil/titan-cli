@@ -46,3 +46,15 @@ def preview_table():
     except ModuleNotFoundError:
         typer.secho("Error: Preview script not found.", fg=typer.colors.RED)
         raise typer.Exit(1)
+
+
+@preview_app.command("spacer")
+def preview_spacer():
+    """
+    Shows a preview of the Spacer component with all its variations.
+    """
+    try:
+        runpy.run_module("titan_cli.ui.components.__previews__.spacer_preview", run_name="__main__")
+    except ModuleNotFoundError:
+        typer.secho("Error: Preview script not found.", fg=typer.colors.RED)
+        raise typer.Exit(1)
