@@ -1,6 +1,6 @@
 # core/models.py
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 class ProjectConfig(BaseModel):
     """

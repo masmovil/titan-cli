@@ -310,6 +310,10 @@ class Messages:
     class Errors:
         """Generic error messages"""
 
+        # Plugin / Core Errors
+        PLUGIN_LOAD_FAILED = "Failed to load plugin '{plugin_name}': {error}"
+        CONFIG_PARSE_ERROR = "Failed to parse configuration file at {file_path}: {error}"
+
         # File system
         FILE_NOT_FOUND = "❌ File not found: {path}"
         FILE_READ_ERROR = "❌ Cannot read file: {path}"

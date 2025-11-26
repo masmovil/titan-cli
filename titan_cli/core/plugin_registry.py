@@ -1,6 +1,7 @@
 # core/plugin_registry.py
 from importlib.metadata import entry_points
 from typing import Dict, List, Any
+from .errors import PluginLoadError
 
 class PluginRegistry:
     """Discovers installed plugins via entry points"""
@@ -18,9 +19,11 @@ class PluginRegistry:
                 plugin_class = ep.load()
                 self._plugins[ep.name] = plugin_class()
             except Exception as e:
-                # Log warning but don't fail
-                # In a real app, you'd use a proper logger here
-                print(f"Warning: Failed to load plugin '{ep.name}': {e}")
+                # Wrap the generic exception in our custom one and print a warning.
+                # In a real app, this would be handled by a proper logger.
+                error = PluginLoadError(plugin_name=ep.name, original_exception=e)
+                print(f"Warning: {error}")
+
 
     def list_installed(self) -> List[str]:
         """List all installed plugins (via entry points)"""

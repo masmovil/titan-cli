@@ -4,6 +4,7 @@ import tomli_w
 from pathlib import Path
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.models import TitanConfigModel
+from titan_cli.core.plugin_registry import PluginRegistry # Import PluginRegistry for mocking
 
 def test_config_initialization_no_files(monkeypatch):
     """
@@ -17,11 +18,13 @@ def test_config_initialization_no_files(monkeypatch):
     config_instance = TitanConfig()
 
     # Assert that the resulting config is the default Pydantic model
-    assert config_instance.config == TitanConfigModel()
+    assert config_instance.config.project is None # Project is optional now
+    assert config_instance.config.core is None
+    assert config_instance.config.ai is None
     assert config_instance.project_config == {}
     assert config_instance.global_config == {}
 
-def test_config_loads_global_config(tmp_path: Path):
+def test_config_loads_global_config(tmp_path: Path, monkeypatch):
     """
     Test that TitanConfig correctly loads a global config file.
     """
@@ -38,7 +41,6 @@ def test_config_loads_global_config(tmp_path: Path):
     
     # Patch the GLOBAL_CONFIG path to point to our mock file
     # and disable project config finding
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
     monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: None)
 
@@ -49,9 +51,7 @@ def test_config_loads_global_config(tmp_path: Path):
     assert config_instance.config.ai.provider == "openai"
     assert config_instance.config.ai.model == "gpt-4"
     
-    monkeypatch.undo()
-
-def test_config_project_overrides_global(tmp_path: Path):
+def test_config_project_overrides_global(tmp_path: Path, monkeypatch):
     """
     Test that project-specific config correctly overrides the global config.
     """
@@ -87,7 +87,6 @@ def test_config_project_overrides_global(tmp_path: Path):
         tomli_w.dump(project_config_data, f)
     
     # 3. Patch global config and initialize from the project directory
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
     
     config_instance = TitanConfig(project_path=project_dir)
@@ -103,9 +102,8 @@ def test_config_project_overrides_global(tmp_path: Path):
     assert config_instance.config.plugins["jira"].enabled is False # from global
     assert config_instance.config.plugins["git"].enabled is True # from project
 
-    monkeypatch.undo()
 
-def test_find_project_config_walks_up_tree(tmp_path: Path):
+def test_find_project_config_walks_up_tree(tmp_path: Path, monkeypatch):
     """
     Test that _find_project_config correctly finds config in parent directory.
     """
@@ -122,7 +120,6 @@ def test_find_project_config_walks_up_tree(tmp_path: Path):
 
     # Initialize TitanConfig without patching _find_project_config
     # but patch the global config to isolate the test
-    monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", Path("/nonexistent/config.toml"))
 
     config_instance = TitanConfig(project_path=deep_subdir)
@@ -130,4 +127,20 @@ def test_find_project_config_walks_up_tree(tmp_path: Path):
     # Assert that it found the correct config file
     assert config_instance.project_config_path == config_path
 
-    monkeypatch.undo()
+def test_config_dependency_injection(mocker, monkeypatch):
+    """
+    Test that a custom PluginRegistry instance can be injected into TitanConfig.
+    """
+    # 1. Create a mock PluginRegistry instance
+    mock_registry = mocker.MagicMock()
+
+    # 2. Prevent file I/O to isolate the test from the filesystem
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", Path("/nonexistent/config.toml"))
+    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: None)
+    
+    # 3. Initialize TitanConfig, injecting the mock registry
+    config_instance = TitanConfig(registry=mock_registry)
+    
+    # 4. Assert that the TitanConfig instance is using our injected mock object
+    #    instead of creating its own.
+    assert config_instance.registry is mock_registry

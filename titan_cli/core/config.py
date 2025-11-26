@@ -1,6 +1,6 @@
 # core/config.py
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List
 import tomli
 from .models import TitanConfigModel
 from .plugin_registry import PluginRegistry
@@ -10,9 +10,14 @@ class TitanConfig:
 
     GLOBAL_CONFIG = Path.home() / ".titan" / "config.toml"
 
-    def __init__(self, project_path: Optional[Path] = None):
+    def __init__(
+        self,
+        project_path: Optional[Path] = None,
+        registry: Optional[PluginRegistry] = None
+    ):
         # Plugin discovery
-        self.registry = PluginRegistry()
+        self.registry = registry or PluginRegistry()
+
 
         # Load configs
         self.global_config = self._load_toml(self.GLOBAL_CONFIG)
