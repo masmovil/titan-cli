@@ -6,115 +6,54 @@ This guide outlines the best practices and required steps for creating a new, th
 
 First, create the necessary files for your component and its preview.
 
-1.  **Component File:** New components should live in `titan_cli/ui/components/`.
-    -   Example: `titan_cli/ui/components/my_component.py`
-2.  **Preview Script:** Create a corresponding preview script in `titan_cli/ui/components/__previews__/`.
-    -   Example: `titan_cli/ui/components/__previews__/my_component_preview.py`
+1.  **Component File:**
+    -   Pure, atomic components (no dependencies on other components) live in `titan_cli/ui/components/`.
+    -   Composite components (that use other components) live in `titan_cli/ui/views/`.
+2.  **Preview Script:** Create a corresponding preview script in the `__previews__/` subdirectory (e.g., `titan_cli/ui/components/__previews__/my_component_preview.py`).
 
 ## 2. Component Implementation Principles
 
 Your component should be a class (e.g., `MyComponentRenderer`) that follows these key principles:
 
 -   **Class-based:** Encapsulates logic and state.
--   **Dependency Injection:** The `__init__` method must accept a `console: Optional[Console] = None` argument. It should default to using the global `get_console()` instance if none is provided. This is crucial for theme awareness and testability.
--   **Use Theme Styles:** The component must use semantic style names defined in `titan_cli/ui/theme.py` (e.g., `"success"`, `"primary"`) instead of hardcoded colors like `"green"`.
--   **Use Centralized Messages:** All user-visible text (emojis, status messages) should be imported from `titan_cli.messages.msg`.
+-   **Dependency Injection:** The `__init__` method must accept dependencies like `console: Optional[Console] = None`. It should default to using a global getter (e.g., `get_console()`) if none is provided.
+-   **Use Theme & Messages:** The component must use semantic style names from `theme.py` and user-facing strings from `messages.py`. No hardcoded colors or text.
 
 ---
 
-## Example 1: `TableRenderer` Component
+## Component Examples
 
-Here's how the `TableRenderer` component is implemented following the above principles.
+Below are the core UI components, which serve as templates for creating new ones. Each component has a brief description and links to its full implementation and preview script.
 
-### `table.py` Implementation
+### Example 1: `TextRenderer` (Component)
 
-```python
-# titan_cli/ui/components/table.py
+-   **Responsibility:** Renders all themed text, including titles, subtitles, and semantic messages (`success`, `error`, etc.).
+-   **Source:** [`titan_cli/ui/components/typography.py`](../../titan_cli/ui/components/typography.py)
+-   **Preview:** [`titan_cli/ui/components/__previews__/typography_preview.py`](../../titan_cli/ui/components/__previews__/typography_preview.py)
 
-from typing import List, Optional, Literal, Union
-from rich.table import Table
-from rich.console import Console
-from rich import box as rich_box
-from ..console import get_console
+### Example 2: `PanelRenderer` (Component)
 
-class TableRenderer:
-    def __init__(self, console: Optional[Console] = None):
-        if console is None:
-            console = get_console()
-        self.console = console
+-   **Responsibility:** Renders themed panels with predefined styles for different states.
+-   **Source:** [`titan_cli/ui/components/panel.py`](../../titan_cli/ui/components/panel.py)
+-   **Preview:** [`titan_cli/ui/components/__previews__/panel_preview.py`](../../titan_cli/ui/components/__previews__/panel_preview.py)
 
-    def render(self, headers: List[str], rows: List[List[str]], **kwargs) -> Table:
-        # ... implementation ...
-        return table
-```
+### Example 3: `TableRenderer` (Component)
 
-### `table_preview.py` Script
+-   **Responsibility:** Renders themed tables with configurable styles.
+-   **Source:** [`titan_cli/ui/components/table.py`](../../titan_cli/ui/components/table.py)
+-   **Preview:** [`titan_cli/ui/components/__previews__/table_preview.py`](../../titan_cli/ui/components/__previews__/table_preview.py)
 
-```python
-# titan_cli/ui/components/__previews__/table_preview.py
+### Example 4: `SpacerRenderer` (Component)
 
-from titan_cli.ui.components.table import TableRenderer
-from titan_cli.ui.components.typography import TextRenderer
+-   **Responsibility:** Manages vertical whitespace in the console output.
+-   **Source:** [`titan_cli/ui/components/spacer.py`](../../titan_cli/ui/components/spacer.py)
+-   **Preview:** [`titan_cli/ui/components/__previews__/spacer_preview.py`](../../titan_cli/ui/components/__previews__/spacer_preview.py)
 
-def preview_all():
-    text = TextRenderer()
-    renderer = TableRenderer()
-    text.title("Table Component Preview")
-    # ... render tables ...
+### Example 5: `PromptsRenderer` (View / Composite Component)
 
-if __name__ == "__main__":
-    preview_all()
-```
-
----
-
-## Example 2: `SpacerRenderer` Component
-
-Here is a simpler component example, the `SpacerRenderer`.
-
-### `spacer.py` Implementation
-
-```python
-# titan_cli/ui/components/spacer.py
-
-from typing import Optional
-from rich.console import Console
-from ..console import get_console
-
-class SpacerRenderer:
-    def __init__(self, console: Optional[Console] = None):
-        if console is None:
-            console = get_console()
-        self.console = console
-
-    def line(self) -> None:
-        self.console.print()
-
-    def lines(self, count: int = 1) -> None:
-        for _ in range(count):
-            self.console.print()
-```
-
-### `spacer_preview.py` Script
-
-```python
-# titan_cli/ui/components/__previews__/spacer_preview.py
-
-from titan_cli.ui.components.spacer import SpacerRenderer
-from titan_cli.ui.components.typography import TextRenderer
-
-def preview_all():
-    text = TextRenderer()
-    spacer = SpacerRenderer()
-    text.title("Spacer Component Preview")
-    text.body("Text before small space.")
-    spacer.small() # .small() is an alias for .lines(1)
-    text.body("Text after small space.")
-    # ... more examples ...
-
-if __name__ == "__main__":
-    preview_all()
-```
+-   **Responsibility:** Handles all interactive user input (text, confirmation, choices, etc.). It's a "view" because it's a composite component that uses `TextRenderer` to display its internal messages.
+-   **Source:** [`titan_cli/ui/views/prompts.py`](../../titan_cli/ui/views/prompts.py)
+-   **Preview:** [`titan_cli/ui/views/__previews__/prompts_preview.py`](../../titan_cli/ui/views/__previews__/prompts_preview.py)
 
 ---
 
@@ -123,10 +62,6 @@ if __name__ == "__main__":
 Make your preview accessible via the CLI by adding a command to `titan_cli/preview.py`.
 
 ```python
-# titan_cli/preview.py
-
-# ... existing imports and commands ...
-
 @preview_app.command("my_component")
 def preview_my_component():
     """Shows a preview of MyComponent."""
@@ -144,5 +79,3 @@ Run your new preview command from the project root to see your component in acti
 ```bash
 titan preview my_component
 ```
-
-By following these steps, your new component will be perfectly integrated into the project's design system.

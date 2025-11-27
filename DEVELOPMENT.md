@@ -45,6 +45,7 @@ titan-cli/titan_cli/
 │   └── views/              # Composite UI elements (e.g., Banner, Menus)
 │       ├── __init__.py
 │       ├── banner.py       # The application's main banner
+│       ├── prompts.py      # Wrapper for interactive prompts
 │       └── ... (other complex views)
 ```
 
