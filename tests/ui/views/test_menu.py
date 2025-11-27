@@ -63,11 +63,11 @@ def test_menu_renderer_renders_correctly(mock_console, sample_menu):
     
     # Assert menu items are printed
     expected_item_calls = [
-        call("  [primary] 1.[/primary] [bold]Item 1.1[/bold]"),
+        call("  [primary]1.[/primary] [bold]Item 1.1[/bold]"),
         call("     [dim]Desc 1.1[/dim]"),
-        call("  [primary] 2.[/primary] [bold]Item 1.2[/bold]"),
+        call("  [primary]2.[/primary] [bold]Item 1.2[/bold]"),
         call("     [dim]Desc 1.2[/dim]"),
-        call("  [primary] 3.[/primary] [bold]Item 2.1[/bold]"),
+        call("  [primary]3.[/primary] [bold]Item 2.1[/bold]"),
         call("     [dim]Desc 2.1[/dim]"),
     ]
     mock_console.print.assert_has_calls(expected_item_calls)

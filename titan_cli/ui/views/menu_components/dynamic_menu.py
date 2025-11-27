@@ -1,6 +1,22 @@
 # ui/views/dynamic_menu.py
+from __future__ import annotations
 from typing import List, Dict, Any, Optional
 from .menu_models import Menu, MenuCategory, MenuItem
+
+class CategoryBuilder:
+    """
+    A helper class to build categories in a fluent way.
+    """
+    def __init__(self, menu: DynamicMenu, category_index: int):
+        self.menu = menu
+        self.category_index = category_index
+
+    def add_item(self, label: str, description: str, action: str) -> CategoryBuilder:
+        """
+        Adds a new item to the category and returns the builder instance for chaining.
+        """
+        self.menu.add_item(self.category_index, label, description, action)
+        return self
 
 class DynamicMenu:
     """
@@ -13,16 +29,16 @@ class DynamicMenu:
         self.tip = tip
         self.categories: List[Dict[str, Any]] = []
 
-    def add_category(self, name: str, emoji: str = "📁") -> int:
+    def add_category(self, name: str, emoji: str = "📁") -> CategoryBuilder:
         """
         Adds a new category to the menu.
 
         Returns:
-            The index of the newly added category.
+            A CategoryBuilder instance for chaining.
         """
         category = {"name": name, "emoji": emoji, "items": []}
         self.categories.append(category)
-        return len(self.categories) - 1
+        return CategoryBuilder(self, len(self.categories) - 1)
 
     def add_item(self, category_index: int, label: str, description: str, action: str):
         """
