@@ -41,7 +41,7 @@ def list_projects():
     if config.config.core and config.config.core.project_root:
         project_root = Path(config.config.core.project_root)
 
-    if not project_root or not project_root.is_dir():
+    if not project_root or (project_root and not project_root.is_dir()):
         text.error("Project root not configured or does not exist.")
         text.info("Please run 'titan init' to set your project root.", show_emoji=False)
         raise typer.Exit(1)

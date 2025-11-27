@@ -1,7 +1,7 @@
 # tests/ui/views/test_prompts.py
 import pytest
 from unittest.mock import MagicMock
-from rich.prompt import Prompt, IntPrompt
+from rich.prompt import Prompt, Confirm, IntPrompt
 from titan_cli.ui.views.prompts import PromptsRenderer
 from titan_cli.ui.components.typography import TextRenderer
 from titan_cli.messages import msg
@@ -76,3 +76,59 @@ def test_ask_text_with_validator(mocker, mock_text_renderer):
     assert result == "good"
     # Assert that the "invalid input" error was called once
     mock_text_renderer.error.assert_called_once_with(msg.Prompts.INVALID_INPUT, show_emoji=False)
+
+def test_ask_confirm_returns_true(mocker, mock_text_renderer):
+    """Test that ask_confirm returns True when user confirms."""
+    mocker.patch.object(Confirm, "ask", return_value=True)
+    
+    prompts = PromptsRenderer(text_renderer=mock_text_renderer)
+    result = prompts.ask_confirm("Continue?")
+    
+    assert result is True
+
+def test_ask_confirm_returns_false(mocker, mock_text_renderer):
+    """Test that ask_confirm returns False when user denies."""
+    mocker.patch.object(Confirm, "ask", return_value=False)
+    
+    prompts = PromptsRenderer(text_renderer=mock_text_renderer)
+    result = prompts.ask_confirm("Continue?")
+    
+    assert result is False
+
+def test_ask_choice_returns_selection(mocker, mock_text_renderer):
+    """Test that ask_choice returns the selected choice."""
+    mocker.patch.object(Prompt, "ask", return_value="blue")
+    
+    prompts = PromptsRenderer(text_renderer=mock_text_renderer)
+    result = prompts.ask_choice("Choose a color", choices=["red", "green", "blue"])
+    
+    assert result == "blue"
+
+def test_ask_menu_returns_selection(mocker, mock_text_renderer):
+    """Test that ask_menu returns the correct value for a selection."""
+    # Simulate user choosing option '2'
+    mocker.patch.object(Prompt, "ask", return_value="2")
+    
+    options = [
+        ("Option 1", "one"),
+        ("Option 2", "two"),
+    ]
+    
+    prompts = PromptsRenderer(text_renderer=mock_text_renderer)
+    result = prompts.ask_menu("Select an option", options=options)
+    
+    assert result == "two"
+    mock_text_renderer.error.assert_not_called()
+
+def test_ask_menu_handles_invalid_input(mocker, mock_text_renderer):
+    """Test that ask_menu re-prompts after invalid (non-integer) input."""
+    # Simulate user entering "a", then a valid "1"
+    mocker.patch.object(Prompt, "ask", side_effect=["a", "1"])
+    
+    options = [("Option 1", "one")]
+    
+    prompts = PromptsRenderer(text_renderer=mock_text_renderer)
+    result = prompts.ask_menu("Select an option", options=options)
+    
+    assert result == "one"
+    mock_text_renderer.error.assert_called_once_with(msg.Prompts.NOT_A_NUMBER, show_emoji=False)
