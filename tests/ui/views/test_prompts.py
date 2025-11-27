@@ -4,6 +4,7 @@ from rich.prompt import Prompt, Confirm, IntPrompt
 from titan_cli.ui.views.prompts import PromptsRenderer
 from titan_cli.ui.components.typography import TextRenderer
 from titan_cli.messages import msg
+from titan_cli.ui.views.menu_components import Menu, MenuCategory, MenuItem, MenuRenderer # Import menu models from the new package
 
 @pytest.fixture
 def mock_text_renderer(mocker):
@@ -12,6 +13,31 @@ def mock_text_renderer(mocker):
     # The console is retrieved from the text_renderer, so mock it too
     mock.console = mocker.MagicMock()
     return mock
+
+@pytest.fixture
+def mock_menu_renderer(mocker):
+    """Fixture to create a mock MenuRenderer."""
+    return mocker.MagicMock(spec=MenuRenderer)
+
+@pytest.fixture
+def sample_menu():
+    """Fixture for a sample Menu object for testing ask_menu."""
+    return Menu(
+        title="Test Menu",
+        emoji="🧪",
+        categories=[
+            MenuCategory(
+                name="Category 1",
+                emoji="1️⃣",
+                items=[MenuItem(label="Item 1", description="Desc 1", action="action1")],
+            ),
+            MenuCategory(
+                name="Category 2",
+                emoji="2️⃣",
+                items=[MenuItem(label="Item 2", description="Desc 2", action="action2")],
+            ),
+        ],
+    )
 
 def test_ask_int_success(mocker, mock_text_renderer):
     """Test that ask_int returns a valid integer on the first try."""
@@ -103,31 +129,39 @@ def test_ask_choice_returns_selection(mocker, mock_text_renderer):
     
     assert result == "blue"
 
-def test_ask_menu_returns_selection(mocker, mock_text_renderer):
-    """Test that ask_menu returns the correct value for a selection."""
-    # Simulate user choosing option '2'
+def test_ask_menu_returns_selection(mocker, mock_text_renderer, mock_menu_renderer, sample_menu):
+    """Test that ask_menu returns the correct MenuItem on selection."""
     mocker.patch.object(Prompt, "ask", return_value="2")
     
-    options = [
-        ("Option 1", "one"),
-        ("Option 2", "two"),
-    ]
+    prompts = PromptsRenderer(text_renderer=mock_text_renderer, menu_renderer=mock_menu_renderer)
+    result = prompts.ask_menu(sample_menu)
     
-    prompts = PromptsRenderer(text_renderer=mock_text_renderer)
-    result = prompts.ask_menu("Select an option", options=options)
-    
-    assert result == "two"
-    mock_text_renderer.error.assert_not_called()
+    assert result is not None
+    assert result.action == "action2"
+    mock_menu_renderer.render.assert_called_once_with(sample_menu)
 
-def test_ask_menu_handles_invalid_input(mocker, mock_text_renderer):
-    """Test that ask_menu re-prompts after invalid (non-integer) input."""
-    # Simulate user entering "a", then a valid "1"
-    mocker.patch.object(Prompt, "ask", side_effect=["a", "1"])
+def test_ask_menu_handles_quit(mocker, mock_text_renderer, mock_menu_renderer, sample_menu):
+    """Test that ask_menu returns None when the user quits."""
+    mocker.patch.object(Prompt, "ask", return_value="q")
     
-    options = [("Option 1", "one")]
+    prompts = PromptsRenderer(text_renderer=mock_text_renderer, menu_renderer=mock_menu_renderer)
+    result = prompts.ask_menu(sample_menu)
     
-    prompts = PromptsRenderer(text_renderer=mock_text_renderer)
-    result = prompts.ask_menu("Select an option", options=options)
+    assert result is None
+    mock_menu_renderer.render.assert_called_once_with(sample_menu)
+
+def test_ask_menu_handles_invalid_input(mocker, mock_text_renderer, mock_menu_renderer, sample_menu):
+    """Test that ask_menu re-prompts after invalid input."""
+    mocker.patch.object(Prompt, "ask", side_effect=["a", "3", "1"])
     
-    assert result == "one"
-    mock_text_renderer.error.assert_called_once_with(msg.Prompts.NOT_A_NUMBER, show_emoji=False)
+    prompts = PromptsRenderer(text_renderer=mock_text_renderer, menu_renderer=mock_menu_renderer)
+    result = prompts.ask_menu(sample_menu)
+    
+    assert result is not None
+    assert result.action == "action1"
+    
+    expected_error_calls = [
+        mocker.call(msg.Prompts.NOT_A_NUMBER, show_emoji=False),
+        mocker.call(msg.Prompts.INVALID_MENU_CHOICE.format(total_items=2))
+    ]
+    mock_text_renderer.error.assert_has_calls(expected_error_calls)
