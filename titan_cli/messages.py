@@ -49,6 +49,7 @@ class Messages:
         CONFIGURE_TITLE = "Configure a New Project"
         INIT_SUCCESS = "✅ Project '{project_name}' initialized successfully at: {config_path}"
         INIT_CANCELLED = "Project initialization cancelled."
+        SECRET_SAVED = "✅ {key} saved securely ({scope} scope)"
 
     # ═══════════════════════════════════════════════════════════════
     # UI Components
@@ -239,6 +240,14 @@ class Messages:
         PROVIDER_NOT_CONFIGURED = "❌ AI provider not configured"
         PROVIDER_INVALID = "❌ Invalid AI provider: {provider}"
         API_KEY_MISSING = "❌ API key not found for provider: {provider}"
+
+        # Provider Labels and Descriptions
+        ANTHROPIC_LABEL = "Anthropic (Claude)"
+        OPENAI_LABEL = "OpenAI (GPT-4)"
+        GEMINI_LABEL = "Google (Gemini)"
+        ANTHROPIC_DESCRIPTION_MODEL = "Model: {model}"
+        OPENAI_DESCRIPTION_MODEL = "Model: {model}"
+        GEMINI_DESCRIPTION_MODEL = "Model: {model}"
 
         # Models
         MODEL_NOT_AVAILABLE = "❌ Model not available: {model}"

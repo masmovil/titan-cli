@@ -62,9 +62,9 @@ def configure_ai_interactive():
     # Step 1: Select Provider
     provider_menu = DynamicMenu(title="Select AI Provider", emoji="🤖")
     cat = provider_menu.add_category("Providers")
-    cat.add_item("Anthropic (Claude)", "Model: claude-3-opus-20240229", "anthropic")
-    cat.add_item("OpenAI (GPT-4)", "Model: gpt-4-turbo", "openai")
-    cat.add_item("Google (Gemini)", "Model: gemini-1.5-pro", "gemini")
+    cat.add_item(msg.AI.ANTHROPIC_LABEL, msg.AI.ANTHROPIC_DESCRIPTION_MODEL.format(model="claude-3-opus-20240229"), "anthropic")
+    cat.add_item(msg.AI.OPENAI_LABEL, msg.AI.OPENAI_DESCRIPTION_MODEL.format(model="gpt-4-turbo"), "openai")
+    cat.add_item(msg.AI.GEMINI_LABEL, msg.AI.GEMINI_DESCRIPTION_MODEL.format(model="gemini-1.5-pro"), "gemini")
 
     provider_choice = prompts.ask_menu(provider_menu.to_menu())
     if not provider_choice:

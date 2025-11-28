@@ -158,7 +158,7 @@ class SecretManager:
             value = prompts.ask_text(prompt_text, password=True)  # Hidden input
             if value:
                 self.set(key, value, namespace=namespace, scope=scope)
-                text.success(f"✅ {key} saved securely ({scope} scope)") # TODO: Use msg.secrets.SECRET_SAVED.format(...)
+                text.success(msg.Projects.SECRET_SAVED.format(key=key, scope=scope))
                 return value
             return None
         except (EOFError, KeyboardInterrupt):
