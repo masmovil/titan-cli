@@ -41,66 +41,55 @@ def mock_dependencies():
 
 def test_show_interactive_menu_configure_flow(mock_dependencies):
     """
-    Test the full 'Configure a New Project' flow.
-    - User selects 'configure'.
-    - A list of unconfigured projects is shown.
-    - User selects a project.
-    - initialize_project is called.
+    Test the full 'Configure a New Project' flow and then exiting.
     """
     prompts_mock = mock_dependencies["prompts_instance"]
     discover_mock = mock_dependencies["discover"]
     init_project_mock = mock_dependencies["init_project"]
 
     # --- Simulation Setup ---
-    # 1. Main menu choice: user selects 'configure'
-    main_menu_choice = MagicMock()
-    main_menu_choice.action = "configure"
-
-    # 2. Unconfigured projects are discovered
+    main_menu_choice = MagicMock(action="configure")
     unconfigured_path = Path("/fake/projects/new-project")
     discover_mock.return_value = ([], [unconfigured_path])
-
-    # 3. Project selection menu: user selects the new project
-    project_menu_choice = MagicMock()
-    project_menu_choice.action = str(unconfigured_path.resolve())
+    project_menu_choice = MagicMock(action=str(unconfigured_path.resolve()))
+    exit_choice = MagicMock(action="exit")
     
-    # prompts.ask_menu will be called twice. 
-    # First time for the main menu, second for the project selection.
-    prompts_mock.ask_menu.side_effect = [main_menu_choice, project_menu_choice]
+    # Sequence of user choices: Configure -> Select Project -> Exit
+    prompts_mock.ask_menu.side_effect = [main_menu_choice, project_menu_choice, exit_choice]
+    prompts_mock.ask_text.return_value = "" # For the "Press Enter" pause
 
     # --- Run the function ---
     show_interactive_menu()
 
     # --- Assertions ---
-    # Check that discovery was called
     discover_mock.assert_called_once_with("/fake/projects")
-
-    # Check that ask_menu was called twice
-    assert prompts_mock.ask_menu.call_count == 2
-    
-    # Check that initialize_project was called with the correct path
+    assert prompts_mock.ask_menu.call_count == 3 # Main menu, project menu, main menu again to exit
     init_project_mock.assert_called_once_with(unconfigured_path.resolve())
+    # Check that the pause prompt was called
+    prompts_mock.ask_text.assert_called_with("Press Enter to return to the main menu", default="")
 
 
 def test_show_interactive_menu_list_flow(mock_dependencies):
     """
-    Test the 'List Configured Projects' flow.
-    - User selects 'list'.
-    - list_projects is called.
+    Test the 'List Configured Projects' flow and then exiting.
     """
     prompts_mock = mock_dependencies["prompts_instance"]
     list_projects_mock = mock_dependencies["list_projects"]
 
-    # 1. Main menu choice: user selects 'list'
-    main_menu_choice = MagicMock()
-    main_menu_choice.action = "list"
-    prompts_mock.ask_menu.return_value = main_menu_choice
+    # Sequence of choices: List -> Exit
+    list_choice = MagicMock(action="list")
+    exit_choice = MagicMock(action="exit")
+    prompts_mock.ask_menu.side_effect = [list_choice, exit_choice]
+    prompts_mock.ask_text.return_value = "" # For the "Press Enter" pause
 
     # --- Run the function ---
     show_interactive_menu()
 
     # --- Assertions ---
     list_projects_mock.assert_called_once()
+    assert prompts_mock.ask_menu.call_count == 2
+    # Check that the pause prompt was called
+    prompts_mock.ask_text.assert_called_once_with("Press Enter to return to the main menu", default="")
 
 def test_show_interactive_menu_no_unconfigured_projects(mock_dependencies):
     """
@@ -110,21 +99,20 @@ def test_show_interactive_menu_no_unconfigured_projects(mock_dependencies):
     discover_mock = mock_dependencies["discover"]
     init_project_mock = mock_dependencies["init_project"]
     
-    # 1. Main menu choice: user selects 'configure'
-    main_menu_choice = MagicMock()
-    main_menu_choice.action = "configure"
-    prompts_mock.ask_menu.return_value = main_menu_choice
-    
-    # 2. No unconfigured projects are found
+    # Sequence of choices: Configure -> Exit
+    configure_choice = MagicMock(action="configure")
+    exit_choice = MagicMock(action="exit")
+    prompts_mock.ask_menu.side_effect = [configure_choice, exit_choice]
+    prompts_mock.ask_text.return_value = "" # For the "Press Enter" pause
+
+    # No unconfigured projects are found
     discover_mock.return_value = ([], [])
 
     # --- Run the function ---
-    # We need to wrap this in a pytest.raises since a clean exit is a SystemExit
-    with pytest.raises(typer.Exit) as e:
-        show_interactive_menu()
-
-    # Assert that the exit code is 0 (success)
-    assert e.value.exit_code == 0
+    show_interactive_menu()
     
-    # Check that initialize_project was NOT called
+    # --- Assertions ---
     init_project_mock.assert_not_called()
+    assert prompts_mock.ask_menu.call_count == 2 # Main menu, then main menu again to exit
+    # Check that the pause prompt was called after the message
+    prompts_mock.ask_text.assert_called_once_with("Press Enter to return to the main menu", default="")

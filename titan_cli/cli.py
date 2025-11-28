@@ -96,18 +96,18 @@ def show_interactive_menu():
     """Display interactive menu system."""
     text = TextRenderer()
     prompts = PromptsRenderer(text_renderer=text)
+    spacer = SpacerRenderer()
 
     # Get version for subtitle
     cli_version = get_version()
     subtitle = f"Development Tools Orchestrator v{cli_version}"
 
-    # Show welcome banner
+    # Initial Welcome Banner
     render_titan_banner(subtitle=subtitle)
 
-    # Check for project_root and prompt if not set
+    # Check for project_root and prompt if not set (only runs once)
     config = TitanConfig()
     project_root = config.get_project_root()
-
     if not project_root or not Path(project_root).is_dir():
         if not _prompt_for_project_root(text, prompts):
             text.warning(msg.Errors.OPERATION_CANCELLED_NO_CHANGES)
@@ -115,73 +115,79 @@ def show_interactive_menu():
         # Reload config after setting it
         config.load()
         project_root = config.get_project_root() # Re-fetch project root
+
+    while True:
+        # Re-render banner and menu in each loop iteration
         render_titan_banner(subtitle=subtitle)
-
-    # Build and show the main menu
-    menu_builder = DynamicMenu(title="What would you like to do?", emoji="🚀")
-    menu_builder.add_category("Project Management", emoji="📂") \
-        .add_item("List Configured Projects", "Scan the project root and show all configured Titan projects.", "list") \
-        .add_item("Configure a New Project", "Select an unconfigured project to initialize with Titan.", "configure")
-
-    menu_builder.add_category("Exit", emoji="🚪") \
-        .add_item("Exit", "Exit the application.", "exit")
-
-    menu = menu_builder.to_menu()
-
-    try:
-        choice_item = prompts.ask_menu(menu, allow_quit=False) # Explicit exit option is clearer
-    except (KeyboardInterrupt, EOFError):
-        choice_item = None # Treat Ctrl+C as an exit action
-
-    spacer = SpacerRenderer()
-    spacer.line()
-
-    # Default to exit if user cancels
-    choice_action = "exit"
-    if choice_item:
-        choice_action = choice_item.action
-
-    if choice_action == "list":
-        list_projects()
-    elif choice_action == "configure":
-        text.title("Configure a New Project")
-        spacer.line()
-        if not project_root:
-            text.error("Project root not set. Cannot discover projects.")
-            raise typer.Exit(1)
-
-        _conf, unconfigured = discover_projects(str(project_root))
-        if not unconfigured:
-            text.success("No unconfigured Git projects found to initialize.")
-            raise typer.Exit(0)
-
-        # Build a menu of unconfigured projects
-        project_menu_builder = DynamicMenu(title="Select a project to initialize", emoji="✨")
-        cat_idx = project_menu_builder.add_category("Unconfigured Projects")
-        for p in unconfigured:
-            try:
-                rel_path = str(p.relative_to(project_root))
-            except ValueError:
-                rel_path = str(p)
-            cat_idx.add_item(p.name, rel_path, str(p.resolve()))
-
-        project_menu_builder.add_category("Cancel").add_item("Back to Main Menu", "Return without initializing.", "cancel")
         
-        project_menu = project_menu_builder.to_menu() # Convert builder to model
+        # Build and show the main menu
+        menu_builder = DynamicMenu(title="What would you like to do?", emoji="🚀")
+        menu_builder.add_category("Project Management", emoji="📂") \
+            .add_item("List Configured Projects", "Scan the project root and show all configured Titan projects.", "list") \
+            .add_item("Configure a New Project", "Select an unconfigured project to initialize with Titan.", "configure")
+
+        menu_builder.add_category("Exit", emoji="🚪") \
+            .add_item("Exit", "Exit the application.", "exit")
+
+        menu = menu_builder.to_menu()
 
         try:
-            chosen_project_item = prompts.ask_menu(project_menu, allow_quit=False)
+            choice_item = prompts.ask_menu(menu, allow_quit=False)
         except (KeyboardInterrupt, EOFError):
-            chosen_project_item = None
-        
+            choice_item = None
+
         spacer.line()
 
-        if chosen_project_item and chosen_project_item.action != "cancel":
-            initialize_project(Path(chosen_project_item.action))
+        choice_action = "exit"
+        if choice_item:
+            choice_action = choice_item.action
 
-    elif choice_action == "exit":
-        text.body("Goodbye!")
-        raise typer.Exit()
+        if choice_action == "list":
+            list_projects()
+            spacer.line()
+            prompts.ask_text("Press Enter to return to the main menu", default="")
+        
+        elif choice_action == "configure":
+            text.title("Configure a New Project")
+            spacer.line()
+            project_root = config.get_project_root() # Re-fetch in case it was just set
+            if not project_root:
+                text.error("Project root not set. Cannot discover projects.")
+                break # Exit loop if something is wrong
+
+            _conf, unconfigured = discover_projects(str(project_root))
+            if not unconfigured:
+                text.success("No unconfigured Git projects found to initialize.")
+            else:
+                project_menu_builder = DynamicMenu(title="Select a project to initialize", emoji="✨")
+                cat_idx = project_menu_builder.add_category("Unconfigured Projects")
+                for p in unconfigured:
+                    try:
+                        rel_path = str(p.relative_to(project_root))
+                    except ValueError:
+                        rel_path = str(p)
+                    cat_idx.add_item(p.name, rel_path, str(p.resolve()))
+
+                project_menu_builder.add_category("Cancel").add_item("Back to Main Menu", "Return without initializing.", "cancel")
+                
+                project_menu = project_menu_builder.to_menu()
+
+                try:
+                    chosen_project_item = prompts.ask_menu(project_menu, allow_quit=False)
+                except (KeyboardInterrupt, EOFError):
+                    chosen_project_item = None
+                
+                spacer.line()
+
+                if chosen_project_item and chosen_project_item.action != "cancel":
+                    initialize_project(Path(chosen_project_item.action))
+
+            spacer.line()
+            prompts.ask_text("Press Enter to return to the main menu", default="")
+
+        elif choice_action == "exit":
+            text.body("Goodbye!")
+            break
 
 
 @app.callback()
