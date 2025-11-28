@@ -368,6 +368,38 @@ class TitanConfigModel(BaseModel):
     plugins: Dict[str, PluginConfig] = Field(default_factory=dict)
 ```
 
+### SecretManager (`core/secrets.py`)
+
+The `SecretManager` provides a unified interface for securely managing sensitive information across different scopes. It implements a 3-level cascading priority system for retrieving secrets:
+
+1.  **Environment Variables (`env` scope):** Highest priority. Secrets set in environment variables (e.g., `GITHUB_TOKEN`) are checked first. Project-specific secrets loaded from `.titan/secrets.env` are also made available here.
+2.  **Project Secrets (`project` scope):** Stored in a `.titan/secrets.env` file within the project directory. These are typically shared among team members working on the same project. They are loaded into environment variables upon initialization of the `SecretManager`.
+3.  **User Keyring (`user` scope):** Lowest priority. Secrets are stored securely in the operating system's keyring (e.g., macOS Keychain, Linux Keyring, Windows Credential Manager). These are personal credentials.
+
+This cascade ensures flexibility, allowing environment variables to override project-specific or personal settings for CI/CD environments, while still providing secure storage options for local development.
+
+**Usage:**
+
+```python
+from titan_cli.core.secrets import SecretManager
+
+# Initialize with current working directory or a specific project path
+secrets = SecretManager() 
+
+# Get a secret (cascading priority)
+api_key = secrets.get("ANTHROPIC_API_KEY")
+
+# Set a secret (user scope by default)
+secrets.set("GITHUB_TOKEN", "ghp_...", scope="user")
+
+# Set a project-specific secret
+secrets.set("DB_PASSWORD", "super_secret", scope="project")
+
+# Interactively prompt for a secret
+if not secrets.get("GEMINI_API_KEY"):
+    secrets.prompt_and_set("GEMINI_API_KEY", "Enter your Gemini API Key")
+```
+
 ### Using Config
 
 ```python
