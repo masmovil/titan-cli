@@ -85,6 +85,20 @@ class TitanConfig:
                 merged[key] = value
 
         return merged
+
+    def load(self):
+        """Reloads the configuration from disk."""
+        self.global_config = self._load_toml(self.GLOBAL_CONFIG)
+        self.project_config = self._load_toml(self.project_config_path)
+        merged = self._merge_configs(self.global_config, self.project_config)
+        self.config = TitanConfigModel(**merged)
+
+    def get_project_root(self) -> Optional[str]:
+        """Returns the configured project root, or None if not set."""
+        if self.config and self.config.core and self.config.core.project_root:
+            return self.config.core.project_root
+        return None
+
     def get_enabled_plugins(self) -> List[str]:
         """Get list of enabled plugins"""
         if not self.config or not self.config.plugins:
