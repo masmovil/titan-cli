@@ -27,7 +27,7 @@ Below are the core UI components, which serve as templates for creating new ones
 
 ### Example 1: `TextRenderer` (Component)
 
--   **Responsibility:** Renders all themed text, including titles, subtitles, and semantic messages (`success`, `error`, etc.).
+-   **Responsibility:** Renders all themed text, including titles, subtitles, and semantic messages (`success`, `error`, etc.). Also provides `styled_text` for complex inline styling.
 -   **Source:** [`titan_cli/ui/components/typography.py`](../../titan_cli/ui/components/typography.py)
 -   **Preview:** [`titan_cli/ui/components/__previews__/typography_preview.py`](../../titan_cli/ui/components/__previews__/typography_preview.py)
 
@@ -80,7 +80,7 @@ def preview_my_component():
 # Example for the new menu component
 @preview_app.command("menu")
 def preview_menu():
-    """Shows an interactive preview of the Menu component."""
+    """Shows a non-interactive preview of the Menu component."""
     try:
         runpy.run_module("titan_cli.ui.views.menu_components.__previews__.menu_preview", run_name="__main__")
     except ModuleNotFoundError:

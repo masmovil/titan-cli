@@ -72,17 +72,19 @@ This file defines:
 
 **How to use:**
 -   **For console output and components:** Ensure your `Console` instance is initialized with `TITAN_THEME` (this is handled by `titan_cli/ui/console.py`). Then, simply use style names (e.g., `console.print("Success!", style="success")`).
+-   **For multi-styled text:** Use `TextRenderer.styled_text` when you need different styles within a single line (e.g., numbered menu items with bold labels).
 -   **For banner:** The `render_ascii_banner` function automatically pulls colors from `BANNER_GRADIENT_COLORS`.
 -   **For syntax highlighting:** Use `ThemeManager.get_syntax_theme()` when creating `rich.syntax.Syntax` objects.
 
 ### 👁️ Previewing UI Components (`__previews__/` directory)
 
-To efficiently develop and debug UI components, you can preview them in isolation without running the entire CLI application. This is achieved using scripts placed in a `__previews__/` subdirectory alongside the components.
+To efficiently develop and debug UI components, you can preview them in isolation without running the entire CLI application. This is achieved using scripts placed in a `__previews__/` subdirectory alongside the components or views.
 
 **Structure:**
--   Each component or view (`panel.py`, `banner.py`) that you want to preview will have a corresponding preview script (e.g., `panel_preview.py`) in:
+-   Each component or view (`panel.py`, `banner.py`, `menu.py`) that you want to preview will have a corresponding preview script (e.g., `panel_preview.py`) in:
     `titan_cli/ui/components/__previews__/`
-    `titan_cli/ui/views/__previews__/`
+    `titan_cli/ui/views/__previews__/` (for top-level views)
+    `titan_cli/ui/views/your_view_subdir/__previews__/` (for nested views like `menu_components`)
 
 **How to create a preview:**
 1.  Create a file like `panel_preview.py` in the `__previews__/` directory.
