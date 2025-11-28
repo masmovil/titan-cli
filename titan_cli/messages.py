@@ -290,6 +290,7 @@ class Messages:
         VALUE_TOO_LOW = "Value must be at least {min}."
         VALUE_TOO_HIGH = "Value must be at most {max}."
         MISSING_VALUE = "A value is required."
+        INVALID_MENU_CHOICE = "Please enter a number between 1 and {total_items}."
 
         # Confirmations
         CONFIRM_DELETE = "Are you sure you want to delete '{item}'?"

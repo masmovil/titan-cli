@@ -12,6 +12,7 @@ from rich.prompt import Prompt, Confirm, IntPrompt
 from ..console import get_console
 from ..components.typography import TextRenderer
 from ...messages import msg # Import messages
+from .menu_components import Menu, MenuItem, MenuRenderer # Import Menu, MenuItem, MenuRenderer from the new package
 
 class PromptsRenderer:
     """
@@ -22,6 +23,7 @@ class PromptsRenderer:
         self,
         console: Optional[Console] = None,
         text_renderer: Optional[TextRenderer] = None,
+        menu_renderer: Optional[MenuRenderer] = None,
     ):
         """
         Initializes the PromptsRenderer.
@@ -29,6 +31,8 @@ class PromptsRenderer:
         Args:
             console: A Rich Console instance. If None, uses the global theme-aware console.
             text_renderer: An instance of TextRenderer for displaying messages.
+                           If None, a default instance is created.
+            menu_renderer: An instance of MenuRenderer for displaying menus.
                            If None, a default instance is created.
         """
         if console is None:
@@ -38,6 +42,10 @@ class PromptsRenderer:
         if text_renderer is None:
             text_renderer = TextRenderer(console=self.console)
         self.text = text_renderer
+
+        if menu_renderer is None:
+            menu_renderer = MenuRenderer(console=self.console, text_renderer=self.text)
+        self.menu_renderer = menu_renderer
 
 
     def ask_text(
@@ -122,43 +130,46 @@ class PromptsRenderer:
 
     def ask_menu(
         self,
-        question: str,
-        options: List[Tuple[str, str]],
+        menu: Menu,
         allow_quit: bool = True
-    ) -> Optional[str]:
+    ) -> Optional[MenuItem]:
         """
-        Ask user to choose from a numbered menu.
-        """
-        self.text.title(question, justify="center")
+        Displays a menu and asks the user to choose an item.
 
-        menu_options = list(options)
+        Args:
+            menu: The Menu object to display.
+            allow_quit: If True, allows the user to quit by entering 'q'.
+
+        Returns:
+            The selected MenuItem, or None if the user quits.
+        """
+        self.menu_renderer.render(menu)
+
+        total_items = sum(len(cat.items) for cat in menu.categories)
+        if total_items == 0:
+            return None
+
+        prompt = "Select an option"
         if allow_quit:
-            menu_options.append(("🛑 Quit", "quit"))
-
-        for i, (label, _) in enumerate(menu_options, 1):
-            self.text.body(f"  {i}. {label}")
-        
-        self.text.line()
+            prompt += " (or 'q' to quit)"
 
         while True:
+            choice_str = Prompt.ask(prompt, console=self.console)
+
+            if allow_quit and choice_str.lower() == 'q':
+                return None
+
             try:
-                # Use our own ask_text to handle prompt style if needed, or stick to Prompt.ask
-                choice_str = Prompt.ask(
-                    f"Choose option (1-{len(menu_options)})",
-                    console=self.console
-                )
-                if not choice_str:
-                    self.text.error(msg.Prompts.MISSING_VALUE, show_emoji=False)
-                    continue
-
                 choice = int(choice_str)
-
-                if 1 <= choice <= len(menu_options):
-                    _, value = menu_options[choice - 1]
-                    if value == "quit":
-                        return None
-                    return value
+                if 1 <= choice <= total_items:
+                    # Find the selected item
+                    item_count = 0
+                    for category in menu.categories:
+                        for item in category.items:
+                            item_count += 1
+                            if item_count == choice:
+                                return item
                 else:
-                    self.text.error(msg.Prompts.INVALID_INPUT, show_emoji=False)
+                    self.text.error(msg.Prompts.INVALID_MENU_CHOICE.format(total_items=total_items))
             except ValueError:
                 self.text.error(msg.Prompts.NOT_A_NUMBER, show_emoji=False)

@@ -27,7 +27,7 @@ Below are the core UI components, which serve as templates for creating new ones
 
 ### Example 1: `TextRenderer` (Component)
 
--   **Responsibility:** Renders all themed text, including titles, subtitles, and semantic messages (`success`, `error`, etc.).
+-   **Responsibility:** Renders all themed text, including titles, subtitles, and semantic messages (`success`, `error`, etc.). Also provides `styled_text` for complex inline styling.
 -   **Source:** [`titan_cli/ui/components/typography.py`](../../titan_cli/ui/components/typography.py)
 -   **Preview:** [`titan_cli/ui/components/__previews__/typography_preview.py`](../../titan_cli/ui/components/__previews__/typography_preview.py)
 
@@ -55,6 +55,12 @@ Below are the core UI components, which serve as templates for creating new ones
 -   **Source:** [`titan_cli/ui/views/prompts.py`](../../titan_cli/ui/views/prompts.py)
 -   **Preview:** [`titan_cli/ui/views/__previews__/prompts_preview.py`](../../titan_cli/ui/views/__previews__/prompts_preview.py)
 
+### Example 6: `MenuRenderer` (View / Composite Component)
+
+-   **Responsibility:** Renders interactive menus based on structured data (Pydantic models). Uses `TextRenderer` for styling.
+-   **Source:** [`titan_cli/ui/views/menu_components/menu.py`](../../titan_cli/ui/views/menu_components/menu.py)
+-   **Preview:** [`titan_cli/ui/views/menu_components/__previews__/menu_preview.py`](../../titan_cli/ui/views/menu_components/__previews__/menu_preview.py)
+
 ---
 
 ## 3. Add the Preview Command
@@ -70,6 +76,16 @@ def preview_my_component():
     except ModuleNotFoundError:
         typer.secho("Error: Preview script not found.", fg=typer.colors.RED)
         raise typer.Exit(1)
+
+# Example for the new menu component
+@preview_app.command("menu")
+def preview_menu():
+    """Shows a non-interactive preview of the Menu component."""
+    try:
+        runpy.run_module("titan_cli.ui.views.menu_components.__previews__.menu_preview", run_name="__main__")
+    except ModuleNotFoundError:
+        typer.secho("Error: Preview script not found.", fg=typer.colors.RED)
+        raise typer.Exit(1)
 ```
 
 ## 4. Verify
@@ -78,4 +94,5 @@ Run your new preview command from the project root to see your component in acti
 
 ```bash
 titan preview my_component
+titan preview menu
 ```
