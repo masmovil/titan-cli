@@ -54,7 +54,7 @@ def initialize_project(project_path: Path) -> bool:
         }
 
         # Create .titan directory and config file
-        titan_dir.mkdir(exist_ok=True)
+        titan_dir.mkdir(parents=True, exist_ok=True)
 
         with open(config_path, "wb") as f:
             tomli_w.dump(config_data, f)

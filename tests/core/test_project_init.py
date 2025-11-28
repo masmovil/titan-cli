@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch, mock_open
 from pathlib import Path
 
 from titan_cli.core.project_init import initialize_project
+from titan_cli.messages import msg
 
 @pytest.fixture
 def mock_ui_components():
@@ -37,14 +38,14 @@ def test_initialize_project_success(mock_ui_components):
         
         # Assertions
         assert result is True
-        mock_text.title.assert_called_with(f"Initializing Titan Project: [primary]{project_path.name}[/primary]")
+        mock_text.title.assert_called_with(msg.Interactive.INIT_PROJECT_TITLE.format(project_name=project_path.name))
         
         # Check prompts
-        mock_prompts.ask_text.assert_called_once_with("Enter a name for the project", default="test-project")
+        mock_prompts.ask_text.assert_called_once_with(msg.Prompts.ENTER_NAME, default="test-project")
         mock_prompts.ask_choice.assert_called_once()
 
         # Check filesystem
-        mock_mkdir.assert_called_once_with(exist_ok=True)
+        mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
         mock_file.assert_called_once_with(project_path / ".titan" / "config.toml", "wb")
         
         # Check config content
@@ -57,7 +58,7 @@ def test_initialize_project_success(mock_ui_components):
         mock_tomli_dump.assert_called_once_with(expected_config, mock_file())
 
         # Check success message
-        mock_text.success.assert_called_once()
+        mock_text.success.assert_called_once_with(msg.Projects.INIT_SUCCESS.format(project_name="test-project", config_path=project_path / ".titan" / "config.toml"))
 
 def test_initialize_project_other_type(mock_ui_components):
     """
@@ -72,7 +73,7 @@ def test_initialize_project_other_type(mock_ui_components):
 
     project_path = Path("/fake/dir/my-custom-project")
 
-    with patch('pathlib.Path.mkdir'), \
+    with patch('pathlib.Path.mkdir') as mock_mkdir, \
          patch('builtins.open', mock_open()) as mock_file, \
          patch('tomli_w.dump') as mock_tomli_dump:
         
@@ -82,7 +83,9 @@ def test_initialize_project_other_type(mock_ui_components):
         
         # Check that ask_text was called twice: once for name, once for custom type
         assert mock_prompts.ask_text.call_count == 2
-        mock_prompts.ask_text.assert_any_call("Enter custom project type")
+        mock_prompts.ask_text.assert_any_call(msg.Prompts.ENTER_CUSTOM_PROJECT_TYPE)
+
+        mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
         expected_config = {
             "project": {
@@ -106,4 +109,4 @@ def test_initialize_project_cancelled(mock_ui_components):
     result = initialize_project(project_path)
     
     assert result is False
-    mock_text.warning.assert_called_with("Project initialization cancelled.")
+    mock_text.warning.assert_called_with(msg.Projects.INIT_CANCELLED)

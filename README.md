@@ -50,8 +50,9 @@ pipx inject titan-cli titan-plugin-github
 titan plugins list
 ```
 
-Available plugins:
-Not available at the moment
+## Available plugins:
+
+**Not available at the moment**
 
 ## 📚 Documentation
 

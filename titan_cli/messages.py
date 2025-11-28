@@ -366,6 +366,7 @@ class Messages:
 
         # Config specific
         CONFIG_WRITE_FAILED = "Failed to write configuration file: {error}"
+        PROJECT_ROOT_NOT_SET = "Project root not set. Cannot discover projects."
 
 
 # Singleton instance for easy access

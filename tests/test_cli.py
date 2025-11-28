@@ -2,7 +2,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
-import typer
 
 # The function to test
 from titan_cli.cli import show_interactive_menu

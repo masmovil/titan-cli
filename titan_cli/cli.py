@@ -20,7 +20,6 @@ from titan_cli.core.errors import ConfigWriteError
 from titan_cli.core.discovery import discover_projects
 from titan_cli.ui.components.typography import TextRenderer
 from titan_cli.ui.components.spacer import SpacerRenderer
-from titan_cli.ui.components.table import TableRenderer
 from titan_cli.ui.views.prompts import PromptsRenderer
 from titan_cli.core.project_init import initialize_project
 from titan_cli.ui.views.menu_components.dynamic_menu import DynamicMenu
@@ -163,7 +162,7 @@ def show_interactive_menu():
             spacer.line()
             project_root = config.get_project_root() # Re-fetch in case it was just set
             if not project_root:
-                text.error("Project root not set. Cannot discover projects.")
+                text.error(msg.Errors.PROJECT_ROOT_NOT_SET)
                 break # Exit loop if something is wrong
 
             _conf, unconfigured = discover_projects(str(project_root))
