@@ -12,6 +12,9 @@ from ..ui.views.menu_components.dynamic_menu import DynamicMenu
 from ..ai.client import AIClient
 from ..ai.oauth_helper import OAuthHelper
 from ..messages import msg
+from ..ai.client import AIClient, PROVIDER_CLASSES
+from ..ai.models import AIRequest, AIMessage
+
 
 ai_app = typer.Typer(name="ai", help="Configure and manage AI providers.")
 
@@ -21,19 +24,27 @@ def _test_ai_connection(provider: str, secrets: SecretManager):
     text.info(f"Testing {provider} connection...")
 
     try:
-        # We need a TitanConfig instance that reflects the provider we want to test,
-        # even if it's not the one saved in the file yet.
-        # A bit of a hack: create a temporary config object.
-        temp_config_obj = TitanConfig()
-        if not temp_config_obj.config.ai:
-            temp_config_obj.config.ai = {}
-        temp_config_obj.config.ai.provider = provider
+        provider_class = PROVIDER_CLASSES.get(provider)
+        if not provider_class:
+            raise ValueError(f"Unknown provider: {provider}")
+        
+        # Get API key
+        api_key = secrets.get(f"{provider}_api_key")
+        
+        # Special case for Gemini OAuth
+        if provider == "gemini" and secrets.get("gemini_oauth_enabled"):
+             api_key = "GCLOUD_OAUTH"
 
-        client = AIClient(titan_config=temp_config_obj, secrets=secrets)
-        response = client.chat("Say 'Hello!' if you can hear me")
+        if not api_key:
+            raise ValueError(f"API key for {provider} not found.")
+
+        # Instantiate provider and generate a simple response
+        provider_instance = provider_class(api_key=api_key)
+        test_request = AIRequest(messages=[AIMessage(role="user", content="Say 'Hello!' if you can hear me")])
+        response = provider_instance.generate(test_request)
 
         text.success("✅ Connection successful!")
-        text.body(f"Response: {response}", style="dim")
+        text.body(f"Response: {response.content}", style="dim") # Access content from AIResponse
 
     except Exception as e:
         text.error(f"❌ Connection failed: {e}")
