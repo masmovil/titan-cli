@@ -56,21 +56,29 @@ def test_menu_renderer_renders_correctly(mock_console, sample_menu):
     mock_text_renderer.title.assert_called_once_with("🧪 Test Menu")
     
     # Assert category headers are rendered
-    mock_text_renderer.body.assert_has_calls([
-        call("1️⃣ Category 1", style="bold"),
-        call("2️⃣ Category 2", style="bold"),
-    ])
+    mock_text_renderer.body.assert_any_call("1️⃣ Category 1", style="bold")
+    mock_text_renderer.body.assert_any_call("2️⃣ Category 2", style="bold")
     
+    # Assert item descriptions are rendered
+    mock_text_renderer.body.assert_any_call("     Desc 1.1", style="dim")
+    mock_text_renderer.body.assert_any_call("     Desc 1.2", style="dim")
+    mock_text_renderer.body.assert_any_call("     Desc 2.1", style="dim")
+
     # Assert menu items are printed
-    expected_item_calls = [
-        call("  [primary]1.[/primary] [bold]Item 1.1[/bold]"),
-        call("     [dim]Desc 1.1[/dim]"),
-        call("  [primary]2.[/primary] [bold]Item 1.2[/bold]"),
-        call("     [dim]Desc 1.2[/dim]"),
-        call("  [primary]3.[/primary] [bold]Item 2.1[/bold]"),
-        call("     [dim]Desc 2.1[/dim]"),
-    ]
-    mock_console.print.assert_has_calls(expected_item_calls)
+    mock_text_renderer.styled_text.assert_has_calls([
+        call(
+            ("  1. ", "primary"),
+            ("Item 1.1", "bold")
+        ),
+        call(
+            ("  2. ", "primary"),
+            ("Item 1.2", "bold")
+        ),
+        call(
+            ("  3. ", "primary"),
+            ("Item 2.1", "bold")
+        ),
+    ])
 
     # Assert tip is rendered
     mock_text_renderer.info.assert_called_once_with("This is a tip.", show_emoji=True)

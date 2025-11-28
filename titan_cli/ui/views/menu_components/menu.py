@@ -49,8 +49,12 @@ class MenuRenderer:
             self.text.body(f"{category.emoji} {category.name}", style="bold")
             self.spacer.line()
             for item in category.items:
-                self.console.print(f"  [primary]{counter:{padding}d}.[/primary] [bold]{item.label}[/bold]")
-                self.console.print(f"     [dim]{item.description}[/dim]")
+                # Use styled_text for multi-styled line
+                self.text.styled_text(
+                    (f"  {counter:{padding}d}. ", "primary"),
+                    (item.label, "bold")
+                )
+                self.text.body(f"     {item.description}", style="dim")
                 self.spacer.line()
                 counter += 1
 
