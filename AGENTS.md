@@ -368,6 +368,38 @@ class TitanConfigModel(BaseModel):
     plugins: Dict[str, PluginConfig] = Field(default_factory=dict)
 ```
 
+### SecretManager (`core/secrets.py`)
+
+The `SecretManager` provides a unified interface for securely managing sensitive information across different scopes. It implements a 3-level cascading priority system for retrieving secrets:
+
+1.  **Environment Variables (`env` scope):** Highest priority. Secrets set in environment variables (e.g., `GITHUB_TOKEN`) are checked first. Project-specific secrets loaded from `.titan/secrets.env` are also made available here.
+2.  **Project Secrets (`project` scope):** Stored in a `.titan/secrets.env` file within the project directory. These are typically shared among team members working on the same project. They are loaded into environment variables upon initialization of the `SecretManager`.
+3.  **User Keyring (`user` scope):** Lowest priority. Secrets are stored securely in the operating system's keyring (e.g., macOS Keychain, Linux Keyring, Windows Credential Manager). These are personal credentials.
+
+This cascade ensures flexibility, allowing environment variables to override project-specific or personal settings for CI/CD environments, while still providing secure storage options for local development.
+
+**Usage:**
+
+```python
+from titan_cli.core.secrets import SecretManager
+
+# Initialize with current working directory or a specific project path
+secrets = SecretManager() 
+
+# Get a secret (cascading priority)
+api_key = secrets.get("ANTHROPIC_API_KEY")
+
+# Set a secret (user scope by default)
+secrets.set("GITHUB_TOKEN", "ghp_...", scope="user")
+
+# Set a project-specific secret
+secrets.set("DB_PASSWORD", "super_secret", scope="project")
+
+# Interactively prompt for a secret
+if not secrets.get("GEMINI_API_KEY"):
+    secrets.prompt_and_set("GEMINI_API_KEY", "Enter your Gemini API Key")
+```
+
 ### Using Config
 
 ```python
@@ -424,6 +456,85 @@ plugins/titan-plugin-github/
 - **Steps**: Orchestration, use WorkflowContext, return WorkflowResult
 - **Services**: Business logic, validation, no UI, no workflows
 - **Clients**: External API wrappers (gh CLI, HTTP requests)
+
+---
+
+## 🤖 AI Integration
+
+Titan CLI includes a modular AI integration layer that allows for interaction with multiple AI providers (Anthropic, OpenAI, Gemini).
+
+### File Structure (`ai/`)
+
+The `ai` layer is organized as follows:
+
+```
+titan_cli/ai/
+├── __init__.py
+├── client.py               # AIClient facade
+├── constants.py            # Default models and provider metadata
+├── exceptions.py           # Custom AI-related exceptions
+├── models.py               # Data models (AIRequest, AIResponse)
+├── oauth_helper.py         # Helper for Google Cloud OAuth
+└── providers/
+    ├── __init__.py
+    ├── base.py             # AIProvider abstract base class
+    ├── anthropic.py
+    ├── gemini.py
+    └── openai.py           # Stub for future implementation
+```
+
+### Core Components
+
+-   **`AIClient` (`ai/client.py`):** This is the main entry point for using AI functionality. It acts as a facade that reads the user's configuration, retrieves the necessary secrets via `SecretManager`, and instantiates the correct provider.
+-   **`AIProvider` (`ai/providers/base.py`):** This is an abstract base class that defines the interface for all AI providers. Each provider implements the `generate()` method to interact with its specific API.
+
+### Configuration
+
+AI configuration is handled via the interactive `titan ai configure` command or by selecting "Configure AI Provider" from the main menu. This command allows the user to:
+1.  Select a default provider (Anthropic, OpenAI, or Gemini).
+2.  Provide authentication credentials (API Key or OAuth for Gemini), which are stored securely using the `SecretManager`.
+3.  Select a default model for the chosen provider, with suggestions for popular models.
+4.  Optionally set a custom API endpoint for enterprise use.
+5.  Test the connection to ensure everything is set up correctly.
+
+Configuration is stored in the global `~/.titan/config.toml` file:
+
+```toml
+[ai]
+provider = "anthropic"
+model = "claude-3-5-sonnet-20241022"
+base_url = "https://custom.endpoint.com" # Optional
+```
+
+### Usage
+
+To use the AI client in a command or other part of the application:
+
+```python
+from titan_cli.core.config import TitanConfig
+from titan_cli.core.secrets import SecretManager
+from titan_cli.ai.client import AIClient
+from titan_cli.ai.models import AIMessage
+from titan_cli.ai.exceptions import AIConfigurationError
+
+# 1. Initialize config and secrets
+config = TitanConfig()
+secrets = SecretManager()
+
+# 2. Create the AI client
+try:
+    ai_client = AIClient(config, secrets)
+except AIConfigurationError as e:
+    # Handle cases where AI is not configured
+    print(f"AI not available: {e}")
+    return
+
+# 3. Make a request
+if ai_client.is_available():
+    messages = [AIMessage(role="user", content="Explain the meaning of life.")]
+    response = ai_client.generate(messages)
+    print(response.content)
+```
 
 ---
 

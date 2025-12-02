@@ -15,7 +15,9 @@ from titan_cli.messages import msg
 from titan_cli.preview import preview_app
 from titan_cli.commands.init import init_app
 from titan_cli.commands.projects import projects_app, list_projects
+from titan_cli.commands.ai import ai_app
 from titan_cli.core.config import TitanConfig
+from titan_cli.core.secrets import SecretManager
 from titan_cli.core.errors import ConfigWriteError
 from titan_cli.core.discovery import discover_projects
 from titan_cli.ui.components.typography import TextRenderer
@@ -37,6 +39,7 @@ app = typer.Typer(
 app.add_typer(preview_app)
 app.add_typer(init_app)
 app.add_typer(projects_app)
+app.add_typer(ai_app)
 
 
 # --- Helper function for version retrieval ---
@@ -47,12 +50,11 @@ def get_version() -> str:
 
 def _prompt_for_project_root(text: TextRenderer, prompts: PromptsRenderer) -> bool:
     """Asks the user for the project root and saves it to the global config."""
-    # TODO: Move these strings to messages.py
-    welcome_title = "👋 Welcome to Titan CLI! Let's get you set up."
-    info_msg = "To get started, Titan needs to know where you store your projects."
-    body_msg = "This is the main folder where you keep all your git repositories (e.g., ~/git, ~/Projects)."
-    prompt_msg = "Enter the absolute path to your projects root directory"
-    success_msg = "Configuration saved. Project root set to: {project_root}"
+    welcome_title = msg.Config.PROJECT_ROOT_WELCOME_TITLE
+    info_msg = msg.Config.PROJECT_ROOT_INFO_MSG
+    body_msg = msg.Config.PROJECT_ROOT_BODY_MSG
+    prompt_msg = msg.Config.PROJECT_ROOT_PROMPT_MSG
+    success_msg = msg.Config.PROJECT_ROOT_SUCCESS_MSG
 
     text.title(welcome_title)
     text.line()
@@ -112,15 +114,15 @@ def show_interactive_menu():
     cli_version = get_version()
     subtitle = f"Development Tools Orchestrator v{cli_version}"
 
-    # Initial Welcome Banner
-    render_titan_banner(subtitle=subtitle)
+    # Initial Welcome Banner - removed as banner is rendered in the loop
+    # render_titan_banner(subtitle=subtitle)
 
     # Check for project_root and prompt if not set (only runs once)
     config = TitanConfig()
     project_root = config.get_project_root()
     if not project_root or not Path(project_root).is_dir():
         if not _prompt_for_project_root(text, prompts):
-            text.warning(msg.Errors.OPERATION_CANCELLED_NO_CHANGES)
+            text.warning(msg.Config.PROJECT_ROOT_SETUP_CANCELLED)
             raise typer.Exit(0)
         # Reload config after setting it
         config.load()
@@ -135,6 +137,10 @@ def show_interactive_menu():
         menu_builder.add_category("Project Management", emoji="📂") \
             .add_item(msg.Projects.LIST_TITLE, "Scan the project root and show all configured Titan projects.", "list") \
             .add_item(msg.Projects.CONFIGURE_TITLE, "Select an unconfigured project to initialize with Titan.", "configure")
+
+        menu_builder.add_category("AI Configuration", emoji="🤖") \
+            .add_item("Configure AI Provider", "Set up Anthropic, OpenAI, or Gemini", "ai_configure") \
+            .add_item("Test AI Connection", "Verify AI provider is working", "ai_test")
 
         menu_builder.add_category("Exit", emoji="🚪") \
             .add_item("Exit", "Exit the application.", "exit")
@@ -192,6 +198,29 @@ def show_interactive_menu():
                 if chosen_project_item and chosen_project_item.action != "cancel":
                     initialize_project(Path(chosen_project_item.action))
 
+            spacer.line()
+            prompts.ask_text(msg.Interactive.RETURN_TO_MENU_PROMPT, default="")
+
+        elif choice_action == "ai_configure":
+            from titan_cli.commands.ai import configure_ai_interactive
+            configure_ai_interactive()
+            spacer.line()
+            prompts.ask_text(msg.Interactive.RETURN_TO_MENU_PROMPT, default="")
+
+        elif choice_action == "ai_test":
+            from titan_cli.commands.ai import _test_ai_connection
+            # We need to reload config and secrets in case they were just changed
+            config.load() 
+            secrets = SecretManager()
+            if not config.config.ai:
+                text.error("No AI provider configured. Please run 'Configure AI Provider' first.")
+            else:
+                provider = config.config.ai.provider
+                model = config.config.ai.model
+                
+                base_url = config.config.ai.base_url
+                
+                _test_ai_connection(provider, secrets, model, base_url)
             spacer.line()
             prompts.ask_text(msg.Interactive.RETURN_TO_MENU_PROMPT, default="")
 
