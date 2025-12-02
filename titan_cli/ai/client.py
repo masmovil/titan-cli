@@ -76,17 +76,8 @@ class AIClient:
 
         # Get base_url from config if exists (for custom endpoints)
         kwargs = {"api_key": api_key, "model": ai_config.model}
-
-        # Load base_url from global config if available
-        from pathlib import Path
-        import tomli
-        global_config_path = Path.home() / ".titan" / "config.toml"
-        if global_config_path.exists():
-            with open(global_config_path, "rb") as f:
-                global_config = tomli.load(f)
-                base_url = global_config.get("ai", {}).get("base_url")
-                if base_url:
-                    kwargs["base_url"] = base_url
+        if ai_config.base_url:
+            kwargs["base_url"] = ai_config.base_url
 
         self._provider = provider_class(**kwargs)
         return self._provider

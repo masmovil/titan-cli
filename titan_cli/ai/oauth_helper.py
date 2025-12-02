@@ -8,6 +8,8 @@ import subprocess
 from typing import Optional, Tuple
 from dataclasses import dataclass
 
+from titan_cli.clients.gcloud_client import GCloudClient, GCloudClientError
+
 
 @dataclass
 class OAuthStatus:
@@ -32,79 +34,42 @@ class OAuthHelper:
         ...     print(f"Authenticated as: {status.account}")
     """
 
-    @staticmethod
-    def check_gcloud_auth() -> OAuthStatus:
+    def __init__(self, gcloud_client: Optional[GCloudClient] = None):
+        self.gcloud = gcloud_client or GCloudClient()
+
+    def check_gcloud_auth(self) -> OAuthStatus:
         """
         Check if Google Cloud CLI is installed and authenticated
 
         Returns:
             OAuthStatus with authentication information
         """
-        try:
-            # Check if gcloud is installed
-            result = subprocess.run(
-                ["gcloud", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-
-            if result.returncode != 0:
-                return OAuthStatus(
-                    available=False,
-                    authenticated=False,
-                    error="gcloud is installed but not working properly"
-                )
-
-            # Check authentication status
-            auth_result = subprocess.run(
-                ["gcloud", "auth", "list", "--filter=status:ACTIVE", "--format=value(account)"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-
-            if auth_result.returncode == 0:
-                account = auth_result.stdout.strip()
-
-                if account:
-                    return OAuthStatus(
-                        available=True,
-                        authenticated=True,
-                        account=account
-                    )
-                else:
-                    return OAuthStatus(
-                        available=True,
-                        authenticated=False,
-                        error="No active gcloud account found"
-                    )
-
-            return OAuthStatus(
-                available=True,
-                authenticated=False,
-                error="Could not check gcloud authentication"
-            )
-
-        except FileNotFoundError:
+        if not self.gcloud.is_installed():
             return OAuthStatus(
                 available=False,
                 authenticated=False,
                 error="gcloud CLI not installed"
             )
 
-        except subprocess.TimeoutExpired:
+        try:
+            account = self.gcloud.get_active_account()
+            if account:
+                return OAuthStatus(
+                    available=True,
+                    authenticated=True,
+                    account=account
+                )
+            else:
+                return OAuthStatus(
+                    available=True,
+                    authenticated=False,
+                    error="No active gcloud account found"
+                )
+        except GCloudClientError as e:
             return OAuthStatus(
-                available=False,
+                available=True, # It's installed, but auth failed
                 authenticated=False,
-                error="gcloud command timed out"
-            )
-
-        except Exception as e:
-            return OAuthStatus(
-                available=False,
-                authenticated=False,
-                error=f"Unexpected error: {str(e)}"
+                error=str(e)
             )
 
     @staticmethod
@@ -138,15 +103,14 @@ Run: gcloud auth application-default login
 
 This will open your browser to sign in with your Google account."""
 
-    @staticmethod
-    def validate_gcloud_auth() -> Tuple[bool, Optional[str]]:
+    def validate_gcloud_auth(self) -> Tuple[bool, Optional[str]]:
         """
         Validate that gcloud auth is properly configured
 
         Returns:
             Tuple of (is_valid, error_message)
         """
-        status = OAuthHelper.check_gcloud_auth()
+        status = self.check_gcloud_auth()
 
         if not status.available:
             return False, status.error
