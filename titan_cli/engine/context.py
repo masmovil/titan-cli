@@ -32,10 +32,7 @@ class WorkflowContext:
     prompts: Optional[PromptsRenderer] = None
 
     # Service clients (populated by builder)
-    github: Optional[Any] = None  # GitHubClient (future)
-    git: Optional[Any] = None     # GitClient (future)
-    jira: Optional[Any] = None    # JiraClient (future)
-    ai: Optional[Any] = None      # AIClient (future)
+    ai: Optional[Any] = None      # AIClient
 
     # Shared data storage between steps
     data: Dict[str, Any] = field(default_factory=dict)
