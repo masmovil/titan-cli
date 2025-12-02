@@ -504,6 +504,8 @@ Configuration is stored in the global `~/.titan/config.toml` file:
 provider = "anthropic"
 model = "claude-3-5-sonnet-20241022"
 base_url = "https://custom.endpoint.com" # Optional
+temperature = 0.8
+max_tokens = 8192
 ```
 
 ### Usage
@@ -532,8 +534,18 @@ except AIConfigurationError as e:
 # 3. Make a request
 if ai_client.is_available():
     messages = [AIMessage(role="user", content="Explain the meaning of life.")]
+    
+    # Simple request
     response = ai_client.generate(messages)
     print(response.content)
+
+    # Request with overrides
+    creative_response = ai_client.generate(
+        messages,
+        temperature=1.2,
+        max_tokens=1024
+    )
+    print(creative_response.content)
 ```
 
 ---
