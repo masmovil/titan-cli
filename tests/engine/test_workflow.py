@@ -12,7 +12,9 @@ from titan_cli.engine import (
     Error,
     Skip,
     is_success,
-    is_error
+    is_error,
+    UIComponents, # New import
+    UIViews # New import
 )
 
 @pytest.fixture
@@ -27,19 +29,30 @@ def mock_core_deps():
     return mock_config, mock_secrets
 
 
+@pytest.fixture
+def mock_ui_components():
+    """Provides mock UIComponents and UIViews."""
+    mock_ui = MagicMock(spec=UIComponents)
+    mock_ui.text = MagicMock() # Ensure text renderer exists on mock ui
+    mock_views = MagicMock(spec=UIViews)
+    mock_views.prompts = MagicMock() # Ensure prompts renderer exists on mock views
+    return mock_ui, mock_views
+
+
 def test_workflow_success(mock_core_deps):
     """Test workflow with all successful steps."""
     mock_config, mock_secrets = mock_core_deps
 
     def step1(ctx: WorkflowContext):
         ctx.set("step1_done", True)
+        # Assuming ctx.ui.text exists for logging in BaseWorkflow
         return Success("Step 1 completed")
 
     def step2(ctx: WorkflowContext):
         assert ctx.get("step1_done") is True
         return Success("Step 2 completed")
 
-    ctx = WorkflowContextBuilder(mock_config, mock_secrets).build()
+    ctx = WorkflowContextBuilder(mock_config, mock_secrets).with_ui().build()
     workflow = BaseWorkflow(name="Test Workflow", steps=[step1, step2])
 
     result = workflow.run(ctx)
@@ -62,7 +75,7 @@ def test_workflow_halt_on_error(mock_core_deps):
         ctx.set("step3_ran", True)  # Should not run
         return Success("Step 3 ok")
 
-    ctx = WorkflowContextBuilder(mock_config, mock_secrets).build()
+    ctx = WorkflowContextBuilder(mock_config, mock_secrets).with_ui().build()
     workflow = BaseWorkflow(name="Test", steps=[step1, step2, step3])
 
     result = workflow.run(ctx)
@@ -82,7 +95,7 @@ def test_workflow_skip(mock_core_deps):
     def step2(ctx: WorkflowContext):
         return Success("Step 2 ok")
 
-    ctx = WorkflowContextBuilder(mock_config, mock_secrets).build()
+    ctx = WorkflowContextBuilder(mock_config, mock_secrets).with_ui().build()
     workflow = BaseWorkflow(name="Test", steps=[step1, step2])
 
     result = workflow.run(ctx)
@@ -105,7 +118,7 @@ def test_workflow_metadata_auto_merging(mock_core_deps):
         assert ctx.get("step2_data") == "bar"
         return Success("Step 3 verified data")
 
-    ctx = WorkflowContextBuilder(mock_config, mock_secrets).build()
+    ctx = WorkflowContextBuilder(mock_config, mock_secrets).with_ui().build()
     workflow = BaseWorkflow(name="Metadata Test", steps=[step1, step2, step3])
     workflow.run(ctx)
 
@@ -118,25 +131,26 @@ def test_context_builder_with_ui_auto_creation(mock_core_deps):
     mock_config, mock_secrets = mock_core_deps
     ctx = WorkflowContextBuilder(mock_config, mock_secrets).with_ui().build()
 
-    assert ctx.text is not None
-    assert ctx.prompts is not None
-    # Check that prompts is using the created text renderer
-    assert ctx.prompts.text == ctx.text
+    assert ctx.ui is not None
+    assert ctx.views is not None
+    assert isinstance(ctx.ui, UIComponents)
+    assert isinstance(ctx.views, UIViews)
+    assert ctx.ui.text is not None
+    assert ctx.views.prompts is not None
 
 
-def test_context_builder_with_ui_injection(mock_core_deps):
+def test_context_builder_with_ui_injection(mock_core_deps, mock_ui_components):
     """Test context builder with injected UI components."""
     mock_config, mock_secrets = mock_core_deps
-    mock_text = MagicMock()
-    mock_prompts = MagicMock()
+    mock_ui, mock_views = mock_ui_components
     
     ctx = WorkflowContextBuilder(mock_config, mock_secrets).with_ui(
-        text=mock_text,
-        prompts=mock_prompts
+        ui=mock_ui,
+        views=mock_views
     ).build()
 
-    assert ctx.text is mock_text
-    assert ctx.prompts is mock_prompts
+    assert ctx.ui is mock_ui
+    assert ctx.views is mock_views
 
 
 def test_context_builder_with_ai_auto_creation(mock_core_deps):

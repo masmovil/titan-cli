@@ -23,6 +23,8 @@ from .results import (
 from .context import WorkflowContext
 from .builder import WorkflowContextBuilder
 from .workflow import BaseWorkflow, StepFunction
+from .ui_container import UIComponents # New import
+from .views_container import UIViews # New import
 
 __all__ = [
     # Result types
@@ -37,6 +39,9 @@ __all__ = [
     # Context & builder
     "WorkflowContext",
     "WorkflowContextBuilder",
+    # UI containers
+    "UIComponents",
+    "UIViews",
     # Workflow
     "BaseWorkflow",
     "StepFunction",

@@ -23,7 +23,7 @@ class BaseWorkflow:
     
     Example:
         def step1(ctx: WorkflowContext) -> WorkflowResult:
-            ctx.text.info("Running step 1")
+            ctx.ui.text.info("Running step 1")
             return Success("Step 1 completed")
         
         def step2(ctx: WorkflowContext) -> WorkflowResult:
@@ -66,17 +66,17 @@ class BaseWorkflow:
         Returns:
             Final workflow result (Success or Error)
         """
-        if ctx.text:
-            ctx.text.title(f"🚀 {self.name}")
-            ctx.text.line()
+        if ctx.ui.text:
+            ctx.ui.text.title(f"🚀 {self.name}")
+            ctx.ui.text.line()
 
         final_result: WorkflowResult = Success(f"{self.name} completed")
 
         for i, step in enumerate(self.steps, start=1):
             step_name = step.__name__
 
-            if ctx.text:
-                ctx.text.info(f"[{i}/{len(self.steps)}] {step_name}")
+            if ctx.ui.text:
+                ctx.ui.text.info(f"[{i}/{len(self.steps)}] {step_name}")
 
             try:
                 result = step(ctx)
@@ -91,37 +91,37 @@ class BaseWorkflow:
 
                 # Handle errors
                 if is_error(result) and self.halt_on_error:
-                    if ctx.text:
-                        ctx.text.line()
-                        ctx.text.error(f"❌ Workflow halted: {result.message}")
+                    if ctx.ui.text:
+                        ctx.ui.text.line()
+                        ctx.ui.text.error(f"❌ Workflow halted: {result.message}")
                     return result
 
             except Exception as e:
                 error_msg = f"Step '{step_name}' raised exception: {e}"
-                if ctx.text:
-                    ctx.text.error(error_msg)
+                if ctx.ui.text:
+                    ctx.ui.text.error(error_msg)
 
                 final_result = Error(error_msg, exception=e)
                 if self.halt_on_error:
                     return final_result
 
-            if ctx.text:
-                ctx.text.line()
+            if ctx.ui.text:
+                ctx.ui.text.line()
 
         if is_success(final_result):
-            if ctx.text:
-                ctx.text.success(f"✅ {self.name} completed successfully")
+            if ctx.ui.text:
+                ctx.ui.text.success(f"✅ {self.name} completed successfully")
 
         return final_result
 
     def _log_result(self, ctx: WorkflowContext, result: WorkflowResult) -> None:
         """Log step result with appropriate styling."""
-        if not ctx.text:
+        if not ctx.ui.text:
             return
 
         if is_success(result):
-            ctx.text.success(f"  ✓ {result.message}")
+            ctx.ui.text.success(f"  ✓ {result.message}")
         elif is_skip(result):
-            ctx.text.warning(f"  ⊝ {result.message}")
+            ctx.ui.text.warning(f"  ⊝ {result.message}")
         elif is_error(result):
-            ctx.text.error(f"  ✗ {result.message}")
+            ctx.ui.text.error(f"  ✗ {result.message}")

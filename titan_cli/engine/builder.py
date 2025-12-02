@@ -5,9 +5,9 @@ from typing import Optional, Any
 
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
-from titan_cli.ui.components.typography import TextRenderer
-from titan_cli.ui.views.prompts import PromptsRenderer
 from .context import WorkflowContext
+from .ui_container import UIComponents
+from .views_container import UIViews
 
 
 class WorkflowContextBuilder:
@@ -34,32 +34,34 @@ class WorkflowContextBuilder:
         self._config = config
         self._secrets = secrets
 
-        # UI components
-        self._text: Optional[TextRenderer] = None
-        self._prompts: Optional[PromptsRenderer] = None
+        # UI containers
+        self._ui: Optional[UIComponents] = None
+        self._views: Optional[UIViews] = None
 
         # Service clients
         self._ai = None
 
     def with_ui(
         self,
-        text: Optional[TextRenderer] = None,
-        prompts: Optional[PromptsRenderer] = None
+        ui: Optional[UIComponents] = None,
+        views: Optional[UIViews] = None
     ) -> "WorkflowContextBuilder":
         """
-        Add UI components.
+        Add UI components and views.
         
         Args:
-            text: Optional TextRenderer (auto-created if None)
-            prompts: Optional PromptsRenderer (auto-created if None)
+            ui: Optional UIComponents (auto-created if None)
+            views: Optional UIViews (auto-created if None)
+        
+        Returns:
+            Builder instance
         """
-        self._text = text or TextRenderer()
-        # If prompts are injected but text is not, ensure prompts uses a valid text renderer
-        if prompts and not text:
-            self._prompts = prompts
-            self._prompts.text_renderer = self._text
-        else:
-            self._prompts = prompts or PromptsRenderer(text_renderer=self._text)
+        # Create or inject UIComponents
+        self._ui = ui or UIComponents.create()
+
+        # Create or inject UIViews
+        self._views = views or UIViews.create(self._ui)
+
         return self
 
     def with_ai(self, ai_client: Optional[Any] = None) -> "WorkflowContextBuilder":
@@ -88,7 +90,7 @@ class WorkflowContextBuilder:
         return WorkflowContext(
             config=self._config,
             secrets=self._secrets,
-            text=self._text,
-            prompts=self._prompts,
+            ui=self._ui,
+            views=self._views,
             ai=self._ai,
         )
