@@ -4,6 +4,7 @@ from typing import Optional, List
 import tomli
 from .models import TitanConfigModel
 from .plugin_registry import PluginRegistry
+from .secrets import SecretManager # New import
 from .errors import ConfigParseError # Import the custom exception
 
 class TitanConfig:
@@ -16,9 +17,9 @@ class TitanConfig:
         project_path: Optional[Path] = None,
         registry: Optional[PluginRegistry] = None
     ):
-        # Plugin discovery
+        # Core dependencies
         self.registry = registry or PluginRegistry()
-
+        self.secrets = SecretManager(project_path=project_path)
 
         # Load configs
         self.global_config = self._load_toml(self.GLOBAL_CONFIG)
@@ -30,6 +31,10 @@ class TitanConfig:
 
         # Validate with Pydantic
         self.config = TitanConfigModel(**merged)
+
+        # Initialize plugins now that config is ready
+        self.registry.initialize_plugins(config=self, secrets=self.secrets)
+
 
     def _find_project_config(self, start_path: Optional[Path] = None) -> Optional[Path]:
         """Search for .titan/config.toml up the directory tree"""
