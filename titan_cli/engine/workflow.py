@@ -67,7 +67,7 @@ class BaseWorkflow:
         Returns:
             Final workflow result (Success or Error)
         """
-        if ctx.ui.text:
+        if ctx.ui and ctx.ui.text:
             # Using an emoji from a potential new EMOJI category in messages
             # Assuming "ROCKET" is a key like "🚀"
             title = msg.Workflow.TITLE.format(emoji=msg.EMOJI.ROCKET, name=self.name)
@@ -79,7 +79,7 @@ class BaseWorkflow:
         for i, step in enumerate(self.steps, start=1):
             step_name = step.__name__
 
-            if ctx.ui.text:
+            if ctx.ui and ctx.ui.text:
                 step_info = msg.Workflow.STEP_INFO.format(
                     current_step=i,
                     total_steps=len(self.steps),
@@ -100,7 +100,7 @@ class BaseWorkflow:
 
                 # Handle errors
                 if is_error(result) and self.halt_on_error:
-                    if ctx.ui.text:
+                    if ctx.ui and ctx.ui.text:
                         ctx.ui.text.line()
                         halt_message = msg.Workflow.HALTED.format(message=result.message)
                         ctx.ui.text.error(f"{msg.EMOJI.ERROR} {halt_message}")
@@ -108,26 +108,30 @@ class BaseWorkflow:
 
             except Exception as e:
                 error_msg = msg.Workflow.STEP_EXCEPTION.format(step_name=step_name, error=e)
-                if ctx.ui.text:
+                if ctx.ui and ctx.ui.text:
                     ctx.ui.text.error(error_msg)
 
                 final_result = Error(error_msg, exception=e)
                 if self.halt_on_error:
                     return final_result
 
-            if ctx.ui.text:
+            if ctx.ui and ctx.ui.text:
                 ctx.ui.text.line()
 
-        if is_success(final_result):
-            if ctx.ui.text:
+        if is_success(final_result) and not is_skip(final_result):
+            if ctx.ui and ctx.ui.text:
                 success_message = msg.Workflow.COMPLETED_SUCCESS.format(name=self.name)
                 ctx.ui.text.success(f"{msg.EMOJI.SUCCESS} {success_message}")
+        elif is_skip(final_result):
+            if ctx.ui and ctx.ui.text:
+                skip_message = msg.Workflow.COMPLETED_WITH_SKIPS.format(name=self.name)
+                ctx.ui.text.warning(f"{msg.SYMBOL.SKIPPED} {skip_message}")
 
         return final_result
 
     def _log_result(self, ctx: WorkflowContext, result: WorkflowResult) -> None:
         """Log step result with appropriate styling."""
-        if not ctx.ui.text:
+        if not (ctx.ui and ctx.ui.text):
             return
 
         if is_success(result):

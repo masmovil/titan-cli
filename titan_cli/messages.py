@@ -104,6 +104,7 @@ class Messages:
         STEP_EXCEPTION = "Step '{step_name}' raised an exception: {error}"
         HALTED = "Workflow halted: {message}"
         COMPLETED_SUCCESS = "{name} completed successfully"
+        COMPLETED_WITH_SKIPS = "{name} completed with skips"
         
         # Step result logging
         STEP_SUCCESS = "  {symbol} {message}"

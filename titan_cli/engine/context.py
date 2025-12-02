@@ -2,13 +2,16 @@
 WorkflowContext - Dependency injection container for workflows.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass, field
 
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
 from .ui_container import UIComponents
 from .views_container import UIViews
+
+if TYPE_CHECKING:
+    from titan_cli.ai.client import AIClient
 
 
 @dataclass
@@ -41,7 +44,7 @@ class WorkflowContext:
     views: Optional[UIViews] = None
 
     # Service clients (populated by builder)
-    ai: Optional[Any] = None
+    ai: Optional["AIClient"] = None
 
     # Shared data storage between steps
     data: Dict[str, Any] = field(default_factory=dict)
