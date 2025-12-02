@@ -669,55 +669,126 @@ class TextRenderer:
 
 ---
 
-## 🎯 Workflow Patterns (Future)
+## 🚀 Workflow Engine
 
-### Atomic Steps Pattern
+Titan CLI includes a lightweight, powerful workflow engine for composing and executing sequences of operations. This engine is built on the "Atomic Steps Pattern," where each step in a workflow is a self-contained, testable function.
 
-Workflows are composed of small, reusable steps:
+### File Structure (`engine/`)
 
-```python
-from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
+The engine is organized as follows:
 
-def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
-    """
-    Create PR on GitHub
-
-    Requires:
-        ctx.github: GitHubClient
-        ctx.data['pr_title']
-        ctx.data['pr_body']
-
-    Sets:
-        ctx.data['pr_url']
-    """
-    if not ctx.github:
-        return Error("GitHub client not available")
-
-    pr = ctx.github.create_pr(
-        title=ctx.data['pr_title'],
-        body=ctx.data['pr_body']
-    )
-    ctx.data['pr_url'] = pr.url
-
-    return Success(f"PR created: {pr.url}")
+```
+titan_cli/engine/
+├── __init__.py              # Public exports
+├── results.py               # WorkflowResult types (Success, Error, Skip)
+├── context.py               # WorkflowContext (dependency injection container)
+├── ui_container.py          # UIComponents container
+├── views_container.py       # UIViews container
+├── builder.py               # WorkflowContextBuilder (fluent API)
+└── workflow.py              # BaseWorkflow (orchestrator)
 ```
 
-### Workflow Results
+### Core Concepts
 
-All steps return one of:
-- `Success(message)` - Step completed successfully
-- `Error(message)` - Step failed, halt workflow
-- `Skip(message)` - Step skipped (not applicable)
+#### 1. Steps (`StepFunction`)
 
-### Context Builder
+A workflow is a list of "steps." Each step is a simple Python function that accepts a `WorkflowContext` and returns a `WorkflowResult`.
 
 ```python
+from titan_cli.engine import WorkflowContext, Success, Error
+
+def my_step(ctx: WorkflowContext) -> WorkflowResult:
+    """Example step."""
+    if not ctx.ui:
+        return Error("UI components are not available.")
+    
+    ctx.ui.text.info("Executing my step...")
+    # ... perform logic ...
+    return Success("My step completed successfully.")
+```
+
+#### 2. Workflow Results (`results.py`)
+
+Every step must return one of three `dataclass` objects to signal its outcome:
+-   **`Success(message: str, metadata: dict)`**: The step was successful. Any `metadata` provided is automatically merged into the shared `ctx.data` dictionary for subsequent steps to use.
+-   **`Error(message: str, exception: Exception)`**: The step failed. By default, this halts the entire workflow. You can optionally pass the original exception.
+-   **`Skip(message: str, metadata: dict)`**: The step was not applicable and was skipped. This is not considered a failure. Any `metadata` is also auto-merged.
+
+Module-level helper functions are provided to check the result type: `is_success(result)`, `is_error(result)`, `is_skip(result)`.
+
+#### 3. The Context (`context.py` & `builder.py`)
+
+The `WorkflowContext` is a dependency injection container that holds everything a step might need:
+-   Core dependencies (`config`, `secrets`).
+-   Service clients (`ai`).
+-   UI components, organized by architectural layer.
+-   A shared data dictionary (`data`) for passing information between steps.
+
+The `WorkflowContextBuilder` provides a fluent API to construct the context with the required dependencies. It uses a **hybrid DI pattern**:
+
+```python
+from titan_cli.core.config import TitanConfig
+from titan_cli.core.secrets import SecretManager
 from titan_cli.engine import WorkflowContextBuilder
 
-ctx = WorkflowContextBuilder() \
-    .with_ui() \
-    .with_github() \
-    .build()
+# 1. Initialize core dependencies
+config = TitanConfig()
+secrets = SecretManager()
+
+# 2. Build context with a fluent API
+# Use convenience auto-creation
+ctx = WorkflowContextBuilder(config, secrets).with_ui().with_ai().build()
+
+# Use pure DI for testing
+mock_ai = MagicMock()
+test_ctx = WorkflowContextBuilder(config, secrets).with_ai(ai_client=mock_ai).build()
+```
+
+#### 4. UI Architecture in Context
+
+To maintain architectural purity, UI elements in the context are separated into two namespaces:
+-   **`ctx.ui`**: Contains basic, pure Rich wrappers from `ui/components/`.
+    -   `ctx.ui.text`
+    -   `ctx.ui.panel`
+    -   `ctx.ui.table`
+    -   `ctx.ui.spacer`
+-   **`ctx.views`**: Contains composite views from `ui/views/`.
+    -   `ctx.views.prompts`
+    -   `ctx.views.menu`
+
+#### 5. The Orchestrator (`workflow.py`)
+
+The `BaseWorkflow` class takes a name and a list of steps. Its `.run()` method executes them sequentially, handling logging, error halting, and metadata merging automatically.
+
+### Example Usage
+
+```python
+# 1. Define your steps
+def validate_user_step(ctx: WorkflowContext):
+    name = ctx.views.prompts.ask_text("Enter name:")
+    if not name:
+        return Error("Name is required.")
+    return Success("Name validated", metadata={"user_name": name})
+
+def greet_user_step(ctx: WorkflowContext):
+    user_name = ctx.get("user_name")
+    ctx.ui.text.success(f"Hello, {user_name}!")
+    return Success("Greeting displayed.")
+
+# 2. Build the context
+config = TitanConfig()
+secrets = SecretManager()
+ctx = WorkflowContextBuilder(config, secrets).with_ui().build()
+
+# 3. Define and run the workflow
+workflow = BaseWorkflow(
+    name="Greeting Workflow",
+    steps=[validate_user_step, greet_user_step]
+)
+result = workflow.run(ctx)
+
+if is_error(result):
+    print(f"Workflow failed: {result.message}")
 ```
 
 ---
