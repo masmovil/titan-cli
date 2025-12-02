@@ -418,44 +418,86 @@ if config.is_plugin_enabled("github"):
 
 ## 🔌 Plugin System
 
-### Plugin Discovery
+Titan CLI features a modular plugin system that allows its functionality to be extended with new clients, workflow steps, and commands.
 
-Plugins are discovered via **entry points** (not file system):
+### Core Concepts
 
-```toml
-# Plugin's pyproject.toml
-[project.entry-points."titan.plugins"]
-github = "titan_plugin_github:GitHubPlugin"
-```
+- **Discovery**: Plugins are packaged as separate Python packages and discovered at runtime using `importlib.metadata` to look for the `titan.plugins` entry point group.
+- **Base Class**: Every plugin must inherit from the `TitanPlugin` abstract base class (`titan_cli/core/plugin_base.py`), which defines the contract for all plugins.
+- **Dependency Resolution**: The `PluginRegistry` automatically resolves dependencies between plugins. A plugin can declare its dependencies by overriding the `dependencies` property. The registry ensures that dependencies are initialized before the plugins that need them.
 
 ### Installing Plugins
 
-```bash
-# Core
-pipx install titan-cli
+Plugins are installed into `titan-cli`'s isolated environment using `pipx inject`.
 
-# Add plugin
+```bash
+# First, install the core CLI if you haven't
+pipx install . -e
+
+# Then, inject plugins
+pipx inject titan-cli titan-plugin-git
 pipx inject titan-cli titan-plugin-github
 ```
+For local development where plugins are in subdirectories, add them to the main `pyproject.toml` as a path dependency.
 
-### Plugin Structure (3-Layer Architecture)
+### Plugin Anatomy
+
+A plugin is a standard Python package that typically follows this structure:
 
 ```
-plugins/titan-plugin-github/
-├── steps/       # LAYER 1: Workflow steps (orchestration)
-│   ├── create_pr_step.py
-│   └── validate_branch_step.py
-├── services/    # LAYER 2: Business logic (wrappers)
-│   ├── pr_service.py
-│   └── branch_service.py
-└── clients/     # LAYER 3: External API (GitHub CLI, API clients)
-    └── github_client.py
+plugins/my-cool-plugin/
+├── pyproject.toml             # Defines the plugin and its entry point
+└── my_cool_plugin/
+    ├── plugin.py              # Contains the main TitanPlugin class
+    ├── clients/               # Wrappers for external APIs or CLIs
+    ├── models.py              # Data models
+    ├── exceptions.py          # Custom exceptions
+    └── steps/                 # Workflow steps provided by the plugin
 ```
 
-**Layer separation:**
-- **Steps**: Orchestration, use WorkflowContext, return WorkflowResult
-- **Services**: Business logic, validation, no UI, no workflows
-- **Clients**: External API wrappers (gh CLI, HTTP requests)
+#### `pyproject.toml`
+
+The plugin must declare itself in the `[project.entry-points."titan.plugins"]` section.
+
+```toml
+# plugins/my-cool-plugin/pyproject.toml
+[project.entry-points."titan.plugins"]
+my-plugin-name = "my_cool_plugin.plugin:MyCoolPlugin"
+```
+
+#### `plugin.py`
+
+This file defines the main plugin class that inherits from `TitanPlugin`.
+
+```python
+from titan_cli.core import TitanPlugin
+
+class MyCoolPlugin(TitanPlugin):
+    @property
+    def name(self) -> str:
+        return "my-plugin-name"
+
+    @property
+    def dependencies(self) -> list[str]:
+        # Example: this plugin depends on the 'git' plugin
+        return ["git"]
+
+    def initialize(self, config, secrets):
+        # Initialize clients here
+        self.client = MyCoolClient(config, secrets)
+
+    def get_client(self):
+        # Return the client to be injected into WorkflowContext
+        return self.client
+    
+    def get_steps(self) -> dict:
+        # Expose workflow steps
+        from .steps import step_one, step_two
+        return {
+            "step_one": step_one,
+            "step_two": step_two,
+        }
+```
 
 ---
 
