@@ -25,7 +25,8 @@ titan_plugin_git/
 ├── exceptions.py          # Custom exceptions
 ├── plugin.py              # The GitPlugin definition
 └── steps/
-    └── status_step.py     # Workflow steps
+    ├── status_step.py     # Workflow steps
+    └── commit_step.py
 ```
 
 ---
@@ -65,6 +66,19 @@ def get_git_status_step(ctx: WorkflowContext) -> Success:
     
     status = ctx.git.get_status()
     return Success("Status retrieved", metadata={"git_status": status})
+```
+
+**Example (`commit_step.py`):**
+```python
+from titan_cli.engine import WorkflowContext, Success, Error
+
+def create_git_commit_step(ctx: WorkflowContext) -> Success:
+    message = ctx.get("commit_message")
+    if not message:
+        return Error("Commit message not found in context.")
+    
+    commit_hash = ctx.git.commit(message=message, all=ctx.get("all_files", False))
+    return Success("Commit created", metadata={"commit_hash": commit_hash})
 ```
 
 ---

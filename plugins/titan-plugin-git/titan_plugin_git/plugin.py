@@ -61,6 +61,8 @@ class GitPlugin(TitanPlugin):
         Returns a dictionary of available workflow steps.
         """
         from .steps.status_step import get_git_status_step
+        from .steps.commit_step import create_git_commit_step
         return {
             "get_status": get_git_status_step,
+            "create_commit": create_git_commit_step,
         }

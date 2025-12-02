@@ -779,11 +779,12 @@ secrets = SecretManager()
 
 # 2. Build context with a fluent API
 # Use convenience auto-creation
-ctx = WorkflowContextBuilder(config, secrets).with_ui().with_ai().build()
+ctx = WorkflowContextBuilder(config, secrets).with_ui().with_ai().with_git().build()
 
 # Use pure DI for testing
 mock_ai = MagicMock()
-test_ctx = WorkflowContextBuilder(config, secrets).with_ai(ai_client=mock_ai).build()
+mock_git = MagicMock()
+test_ctx = WorkflowContextBuilder(config, secrets).with_ai(ai_client=mock_ai).with_git(git_client=mock_git).build()
 ```
 
 #### 4. UI Architecture in Context
