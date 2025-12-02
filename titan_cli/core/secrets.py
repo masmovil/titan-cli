@@ -162,5 +162,5 @@ class SecretManager:
                 return value
             return None
         except (EOFError, KeyboardInterrupt):
-            text.warning(msg.Errors.OPERATION_CANCELLED) # TODO: Use msg.secrets.OPERATION_CANCELLED
+            text.warning(msg.Secrets.AI_SETUP_CANCELLED) 
             return None

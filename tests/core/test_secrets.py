@@ -1,11 +1,8 @@
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
-from pathlib import Path
+from unittest.mock import patch, MagicMock
 import os
-import keyring
-from dotenv import load_dotenv
 
-from titan_cli.core.secrets import SecretManager, ScopeType
+from titan_cli.core.secrets import SecretManager
 
 # Fixture for a temporary project path
 @pytest.fixture
