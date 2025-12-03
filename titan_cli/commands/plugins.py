@@ -3,6 +3,7 @@ from titan_cli.core.config import TitanConfig
 from titan_cli.ui.components.typography import TextRenderer
 from titan_cli.ui.components.panel import PanelRenderer
 from titan_cli.ui.components.table import TableRenderer
+from titan_cli.ui.console import get_console
 from titan_cli.messages import msg
 
 plugins_app = typer.Typer(name="plugins", help="Manage Titan plugins")
@@ -108,7 +109,6 @@ def doctor():
 def plugin_info(name: str):
     """Show detailed information about a plugin."""
     text = TextRenderer()
-    console = get_console()
     config = TitanConfig()
 
     plugin = config.registry.get_plugin(name)
@@ -116,12 +116,12 @@ def plugin_info(name: str):
         text.error(msg.Plugins.PLUGIN_NOT_FOUND.format(name=name))
         raise typer.Exit(1)
 
-    text.styled_text((msg.Plugins.PLUGIN_INFO_TITLE.format(name=plugin.name), "bold cyan"))
-    text.styled_text((msg.Plugins.PLUGIN_INFO_VERSION.format(version=plugin.version), "dim"))
+    text.styled_text((msg.Plugins.PLUGIN_INFO_TITLE.split(':')[0] + ': ', "bold cyan"), (plugin.name, "default"))
+    text.styled_text((msg.Plugins.PLUGIN_INFO_VERSION.split(':')[0] + ': ', "dim"), (plugin.version, "dim"))
     text.body(plugin.description)
     text.line()
-    text.styled_text((msg.Plugins.PLUGIN_INFO_AVAILABLE.format(status="✓" if plugin.is_available() else "✗"), "default"))
-    text.styled_text((msg.Plugins.PLUGIN_INFO_DEPENDENCIES.format(dependencies=", ".join(plugin.dependencies) or "None"), "default"))
+    text.body(f"Available: {'✓' if plugin.is_available() else '✗'}")
+    text.body(f"Dependencies: {', '.join(plugin.dependencies) or 'None'}")
 
     if hasattr(plugin, 'get_config_schema'):
         text.line()
@@ -131,24 +131,15 @@ def plugin_info(name: str):
         for prop_name, prop_schema in schema.get("properties", {}).items():
             default = prop_schema.get("default", "N/A")
             desc = prop_schema.get("description", "")
-            
-            line = Text()
-            line.append(f"  • {prop_name}: ", style="bold")
-            line.append(desc, style="default")
-            console.print(line)
-            
-            line_default = Text()
-            line_default.append("    Default: ", style="dim")
-            line_default.append(str(default), style="dim")
-            console.print(line_default)
-
+            text.styled_text(("  • ", "default"), (prop_name, "bold"), (f": {desc}", "default"))
+            text.body(f"    Default: {default}", style="dim")
 
     steps = plugin.get_steps()
     if steps:
         text.line()
         text.subtitle(f"Available Steps ({len(steps)})")
         for step_name in steps.keys():
-            console.print(f"  • {step_name}")
+            text.body(f"  • {step_name}")
 
 @plugins_app.command("configure")
 def configure_plugin(name: str):
