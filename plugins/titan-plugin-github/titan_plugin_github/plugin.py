@@ -4,8 +4,10 @@ from pydantic import BaseModel
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
-from titan_cli.core.plugins.models import GitHubPluginConfig # Import GitHubPluginConfig
-from .clients.github_client import GitHubClient # Import GitHubClient
+from titan_cli.core.plugins.models import GitHubPluginConfig
+from .clients.github_client import GitHubClient 
+from .steps.create_pr_step import create_pr_step
+
 
 class GitHubPlugin(TitanPlugin):
     """
@@ -87,4 +89,6 @@ class GitHubPlugin(TitanPlugin):
         """
         Returns a dictionary of available workflow steps.
         """
-        return {}
+        return {
+            "create_pr": create_pr_step,
+        }

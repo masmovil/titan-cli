@@ -1,6 +1,6 @@
 # core/models.py
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 from .plugins.models import PluginConfig
 
 class ProjectConfig(BaseModel):
@@ -21,8 +21,6 @@ class AIConfig(BaseModel):
     base_url: Optional[str] = Field(None, description="Optional base URL for custom AI endpoints.")
     max_tokens: int = Field(4096, description="Maximum number of tokens to generate.")
     temperature: float = Field(0.7, description="Controls randomness. 0.0 for deterministic, 2.0 for very creative.")
-
-from .plugins.models import PluginConfig
 
 class CoreConfig(BaseModel):
     """

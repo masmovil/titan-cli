@@ -41,6 +41,7 @@ class WorkflowContextBuilder:
         # Service clients
         self._ai = None
         self._git = None
+        self._github = None
 
     def with_ui(
         self,
@@ -107,6 +108,28 @@ class WorkflowContextBuilder:
                 self._git = None
         return self
 
+    def with_github(self, github_client: Optional[Any] = None) -> "WorkflowContextBuilder":
+        """
+        Add GitHub client.
+        
+        Args:
+            github_client: Optional GitHubClient instance (auto-loaded if None)
+        """
+        if github_client:
+            self._github = github_client
+        else:
+            # Auto-create from plugin registry
+            github_plugin = self._config.registry.get_plugin("github")
+            if github_plugin and github_plugin.is_available():
+                try:
+                    self._github = github_plugin.get_client()
+                except Exception: # Catch any exception during client retrieval
+                    self._github = None # Fail silently
+            else:
+                self._github = None
+        return self
+
+
     def build(self) -> WorkflowContext:
         """Build the WorkflowContext."""
         return WorkflowContext(
@@ -116,4 +139,5 @@ class WorkflowContextBuilder:
             views=self._views,
             ai=self._ai,
             git=self._git,
+            github=self._github,
         )

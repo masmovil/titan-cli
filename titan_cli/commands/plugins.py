@@ -3,7 +3,6 @@ from titan_cli.core.config import TitanConfig
 from titan_cli.ui.components.typography import TextRenderer
 from titan_cli.ui.components.panel import PanelRenderer
 from titan_cli.ui.components.table import TableRenderer
-from titan_cli.ui.console import get_console
 from titan_cli.messages import msg
 
 plugins_app = typer.Typer(name="plugins", help="Manage Titan plugins")

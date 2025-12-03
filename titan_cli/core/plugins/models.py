@@ -1,6 +1,6 @@
 # titan_cli/core/plugins/models.py
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 class PluginConfig(BaseModel):
     """
