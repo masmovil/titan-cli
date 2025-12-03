@@ -6,6 +6,7 @@ from titan_cli.engine import (
     Error
 )
 from titan_plugin_git.exceptions import GitClientError, GitCommandError
+from ..messages import msg
 
 def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
     """
@@ -24,11 +25,11 @@ def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the GitClient is not available, or the commit operation fails.
     """
     if not ctx.git:
-        return Error("Git client is not available in the workflow context.")
+        return Error(msg.Steps.Commit.git_client_not_available)
 
     commit_message = ctx.get('commit_message')
     if not commit_message:
-        return Error("Commit message is required in ctx.data['commit_message'].")
+        return Error(msg.Steps.Commit.commit_message_required)
         
     all_files = ctx.get('all_files', False)
 
@@ -36,12 +37,12 @@ def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
         commit_hash = ctx.git.commit(message=commit_message, all=all_files)
             
         return Success(
-            message=f"Commit created successfully: {commit_hash}",
+            message=msg.Steps.Commit.commit_success.format(commit_hash=commit_hash),
             metadata={"commit_hash": commit_hash}
         )
     except GitClientError as e:
-        return Error(f"Git client error during commit: {e}")
+        return Error(msg.Steps.Commit.client_error_during_commit.format(e=e))
     except GitCommandError as e:
-        return Error(f"Git command failed during commit: {e}")
+        return Error(msg.Steps.Commit.command_failed_during_commit.format(e=e))
     except Exception as e:
-        return Error(f"An unexpected error occurred during commit: {e}")
+        return Error(msg.Steps.Commit.unexpected_error_during_commit.format(e=e))

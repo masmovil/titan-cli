@@ -4,7 +4,8 @@ from titan_cli.engine import (
     WorkflowResult, 
     Success, 
     Error
-)
+    )
+from ..messages import msg
 
 def get_git_status_step(ctx: WorkflowContext) -> WorkflowResult:
     """
@@ -21,18 +22,18 @@ def get_git_status_step(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the GitClient is not available.
     """
     if not ctx.git:
-        return Error("Git client is not available in the workflow context.")
+        return Error(msg.Steps.Status.git_client_not_available)
 
     try:
         status = ctx.git.get_status()
         
-        message = "Git status retrieved successfully."
+        message = msg.Steps.Status.status_retrieved_success
         if not status.is_clean:
-            message += " Working directory is not clean."
+            message += msg.Steps.Status.working_directory_not_clean
             
         return Success(
             message=message,
             metadata={"git_status": status}
         )
     except Exception as e:
-        return Error(f"Failed to get git status: {e}")
+        return Error(msg.Steps.Status.failed_to_get_status.format(e=e))

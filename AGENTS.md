@@ -236,6 +236,9 @@ self.console.print(line)
 
 **All user-facing strings go in `messages.py`:**
 
+For the core `titan_cli`, messages are located in `titan_cli/messages.py`.
+**Plugins must maintain their own `messages.py` file** within their respective plugin directory (e.g., `plugins/my-plugin/my_plugin/messages.py`) to centralize their user-facing strings.
+
 ```python
 # messages.py
 class Messages:

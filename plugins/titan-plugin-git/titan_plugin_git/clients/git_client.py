@@ -15,6 +15,7 @@ from ..exceptions import (
     GitNotRepositoryError,
     GitMergeConflictError
 )
+from ..messages import msg
 
 
 class GitClient:
@@ -47,14 +48,14 @@ class GitClient:
     def _check_git_installed(self) -> None:
         """Check if git CLI is installed."""
         if not shutil.which("git"):
-            raise GitClientError("Git CLI not found. Please install Git.")
+            raise GitClientError(msg.GitClient.cli_not_found)
 
     def _check_repository(self) -> None:
         """Check if current directory is a git repository"""
         try:
             self._run_command(["git", "rev-parse", "--is-inside-work-tree"], check=False) # More robust check
         except GitCommandError:
-            raise GitNotRepositoryError(f"'{self.repo_path}' is not a git repository")
+            raise GitNotRepositoryError(msg.GitClient.not_a_repository.format(repo_path=self.repo_path))
 
     def _run_command(self, args: List[str], check: bool = True) -> str:
         """
@@ -83,12 +84,12 @@ class GitClient:
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.strip() if e.stderr else str(e)
             if "not a git repository" in error_msg:
-                raise GitNotRepositoryError(f"'{self.repo_path}' is not a git repository")
-            raise GitCommandError(f"Git command failed: {error_msg}") from e
+                raise GitNotRepositoryError(msg.GitClient.not_a_repository.format(repo_path=self.repo_path))
+            raise GitCommandError(msg.GitClient.command_failed.format(error_msg=error_msg)) from e
         except FileNotFoundError:
-            raise GitClientError("Git CLI not found in PATH.") # Should be caught by _check_git_installed, but safety
+            raise GitClientError(msg.GitClient.cli_not_found) # Should be caught by _check_git_installed, but safety
         except Exception as e:
-            raise GitError(f"An unexpected error occurred: {e}") from e
+            raise GitError(msg.GitClient.unexpected_error.format(e=e)) from e
 
     def get_current_branch(self) -> str:
         """
@@ -176,15 +177,15 @@ class GitClient:
             self._run_command(["git", "show-ref", "--verify", f"refs/heads/{branch}"], check=False)
             self._run_command(["git", "show-ref", "--verify", f"refs/remotes/origin/{branch}"], check=False)
         except GitCommandError: # if both fail, it means it doesn't exist
-            raise GitBranchNotFoundError(f"Branch '{branch}' not found locally or on remote 'origin'")
+            raise GitBranchNotFoundError(msg.GitClient.branch_not_found.format(branch=branch))
 
         # Checkout
         try:
             self._run_command(["git", "checkout", branch])
         except GitCommandError as e:
-            if "would be overwritten" in e.stderr: # Access stderr from raised exception
+            if msg.GitClient.uncommitted_changes_overwrite_keyword in e.stderr: # Access stderr from raised exception
                 raise GitDirtyWorkingTreeError(
-                    "Cannot checkout: uncommitted changes would be overwritten"
+                    msg.GitClient.cannot_checkout_uncommitted_changes
                 )
             raise
 
@@ -206,8 +207,8 @@ class GitClient:
         try:
             self._run_command(["git", "merge", "--ff-only", f"{remote}/{branch}"])
         except GitCommandError as e:
-            if "Merge conflict" in e.stderr:
-                raise GitMergeConflictError(f"Merge conflict while updating branch '{branch}'")
+            if msg.GitClient.merge_conflict_keyword in e.stderr:
+                raise GitMergeConflictError(msg.GitClient.merge_conflict_while_updating.format(branch=branch))
             raise
 
         if current != branch:
@@ -388,7 +389,7 @@ class GitClient:
         from datetime import datetime # Import here to avoid circular dependency if datetime is also used in models
 
         if not message:
-            message = f"titan-cli-auto-stash at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            message = msg.GitClient.auto_stash_message.format(timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
         try:
             self._run_command(["git", "stash", "push", "-m", message])
@@ -487,13 +488,13 @@ class GitClient:
         if self.has_uncommitted_changes():
             if not auto_stash:
                 raise GitDirtyWorkingTreeError(
-                    f"Cannot checkout {branch}: uncommitted changes exist"
+                    msg.GitClient.cannot_checkout_uncommitted_changes_exist.format(branch=branch)
                 )
 
-            message = f"titan-cli-safe-switch: from {current} to {branch}"
+            message = msg.GitClient.safe_switch_stash_message.format(current=current, branch=branch)
             if not self.stash_push(message):
                 raise GitDirtyWorkingTreeError(
-                    "Failed to stash changes before checkout"
+                    msg.GitClient.stash_failed_before_checkout
                 )
 
         try:
