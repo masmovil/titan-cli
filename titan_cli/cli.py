@@ -3,7 +3,6 @@ Titan CLI - Main CLI application
 
 Combines all tool commands into a single CLI interface.
 """
-
 import typer
 import tomli
 import tomli_w

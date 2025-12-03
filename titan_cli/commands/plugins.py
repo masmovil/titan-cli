@@ -10,7 +10,7 @@ plugins_app = typer.Typer(name="plugins", help="Manage Titan plugins")
 
 @plugins_app.command("list")
 def list_plugins():
-    """List installed plugins and their status."""
+    """List installed plugins and their configuration."""
     text = TextRenderer()
     panel = PanelRenderer()
     table_renderer = TableRenderer()
