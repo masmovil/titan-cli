@@ -66,6 +66,10 @@ poetry run titan preview panel
 poetry run titan preview typography
 poetry run titan preview menu
 
+# Check plugin status
+poetry run titan plugins list
+poetry run titan plugins doctor
+
 # Linting and formatting
 poetry run ruff check titan_cli/
 poetry run black titan_cli/
@@ -428,6 +432,7 @@ Titan CLI features a modular plugin system that allows its functionality to be e
 - **Discovery**: Plugins are packaged as separate Python packages and discovered at runtime using `importlib.metadata` to look for the `titan.plugins` entry point group.
 - **Base Class**: Every plugin must inherit from the `TitanPlugin` abstract base class (`titan_cli/core/plugin_base.py`), which defines the contract for all plugins.
 - **Dependency Resolution**: The `PluginRegistry` automatically resolves dependencies between plugins. A plugin can declare its dependencies by overriding the `dependencies` property. The registry ensures that dependencies are initialized before the plugins that need them.
+- **Error Handling**: Plugins should not handle their own initialization errors with `try...except` blocks. Instead, they should raise specific exceptions (e.g., `MyClientError`). The `PluginRegistry` will catch these exceptions, disable the failing plugin, and report the error to the user through the CLI.
 
 ### Installing Plugins
 
@@ -493,15 +498,20 @@ class MyCoolPlugin(TitanPlugin):
         return ["git"] # Example dependency
 
     def initialize(self, config, secrets):
-        # Initialize clients, services, or any resources needed by the plugin.
-        # This is where you would instantiate your MyClient, for example.
+        """
+        Initialize clients, services, or any resources needed by the plugin.
+        This method should raise a specific exception if initialization fails.
+        For example, `raise MyClientError("Could not connect")`.
+        """
+        # The PluginRegistry will catch exceptions and display them to the user.
+        # Do not use try/except here unless you can handle the error gracefully.
         self.client = MyClient(config, secrets)
-        # You can also use the config and secrets to set up plugin-specific settings.
-        # print(msg.Plugin.initialized_message.format(name=self.name)) # Example using messages
 
     def get_client(self):
         # Returns the main client instance of this plugin, which can be injected
         # into the WorkflowContext for use by steps or other plugins.
+        if not hasattr(self, 'client') or self.client is None:
+            raise MyClientError("Plugin not initialized. The client is not available.")
         return self.client
     
     def get_steps(self) -> dict:
@@ -730,6 +740,25 @@ class TextRenderer:
 class TextRenderer:
     def __init__(self, console: Optional[Console] = None):
         self.console = console or get_console()  # ✅ Only Rich/console
+```
+
+### ❌ DON'T: Catch exceptions in plugin initialization
+```python
+# Bad - The plugin hides the error and the CLI doesn't know it failed
+def initialize(self, config, secrets):
+    try:
+        self.client = MyClient()
+    except MyClientError as e:
+        print(f"Failed to load: {e}") # ❌ Don't print from a plugin
+        self.client = None # ❌ Don't swallow the error
+```
+
+### ✅ DO: Let exceptions propagate from plugins
+```python
+# Good - The PluginRegistry will catch, log, and disable the plugin
+def initialize(self, config, secrets):
+    # Let MyClientError propagate up if it occurs
+    self.client = MyClient()
 ```
 
 ---

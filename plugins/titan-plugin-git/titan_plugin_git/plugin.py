@@ -1,14 +1,10 @@
 # plugins/titan-plugin-git/titan_plugin_git/plugin.py
-import logging # Import the logging module
 import shutil
 from titan_cli.core.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig # Needed for type hinting
 from titan_cli.core.secrets import SecretManager # Needed for type hinting
 from .clients.git_client import GitClient, GitClientError
 from .messages import msg # Import the messages module
-
-# Initialize logger for this module
-logger = logging.getLogger(__name__)
 
 class GitPlugin(TitanPlugin):
     """
@@ -32,17 +28,7 @@ class GitPlugin(TitanPlugin):
         """
         Initializes the GitClient.
         """
-        try:
-            # We assume the project_path in GitClient should be the current working directory
-            # or could be derived from config.get_project_root() if we want to tie it to Titan projects.
-            # For now, let's just use current working directory as Git operations are context-sensitive.
-            self._client = GitClient()
-        except GitClientError as e:
-            # If Git CLI is not installed, the plugin cannot be initialized
-            # We don't re-raise, as initialize() should ideally not fail the whole app startup.
-            # is_available() will handle user feedback for missing CLI.
-            self._client = None
-            logger.warning(msg.Plugin.git_client_init_warning.format(e=e))
+        self._client = GitClient()
 
 
     def is_available(self) -> bool:

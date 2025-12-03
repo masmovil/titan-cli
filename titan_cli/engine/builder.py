@@ -99,7 +99,10 @@ class WorkflowContextBuilder:
             # Auto-create from plugin registry
             git_plugin = self._config.registry.get_plugin("git")
             if git_plugin and git_plugin.is_available():
-                self._git = git_plugin.get_client()
+                try:
+                    self._git = git_plugin.get_client()
+                except Exception: # Catch any exception during client retrieval
+                    self._git = None # Fail silently
             else:
                 self._git = None
         return self

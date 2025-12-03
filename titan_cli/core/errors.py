@@ -24,6 +24,20 @@ class PluginLoadError(PluginError):
             error=str(self.original_exception)
         )
 
+class PluginInitializationError(PluginError):
+    """Raised when a plugin fails to initialize."""
+
+    def __init__(self, plugin_name: str, original_exception: Exception):
+        self.plugin_name = plugin_name
+        self.original_exception = original_exception
+        # Do not call super().__init__ with message here, as it's formatted by __str__
+
+    def __str__(self) -> str:
+        return msg.Errors.PLUGIN_INIT_FAILED.format(
+            plugin_name=self.plugin_name,
+            error=str(self.original_exception)
+        )
+
 class ConfigError(TitanError):
     """Base exception for configuration-related errors."""
     pass

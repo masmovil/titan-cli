@@ -11,9 +11,10 @@ from titan_cli.core.secrets import SecretManager
 
 # A proper mock class to represent a loaded plugin
 class MockPlugin(TitanPlugin):
-    def __init__(self, name: str, dependencies: Optional[List[str]] = None):
-        self._name = name
-        self._dependencies = dependencies if dependencies is not None else []
+    _name = "mock-plugin"
+    _dependencies = []
+
+    def __init__(self):
         self._initialized = False
         self.received_config = None
         self.received_secrets = None
@@ -39,9 +40,8 @@ class MockPlugin(TitanPlugin):
         return True
 
 class MockDependentPlugin(MockPlugin):
-    def __init__(self, name: str, dependencies: Optional[List[str]] = None):
-        # Default dependency is 'plugin_one' to match the tests
-        super().__init__(name, dependencies or ["plugin_one"])
+    _name = "dependent-plugin"
+    _dependencies = ["plugin_one"]
 
 
 def test_plugin_registry_discovery_success(mocker):
@@ -50,18 +50,23 @@ def test_plugin_registry_discovery_success(mocker):
     """
     mock_ep1 = MagicMock()
     mock_ep1.name = "plugin_one"
-    mock_ep1.load.return_value = MockPlugin
+    
+    # Create a new class for each mock plugin to have a different name
+    PluginOne = type("PluginOne", (MockPlugin,), {"_name": "plugin_one"})
+    mock_ep1.load.return_value = PluginOne
 
     mock_ep2 = MagicMock()
     mock_ep2.name = "plugin_two"
-    mock_ep2.load.return_value = MockPlugin
+    PluginTwo = type("PluginTwo", (MockPlugin,), {"_name": "plugin_two"})
+    mock_ep2.load.return_value = PluginTwo
 
     mocker.patch(
         "titan_cli.core.plugin_registry.entry_points",
         return_value=[mock_ep1, mock_ep2]
     )
 
-    registry = PluginRegistry()
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
     
     installed_plugins = registry.list_installed()
     assert len(installed_plugins) == 2
@@ -69,7 +74,7 @@ def test_plugin_registry_discovery_success(mocker):
     assert "plugin_two" in installed_plugins
 
     plugin_instance = registry.get_plugin("plugin_one")
-    assert isinstance(plugin_instance, MockPlugin)
+    assert isinstance(plugin_instance, PluginOne)
     assert plugin_instance.name == "plugin_one"
 
 
@@ -82,7 +87,8 @@ def test_plugin_registry_handles_load_failure(mocker, capsys):
 
     mock_ep1 = MagicMock()
     mock_ep1.name = "plugin_good"
-    mock_ep1.load.return_value = MockPlugin
+    PluginGood = type("PluginGood", (MockPlugin,), {"_name": "plugin_good"})
+    mock_ep1.load.return_value = PluginGood
 
     mock_ep_bad_import = MagicMock()
     mock_ep_bad_import.name = "plugin_bad_import"
@@ -97,20 +103,23 @@ def test_plugin_registry_handles_load_failure(mocker, capsys):
         return_value=[mock_ep1, mock_ep_bad_import, mock_ep_bad_type]
     )
 
-    registry = PluginRegistry()
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
 
     installed_plugins = registry.list_installed()
     assert len(installed_plugins) == 1
     assert "plugin_good" in installed_plugins
-    assert "plugin_bad_import" not in installed_plugins
-    assert "plugin_bad_type" not in installed_plugins
-
-    captured = capsys.readouterr()
-    output = captured.err + captured.out
     
-    # Check that a warning was printed for the bad plugin
-    assert "Warning: Failed to load plugin 'plugin_bad_import': Something went wrong during import" in output
-    assert "Warning: Failed to load plugin 'plugin_bad_type': Plugin class must inherit from TitanPlugin" in output
+    failed_plugins = registry.list_failed()
+    assert len(failed_plugins) == 2
+    assert "plugin_bad_import" in failed_plugins
+    assert "plugin_bad_type" in failed_plugins
+
+    assert isinstance(failed_plugins["plugin_bad_import"], PluginLoadError)
+    assert "Something went wrong during import" in str(failed_plugins["plugin_bad_import"])
+
+    assert isinstance(failed_plugins["plugin_bad_type"], PluginLoadError)
+    assert "Plugin class must inherit from TitanPlugin" in str(failed_plugins["plugin_bad_type"])
 
 
 def test_plugin_registry_dependency_resolution(mocker):
@@ -119,18 +128,22 @@ def test_plugin_registry_dependency_resolution(mocker):
     """
     mock_ep_p1 = MagicMock()
     mock_ep_p1.name = "plugin_one"
-    mock_ep_p1.load.return_value = MockPlugin
+    PluginOne = type("PluginOne", (MockPlugin,), {"_name": "plugin_one"})
+    mock_ep_p1.load.return_value = PluginOne
 
     mock_ep_p2 = MagicMock()
     mock_ep_p2.name = "plugin_two"
-    mock_ep_p2.load.return_value = MockDependentPlugin # depends on plugin_one
+    PluginTwo = type("PluginTwo", (MockDependentPlugin,), {"_name": "plugin_two"})
+    mock_ep_p2.load.return_value = PluginTwo
 
     mocker.patch(
         "titan_cli.core.plugin_registry.entry_points",
         return_value=[mock_ep_p2, mock_ep_p1] # Load dependent first to test sorting
     )
 
-    registry = PluginRegistry()
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    
     mock_config = MagicMock(spec=TitanConfig)
     mock_secrets = MagicMock(spec=SecretManager)
 
@@ -149,20 +162,25 @@ def test_plugin_registry_unresolved_dependency(mocker):
     """
     mock_ep_dep = MagicMock()
     mock_ep_dep.name = "plugin_dependent"
-    mock_ep_dep.load.return_value = MockDependentPlugin # depends on non-existent plugin
+    DependentPlugin = type("DependentPlugin", (MockDependentPlugin,), {"_name": "plugin_dependent", "_dependencies": ["non-existent"]})
+    mock_ep_dep.load.return_value = DependentPlugin
 
     mocker.patch(
         "titan_cli.core.plugin_registry.entry_points",
         return_value=[mock_ep_dep]
     )
 
-    registry = PluginRegistry()
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    
     mock_config = MagicMock(spec=TitanConfig)
     mock_secrets = MagicMock(spec=SecretManager)
 
-    # Now expects 'plugin_one' as the missing dependency
-    with pytest.raises(PluginError, match="Plugin 'plugin_dependent' has an unresolved dependency: 'plugin_one'"):
-        registry.initialize_plugins(mock_config, mock_secrets)
+    registry.initialize_plugins(mock_config, mock_secrets)
+
+    failed_plugins = registry.list_failed()
+    assert "plugin_dependent" in failed_plugins
+    assert "Circular or unresolvable dependency" in str(failed_plugins["plugin_dependent"])
 
 
 def test_plugin_registry_plugin_initialization_context(mocker):
@@ -171,14 +189,17 @@ def test_plugin_registry_plugin_initialization_context(mocker):
     """
     mock_ep = MagicMock()
     mock_ep.name = "test_plugin"
-    mock_ep.load.return_value = MockPlugin
+    TestPlugin = type("TestPlugin", (MockPlugin,), {"_name": "test_plugin"})
+    mock_ep.load.return_value = TestPlugin
 
     mocker.patch(
         "titan_cli.core.plugin_registry.entry_points",
         return_value=[mock_ep]
     )
 
-    registry = PluginRegistry()
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    
     mock_config = MagicMock(spec=TitanConfig)
     mock_secrets = MagicMock(spec=SecretManager)
 

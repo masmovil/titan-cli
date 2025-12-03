@@ -15,7 +15,8 @@ class TitanConfig:
     def __init__(
         self,
         project_path: Optional[Path] = None,
-        registry: Optional[PluginRegistry] = None
+        registry: Optional[PluginRegistry] = None,
+        show_warnings: bool = True # New parameter
     ):
         # Core dependencies
         self.registry = registry or PluginRegistry()
@@ -34,6 +35,9 @@ class TitanConfig:
 
         # Initialize plugins now that config is ready
         self.registry.initialize_plugins(config=self, secrets=self.secrets)
+        
+        # Store failed plugins for later display by CLI commands
+        self._plugin_warnings = self.registry.list_failed()
 
 
     def _find_project_config(self, start_path: Optional[Path] = None) -> Optional[Path]:
@@ -61,9 +65,8 @@ class TitanConfig:
             try:
                 return tomli.load(f)
             except tomli.TOMLDecodeError as e:
-                # Wrap the generic exception and print a warning.
-                error = ConfigParseError(file_path=str(path), original_exception=e)
-                print(f"Warning: {error}")
+                # Wrap the generic exception. Warnings will be handled by CLI commands.
+                _ = ConfigParseError(file_path=str(path), original_exception=e)
                 return {}
 
     def _merge_configs(self, global_cfg: dict, project_cfg: dict) -> dict:

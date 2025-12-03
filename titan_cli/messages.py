@@ -347,6 +347,35 @@ class Messages:
         NOT_FOUND = "Plugin not found: {name}"
         INVALID_PLUGIN = "Invalid plugin: {name}"
         DEPENDENCY_MISSING = "Missing dependency for plugin {name}: {dependency}"
+        
+        # Git Plugin specific messages
+        git_client_init_warning = "GitPlugin could not initialize: {e}"
+        git_client_not_available = "Git client not available. Is Git installed and in your PATH?"
+
+    class Plugins:
+        """Plugins command messages"""
+        INSTALLED_TITLE = "Installed Plugins"
+        TABLE_HEADER_PLUGIN = "Plugin"
+        TABLE_HEADER_VERSION = "Version"
+        TABLE_HEADER_STATUS = "Status"
+        LOAD_FAILURE_SUMMARY = "{count} plugin(s) failed to load or initialize:"
+        LOAD_FAILURE_DETAIL = "Plugin: [bold]{plugin_name}[/bold]\nError: {error_message}"
+        LOAD_FAILURE_PANEL_TITLE = "{plugin_name} Failed"
+
+        DOCTOR_TITLE = "Plugin Health Check"
+        DOCTOR_CHECKING = "Checking {plugin_name}..."
+        DOCTOR_UNAVAILABLE = "Plugin '[bold]{plugin_name}[/bold]' is not available.\nThis may be due to missing system dependencies or an issue during initialization."
+        DOCTOR_UNAVAILABLE_TITLE = "{plugin_name} Issue"
+        DOCTOR_HEALTHY = "  {plugin_name} is healthy"
+        DOCTOR_LOAD_FAILURE_SUMMARY = "{count} plugin(s) failed to load:"
+        DOCTOR_LOAD_FAILURE_DETAIL = "Error: {error_message}\n\n[bold]Suggestions:[/bold]\n  - Check if the plugin is correctly installed.\n  - Check for missing system dependencies."
+        DOCTOR_LOAD_FAILURE_PANEL_TITLE = "{plugin_name} Failed to Load"
+        DOCTOR_ALL_HEALTHY = "All plugins are healthy!"
+        DOCTOR_ISSUES_FOUND = "Some plugins have issues. See details above."
+        STATUS_AVAILABLE = "Available"
+        STATUS_UNAVAILABLE = "Not available"
+
+
 
     # ═══════════════════════════════════════════════════════════════
     # Configuration
@@ -427,6 +456,7 @@ class Messages:
 
         # Plugin / Core Errors
         PLUGIN_LOAD_FAILED = "Failed to load plugin '{plugin_name}': {error}"
+        PLUGIN_INIT_FAILED = "Failed to initialize plugin '{plugin_name}': {error}"
         CONFIG_PARSE_ERROR = "Failed to parse configuration file at {file_path}: {error}"
 
         # File system
