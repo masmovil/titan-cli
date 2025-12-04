@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.plugins.models import GitHubPluginConfig
-from plugins.titan-plugin-git.titan_plugin_git.clients.git_client import GitClient # Import GitClient
+from titan_plugin_git.clients.git_client import GitClient # Import GitClient
 
 from ..models import (
     PullRequest,
@@ -45,7 +45,14 @@ class GitHubClient:
         >>> print(pr.title)
     """
 
-    def __init__(self, config: GitHubPluginConfig, secrets: SecretManager, git_client: GitClient):
+    def __init__(
+        self,
+        config: GitHubPluginConfig,
+        secrets: SecretManager,
+        git_client: GitClient,
+        repo_owner: str,
+        repo_name: str
+    ):
         """
         Initialize GitHub client
 
@@ -53,27 +60,18 @@ class GitHubClient:
             config: GitHub configuration
             secrets: SecretManager instance
             git_client: Initialized GitClient instance
+            repo_owner: GitHub repository owner.
+            repo_name: GitHub repository name.
 
         Raises:
             GitHubAuthenticationError: If gh CLI is not authenticated
-            GitHubConfigurationError: If owner or repo are not configured
         """
         self.config = config
         self.secrets = secrets
         self.git_client = git_client
+        self.repo_owner = repo_owner
+        self.repo_name = repo_name
         self._check_auth()
-        if not self.config.repo_owner or not self.config.repo_name:
-            raise GitHubConfigurationError(msg.GitHubClient.config_repo_missing)
-
-        if not self.config.repo_owner or not self.config.repo_name:
-            # Try to auto-detect from git remote
-            try:
-                remote_url = subprocess.run(["git", "remote", "get-url", "origin"], ...)
-            # Parse owner/repo from URL
-            except:
-                raise GitHubConfigurationError(
-                    "repo_owner and repo_name must be configured"
-                )
 
     def _check_auth(self) -> None:
         """
@@ -122,13 +120,13 @@ class GitHubClient:
 
     def _get_repo_arg(self) -> List[str]:
         """Get --repo argument for gh commands"""
-        if self.config.repo_owner and self.config.repo_name:
-            return ["--repo", f"{self.config.repo_owner}/{self.config.repo_name}"]
+        if self.repo_owner and self.repo_name:
+            return ["--repo", f"{self.repo_owner}/{self.repo_name}"]
         return []
 
     def _get_repo_string(self) -> str:
         """Get repo string in format 'owner/repo'"""
-        return f"{self.config.repo_owner}/{self.config.repo_name}"
+        return f"{self.repo_owner}/{self.repo_name}"
 
     def get_pull_request(self, pr_number: int) -> PullRequest:
         """

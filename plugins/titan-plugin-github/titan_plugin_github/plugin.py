@@ -5,10 +5,10 @@ from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.plugins.models import GitHubPluginConfig
-from .clients.github_client import GitHubClient 
+from .clients.github_client import GitHubClient
 from .steps.create_pr_step import create_pr_step
 from .clients.github_client import GitHubError
-
+from .utils import detect_github_repo
 
 class GitHubPlugin(TitanPlugin):
     """
@@ -36,7 +36,21 @@ class GitHubPlugin(TitanPlugin):
 
         # Validate configuration using Pydantic model
         validated_config = GitHubPluginConfig(**plugin_config_data)
+
+        repo_owner = validated_config.repo_owner
+        repo_name = validated_config.repo_name
+
+        # Attempt to auto-detect if not explicitly configured
+        if not repo_owner or not repo_name:
+            detected_owner, detected_name = detect_github_repo()
+            if detected_owner and detected_name:
+                repo_owner = repo_owner or detected_owner
+                repo_name = repo_name or detected_name
         
+        # If still missing, raise an error
+        if not repo_owner or not repo_name:
+            raise GitHubConfigurationError(msg.GitHubClient.config_repo_missing)
+
         # Get the git client from the registry
         git_plugin = config.registry.get_plugin("git")
         if not git_plugin or not git_plugin.is_available():
@@ -47,7 +61,9 @@ class GitHubPlugin(TitanPlugin):
         self._client = GitHubClient(
             config=validated_config,
             secrets=secrets,
-            git_client=git_client
+            git_client=git_client,
+            repo_owner=repo_owner, # Pass detected/configured owner
+            repo_name=repo_name # Pass detected/configured name
         )
 
     def _get_plugin_config(self, config: TitanConfig) -> dict:
