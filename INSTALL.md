@@ -1,54 +1,179 @@
-# Titan CLI - Installation Guide (Initial Setup)
+# Installation Guide
 
-This guide covers the installation for the current development version of `titan-cli`.
+Quick installation guide for Titan CLI contributors and developers.
 
 ## Prerequisites
 
-- Python 3.10+
-- `pipx`
+- **Python 3.10+** (check with `python3 --version`)
+- **Git** (for cloning the repository)
 
-If you don't have `pipx`, you can install it with:
+## Quick Setup (Recommended)
+
+The easiest way to get started is using our automated setup tools:
+
+### Option 1: Make (Simplest)
+
 ```bash
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
+git clone <repository-url>
+cd titan-cli
+make bootstrap
 ```
-*Note: You may need to restart your shell for `pipx` to be available in your PATH.*
 
-## Installation from Source
+This will:
+- ✅ Check Python version
+- ✅ Install Poetry if needed
+- ✅ Configure your shell PATH
+- ✅ Install all dependencies
+- ✅ Verify the installation
 
-As the project is under active development and not yet on PyPI, it must be installed from a local clone of the repository.
-
-1.  **Clone the repository:**
-    ```bash
-    git clone <your-repo-url>
-    cd titan-cli
-    ```
-
-2.  **Install in editable mode using `pipx`:**
-    This command installs `titan-cli` in an isolated environment and makes the `titan` command available globally in your terminal.
-    ```bash
-    pipx install -e .
-    ```
-
-## Verification
-
-After installation, run the command to verify it works:
+### Option 2: Titan CLI Command (Recommended for contributors)
 
 ```bash
+git clone <repository-url>
+cd titan-cli
+python3 -m titan_cli setup
+```
+
+Uses Titan's built-in setup command. Same functionality as make bootstrap.
+
+### Option 3: Bash Script
+
+```bash
+git clone <repository-url>
+cd titan-cli
+./bootstrap.sh
+```
+
+Interactive setup with colored output and step-by-step prompts.
+
+### Option 4: Python Script
+
+```bash
+git clone <repository-url>
+cd titan-cli
+python3 setup.py
+```
+
+Advanced setup with comprehensive checks and error handling.
+
+## Manual Setup
+
+If you already have Poetry installed and configured:
+
+```bash
+git clone <repository-url>
+cd titan-cli
+poetry install --with dev
+```
+
+## Verify Installation
+
+Check that everything is working:
+
+```bash
+make doctor
+```
+
+Expected output:
+```
+🔍 Checking system health...
+
+Python:
+Python 3.12.x
+
+Poetry:
+Poetry (version 2.2.x)
+
+Titan CLI:
+Titan CLI v0.1.0
+```
+
+## Running Titan CLI
+
+### During Development
+
+```bash
+# Run directly with Poetry
+poetry run titan
+
+# Or activate the virtual environment first
+poetry shell
 titan
 ```
 
-You should see the following output:
-```
-Hola Mundo
-```
-
-## Updating
-
-Since the installation points to your local repository, simply pull the latest changes:
+### Available Commands
 
 ```bash
-cd titan-cli
-git pull
+make help          # Show all available commands
+make test          # Run tests
+make doctor        # Check system health
+make clean         # Clean build artifacts
 ```
-`pipx` will automatically use the updated code since it's an "editable" install.
+
+## Common Issues
+
+### Poetry not found
+
+**Problem**: `poetry: command not found`
+
+**Solution**: Add Poetry to your PATH:
+
+```bash
+# For bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# For zsh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### Python version too old
+
+**Problem**: `Python 3.9 is too old`
+
+**Solution**: Install Python 3.10+ from:
+- macOS: `brew install python@3.12`
+- Linux: `sudo apt install python3.12` or `sudo yum install python3.12`
+- Windows: Download from [python.org](https://www.python.org)
+
+### Permission errors during setup
+
+**Problem**: Permission denied errors
+
+**Solution**: Don't use `sudo` with Poetry or pip. Poetry installs to your user directory.
+
+## Alternative: pipx Installation (Not Recommended for Development)
+
+If you prefer using pipx for an isolated global installation:
+
+```bash
+# Install pipx if needed
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+
+# Install titan-cli
+cd titan-cli
+pipx install -e .
+```
+
+**Note**: This method doesn't support development dependencies or easy testing.
+
+## Next Steps
+
+After successful installation:
+
+1. Read [AGENTS.md](AGENTS.md) for contributor guidelines
+2. Read [DEVELOPMENT.md](DEVELOPMENT.md) for architecture overview
+3. Run `titan init` to configure your global settings
+4. Run `titan projects list` to discover projects
+
+## Getting Help
+
+- Check the [documentation](docs/)
+- Review [AGENTS.md](AGENTS.md) for detailed development info
+- Open an issue on GitHub
+
+---
+
+**Last Updated**: 2025-12-04

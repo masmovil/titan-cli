@@ -36,18 +36,56 @@ For high-level architecture overview, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## 🚀 Quick Start
 
-### Setup
+### Automated Setup (Recommended)
+
+**Option 1: Using Make (simplest)**
+```bash
+git clone <repo>
+cd titan-cli
+make bootstrap  # Auto-installs Poetry + dependencies
+```
+
+**Option 2: Using Titan CLI command**
+```bash
+git clone <repo>
+cd titan-cli
+python3 -m titan_cli setup  # Uses Titan's built-in setup
+```
+
+**Option 3: Using Bash script**
+```bash
+git clone <repo>
+cd titan-cli
+./bootstrap.sh  # Interactive setup
+```
+
+**Option 4: Using Python script**
+```bash
+git clone <repo>
+cd titan-cli
+python3 setup.py  # Advanced setup with checks
+```
+
+### Manual Setup
+
+If you already have Poetry installed:
 ```bash
 # Clone and install
 git clone <repo>
 cd titan-cli
-poetry install
+poetry install --with dev
+```
 
-# Install with development dependencies
-poetry install --with dev,ai-all
+**Alternative: pipx for isolated install (NOT recommended for development)**
+```bash
+pipx install .
+```
 
-# Alternative: pipx for isolated install
-pipx install -e .
+### Verify Installation
+
+```bash
+make doctor           # Check system health
+poetry run titan      # Run CLI
 ```
 
 ### Development Commands
