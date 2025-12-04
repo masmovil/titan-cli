@@ -1,43 +1,21 @@
 from typing import Any
 
 class Messages:
-    class GitClient:
-        cli_not_found: str = "Git CLI not found. Please install Git."
-        not_a_repository: str = "'{repo_path}' is not a git repository"
-        command_failed: str = "Git command failed: {error_msg}"
-        unexpected_error: str = "An unexpected error occurred: {e}"
-        branch_not_found: str = "Branch '{branch}' not found locally or on remote 'origin'"
-        uncommitted_changes_overwrite_keyword: str = "would be overwritten"
-        cannot_checkout_uncommitted_changes: str = "Cannot checkout: uncommitted changes would be overwritten"
-        merge_conflict_keyword: str = "Merge conflict"
-        merge_conflict_while_updating: str = "Merge conflict while updating branch '{branch}'"
-        auto_stash_message: str = "titan-cli-auto-stash at {timestamp}"
-        cannot_checkout_uncommitted_changes_exist: str = "Cannot checkout {branch}: uncommitted changes exist"
-        stash_failed_before_checkout: str = "Failed to stash changes before checkout"
-        safe_switch_stash_message: str = "titan-cli-safe-switch: from {current} to {branch}"
-    
-    class Steps:
-        class Status:
-            git_client_not_available: str = "Git client is not available in the workflow context."
-            status_retrieved_success: str = "Git status retrieved successfully."
-            working_directory_not_clean: str = " Working directory is not clean."
-            failed_to_get_status: str = "Failed to get git status: {e}"
-
-        class Commit:
-            git_client_not_available: str = "Git client is not available in the workflow context."
-            commit_message_required: str = "Commit message is required in ctx.data['commit_message']."
-            commit_success: str = "Commit created successfully: {commit_hash}"
-            client_error_during_commit: str = "Git client error during commit: {e}"
-            command_failed_during_commit: str = "Git command failed during commit: {e}"
-            unexpected_error_during_commit: str = "An unexpected error occurred during commit: {e}"
-
-    class Plugin:
-        git_client_init_warning: str = "Warning: GitPlugin could not initialize GitClient: {e}"
-        git_client_not_available: str = "GitPlugin not initialized or Git CLI not available."
-
     class Git:
         """Git operations messages"""
-
+        CLI_NOT_FOUND: str = "Git CLI not found. Please install Git."
+        NOT_A_REPOSITORY: str = "'{repo_path}' is not a git repository"
+        COMMAND_FAILED: str = "Git command failed: {error_msg}"
+        UNEXPECTED_ERROR: str = "An unexpected error occurred: {e}"
+        UNCOMMITTED_CHANGES_OVERWRITE_KEYWORD: str = "would be overwritten"
+        CANNOT_CHECKOUT_UNCOMMITTED_CHANGES: str = "Cannot checkout: uncommitted changes would be overwritten"
+        MERGE_CONFLICT_KEYWORD: str = "Merge conflict"
+        MERGE_CONFLICT_WHILE_UPDATING: str = "Merge conflict while updating branch '{branch}'"
+        AUTO_STASH_MESSAGE: str = "titan-cli-auto-stash at {timestamp}"
+        CANNOT_CHECKOUT_UNCOMMITTED_CHANGES_EXIST: str = "Cannot checkout {branch}: uncommitted changes exist"
+        STASH_FAILED_BEFORE_CHECKOUT: str = "Failed to stash changes before checkout"
+        SAFE_SWITCH_STASH_MESSAGE: str = "titan-cli-safe-switch: from {current} to {branch}"
+        
         # Commits
         COMMITTING = "Committing changes..."
         COMMIT_SUCCESS = "Committed: {sha}"
@@ -56,7 +34,6 @@ class Messages:
         BRANCH_INVALID_NAME = "Invalid branch name: {name}"
         BRANCH_PROTECTED = "Cannot delete protected branch: {branch}"
 
-
         # Push/Pull
         PUSHING = "Pushing to remote..."
         PUSH_SUCCESS = "Pushed to {remote}/{branch}"
@@ -70,9 +47,28 @@ class Messages:
         STATUS_DIRTY = "Uncommitted changes detected"
 
         # Repository
-        NOT_A_REPO = "Not a git repository"
         REPO_INIT = "Initializing git repository..."
         REPO_INITIALIZED = "Git repository initialized"
+    
+    class Steps:
+        class Status:
+            GIT_CLIENT_NOT_AVAILABLE: str = "Git client is not available in the workflow context."
+            STATUS_RETRIEVED_SUCCESS: str = "Git status retrieved successfully."
+            WORKING_DIRECTORY_NOT_CLEAN: str = " Working directory is not clean."
+            FAILED_TO_GET_STATUS: str = "Failed to get git status: {e}"
+
+        class Commit:
+            GIT_CLIENT_NOT_AVAILABLE: str = "Git client is not available in the workflow context."
+            COMMIT_MESSAGE_REQUIRED: str = "Commit message is required in ctx.data['commit_message']."
+            COMMIT_SUCCESS: str = "Commit created successfully: {commit_hash}"
+            CLIENT_ERROR_DURING_COMMIT: str = "Git client error during commit: {e}"
+            COMMAND_FAILED_DURING_COMMIT: str = "Git command failed during commit: {e}"
+            UNEXPECTED_ERROR_DURING_COMMIT: str = "An unexpected error occurred during commit: {e}"
+
+    class Plugin:
+        GIT_CLIENT_INIT_WARNING: str = "Warning: GitPlugin could not initialize GitClient: {e}"
+        GIT_CLIENT_NOT_AVAILABLE: str = "GitPlugin not initialized or Git CLI not available."
+
 
 
 msg = Messages()

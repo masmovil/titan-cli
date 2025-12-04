@@ -1,9 +1,8 @@
 # plugins/titan-plugin-github/titan_plugin_github/steps/create_pr_step.py
-from typing import Union
-from titan_cli.engine import WorkflowContext, Success, Error
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from ..exceptions import GitHubAPIError
 
-def create_pr_step(ctx: WorkflowContext) -> Union[Success, Error]:
+def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Creates a GitHub pull request.
 
@@ -19,8 +18,9 @@ def create_pr_step(ctx: WorkflowContext) -> Union[Success, Error]:
         pr_is_draft (bool, optional): Whether to create the PR as a draft. Defaults to False.
 
     Returns:
-        Success: If the PR is created successfully, with 'pr_number' and 'pr_url' in metadata.
-        Error: If any required context arguments are missing or if the API call fails.
+        WorkflowResult:
+            - Success: If the PR is created successfully, with 'pr_number' and 'pr_url' in metadata.
+            - Error: If any required context arguments are missing or if the API call fails.
     """
     # 1. Get GitHub client from context
     if not ctx.github:
