@@ -96,8 +96,10 @@ class GitPlugin(TitanPlugin):
         from .steps.status_step import get_git_status_step
         from .steps.commit_step import create_git_commit_step
         from .steps.prompt_step import prompt_for_commit_message_step
+        from .steps.push_step import create_git_push_step
         return {
             "get_status": get_git_status_step,
             "create_commit": create_git_commit_step,
             "prompt_for_commit_message": prompt_for_commit_message_step,
+            "push": create_git_push_step,
         }

@@ -68,6 +68,10 @@ class Messages:
             COMMAND_FAILED_DURING_COMMIT: str = "Git command failed during commit: {e}"
             UNEXPECTED_ERROR_DURING_COMMIT: str = "An unexpected error occurred during commit: {e}"
 
+        class Push:
+            GIT_CLIENT_NOT_AVAILABLE: str = "Git client is not available in the workflow context."
+            PUSH_FAILED: str = "Git push failed: {e}"
+
     class Plugin:
         GIT_CLIENT_INIT_WARNING: str = "Warning: GitPlugin could not initialize GitClient: {e}"
         GIT_CLIENT_NOT_AVAILABLE: str = "GitPlugin not initialized or Git CLI not available."
