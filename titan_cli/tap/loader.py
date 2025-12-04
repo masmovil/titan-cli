@@ -29,7 +29,7 @@ except ImportError:
     YAML_AVAILABLE = False
     yaml = None
 
-from titan_cli.adapters.registry import AdapterRegistry, get_registry
+from titan_cli.tap.registry import AdapterRegistry, get_registry
 
 logger = logging.getLogger(__name__)
 

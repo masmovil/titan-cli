@@ -21,9 +21,9 @@ import logging
 from pathlib import Path
 from typing import Optional, Union, Any
 
-from titan_cli.adapters.registry import AdapterRegistry, get_registry
-from titan_cli.adapters.loader import AdapterLoader
-from titan_cli.adapters.factory import AdapterFactory
+from titan_cli.tap.registry import AdapterRegistry, get_registry
+from titan_cli.tap.loader import AdapterLoader
+from titan_cli.tap.factory import AdapterFactory
 
 logger = logging.getLogger(__name__)
 

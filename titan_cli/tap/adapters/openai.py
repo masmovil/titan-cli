@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from titan_cli.core.tool import TitanTool, ToolParameter
-
 
 class OpenAIAdapter:
     """

@@ -15,7 +15,7 @@ import logging
 from typing import Optional
 from threading import Lock
 
-from titan_cli.adapters.protocol import ToolAdapter, verify_adapter
+from titan_cli.tap.protocol import ToolAdapter, verify_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +333,7 @@ def get_registry() -> AdapterRegistry:
         The singleton AdapterRegistry
     
     Example:
-        from titan_cli.adapters.registry import get_registry
+        from titan_cli.tap.registry import get_registry
         
         registry = get_registry()
         registry.register("my_adapter", MyAdapter)

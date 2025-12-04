@@ -21,8 +21,6 @@ try:
 except ImportError:
     LANGRAPH_AVAILABLE = False
 
-from titan_cli.core.tool import TitanTool
-
 
 class LangGraphAdapter:
     """
@@ -128,7 +126,7 @@ class LangGraphAdapter:
         Example:
             from langchain_anthropic import ChatAnthropic
             from titan_cli.core import PluginManager
-            from titan_cli.adapters.langraph import LangGraphAdapter
+            from titan_cli.tap.langraph import LangGraphAdapter
             
             pm = PluginManager()
             pm.discover_plugins("./plugins")

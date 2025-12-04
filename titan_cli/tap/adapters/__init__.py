@@ -13,30 +13,30 @@ This module provides a complete plugin architecture with:
 
 Quick Start:
     # Simple usage with manager
-    from titan_cli.adapters import AdapterManager
+    from titan_cli.tap import AdapterManager
     
     manager = AdapterManager.from_config("config/adapters.yml")
     adapter = manager.get("anthropic")
     
     # Direct usage (legacy)
-    from titan_cli.adapters import AnthropicAdapter
+    from titan_cli.tap import AnthropicAdapter
     
     tools = AnthropicAdapter.convert_tools(titan_tools)
 """
 
 # Protocol
-from titan_cli.adapters.protocol import ToolAdapter, verify_adapter
+from titan_cli.tap.protocol import ToolAdapter, verify_adapter
 
 # Concrete adapters
-from titan_cli.adapters.anthropic import AnthropicAdapter
-from titan_cli.adapters.openai import OpenAIAdapter
-from titan_cli.adapters.langraph import LangGraphAdapter
+from titan_cli.tap.adapters.anthropic import AnthropicAdapter
+from titan_cli.tap.adapters.openai import OpenAIAdapter
+from titan_cli.tap.adapters.langraph import LangGraphAdapter
 
 # Plugin architecture components
-from titan_cli.adapters.registry import AdapterRegistry, get_registry
-from titan_cli.adapters.loader import AdapterLoader, ConfigurationError
-from titan_cli.adapters.factory import AdapterFactory
-from titan_cli.adapters.manager import AdapterManager
+from titan_cli.tap.registry import AdapterRegistry, get_registry
+from titan_cli.tap.loader import AdapterLoader, ConfigurationError
+from titan_cli.tap.factory import AdapterFactory
+from titan_cli.tap.manager import AdapterManager
 
 __all__ = [
     # Protocol

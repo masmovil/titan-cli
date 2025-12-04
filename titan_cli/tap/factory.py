@@ -23,7 +23,7 @@ import logging
 from typing import Any, Optional, Callable
 from functools import lru_cache
 
-from titan_cli.adapters.registry import AdapterRegistry, get_registry
+from titan_cli.tap.registry import AdapterRegistry, get_registry
 
 logger = logging.getLogger(__name__)
 
