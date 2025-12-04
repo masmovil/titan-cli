@@ -1796,12 +1796,26 @@ groups = ["main"]
 files = []
 develop = true
 
+[package.source]
+type = "directory"
+url = "plugins/titan-plugin-git"
+
+[[package]]
+name = "titan-plugin-github"
+version = "0.1.0"
+description = "Titan CLI plugin for GitHub integration."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = []
+develop = true
+
 [package.dependencies]
 titan-cli = {path = "../..", develop = true}
 
 [package.source]
 type = "directory"
-url = "plugins/titan-plugin-git"
+url = "plugins/titan-plugin-github"
 
 [[package]]
 name = "tomli"
@@ -1990,4 +2004,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "c744da7781072423f43bb1149998bf1acfa8311afb1d772b36f0e98990105fcd"
+content-hash = "63367a7215f0a9c9087ef01a5c35295a990a7acd75a4b4d65df161ea20dd2cec"

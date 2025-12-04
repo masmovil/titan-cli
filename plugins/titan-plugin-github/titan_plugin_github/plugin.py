@@ -48,8 +48,8 @@ class GitHubPlugin(TitanPlugin):
                 repo_name = repo_name or detected_name
         
         # If still missing, raise an error
-        if not repo_owner or not repo_name:
-            raise GitHubConfigurationError(msg.GitHubClient.config_repo_missing)
+        # if not repo_owner or not repo_name:
+        #     raise GitHubConfigurationError(msg.GitHubClient.config_repo_missing)
 
         # Get the git client from the registry
         git_plugin = config.registry.get_plugin("git")
