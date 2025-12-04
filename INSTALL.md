@@ -26,7 +26,17 @@ This will:
 - ✅ Install all dependencies
 - ✅ Verify the installation
 
-### Option 2: Bash Script
+### Option 2: Titan CLI Command (Recommended for contributors)
+
+```bash
+git clone <repository-url>
+cd titan-cli
+python3 -m titan_cli setup
+```
+
+Uses Titan's built-in setup command. Same functionality as make bootstrap.
+
+### Option 3: Bash Script
 
 ```bash
 git clone <repository-url>
@@ -36,7 +46,7 @@ cd titan-cli
 
 Interactive setup with colored output and step-by-step prompts.
 
-### Option 3: Python Script
+### Option 4: Python Script
 
 ```bash
 git clone <repository-url>

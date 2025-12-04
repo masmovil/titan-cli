@@ -16,6 +16,7 @@ from titan_cli.commands.init import init_app
 from titan_cli.commands.projects import projects_app, list_projects
 from titan_cli.commands.ai import ai_app
 from titan_cli.commands.plugins import plugins_app
+from titan_cli.commands.setup import setup_app
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.errors import ConfigWriteError
@@ -41,6 +42,7 @@ app.add_typer(init_app)
 app.add_typer(projects_app)
 app.add_typer(ai_app)
 app.add_typer(plugins_app)
+app.add_typer(setup_app)
 
 
 # --- Helper function for version retrieval ---

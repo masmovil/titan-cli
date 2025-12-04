@@ -45,14 +45,21 @@ cd titan-cli
 make bootstrap  # Auto-installs Poetry + dependencies
 ```
 
-**Option 2: Using Bash script**
+**Option 2: Using Titan CLI command**
+```bash
+git clone <repo>
+cd titan-cli
+python3 -m titan_cli setup  # Uses Titan's built-in setup
+```
+
+**Option 3: Using Bash script**
 ```bash
 git clone <repo>
 cd titan-cli
 ./bootstrap.sh  # Interactive setup
 ```
 
-**Option 3: Using Python script**
+**Option 4: Using Python script**
 ```bash
 git clone <repo>
 cd titan-cli

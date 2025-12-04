@@ -20,11 +20,12 @@ Titan CLI is a modular development tools orchestrator that streamlines your work
 ```bash
 git clone <repo>
 cd titan-cli
-make bootstrap          # Simplest - auto-installs everything
-# OR
-./bootstrap.sh         # Interactive bash setup
-# OR
-python3 setup.py       # Advanced Python setup
+
+# Choose one method:
+make bootstrap          # Option 1: Using Make (simplest)
+./bootstrap.sh         # Option 2: Interactive bash script
+python3 setup.py       # Option 3: Advanced Python script
+python3 -m titan_cli setup  # Option 4: Using Titan CLI itself
 ```
 
 **Manual setup** (if you already have Poetry):
