@@ -222,7 +222,7 @@ def show_interactive_menu():
             workflow_menu_builder = DynamicMenu(title="Select a workflow to run", emoji="⚡")
             workflow_cat_idx = workflow_menu_builder.add_category("Available Workflows")
             for wf_info in available_workflows:
-                workflow_menu_builder.add_item(wf_info.name, f"({wf_info.source}) {wf_info.description}", wf_info.name)
+                workflow_cat_idx.add_item(wf_info.name, f"({wf_info.source}) {wf_info.description}", wf_info.name)
             workflow_menu_builder.add_category("Cancel").add_item("Back to Main Menu", "Return without running a workflow.", "cancel")
             
             workflow_menu = workflow_menu_builder.to_menu()

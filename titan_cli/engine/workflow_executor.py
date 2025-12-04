@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from titan_cli.core.workflows import ParsedWorkflow
 from titan_cli.core.workflows.workflow_exceptions import WorkflowExecutionError
 from titan_cli.engine.context import WorkflowContext
-from titan_cli.engine.results import WorkflowResult, Success, Error, Skip
+from titan_cli.engine.results import WorkflowResult, Success, Error, Skip, is_error, is_skip
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 
 # Assuming run_shell_command returns stdout, stderr, exit_code
@@ -37,6 +37,11 @@ class WorkflowExecutor:
         ctx.ui.spacer.small()
 
         for step_config in workflow.steps:
+            # If the step is just a hook placeholder, skip it.
+            # The registry has already handled merging.
+            if "hook" in step_config and len(step_config) == 1:
+                continue
+
             step_id = step_config.get("id", "anonymous_step")
             step_name = step_config.get("name", step_id)
             on_error = step_config.get("on_error", "fail") # Default to fail
@@ -60,17 +65,18 @@ class WorkflowExecutor:
                 step_result = Error(f"An unexpected error occurred in step '{step_name}': {e}", e)
 
             # Handle step result
-            if step_result.is_error:
+            if is_error(step_result):
                 ctx.ui.text.error(f"Step '{step_name}' failed: {step_result.message}")
                 if on_error == "fail":
                     ctx.ui.text.error(f"Workflow '{workflow.name}' stopped due to step failure.")
                     return Error(f"Workflow failed at step '{step_name}'", step_result.exception)
-            elif step_result.is_skip:
+            elif is_skip(step_result):
                 ctx.ui.text.warning(f"Step '{step_name}' skipped: {step_result.message}")
             else:
                 ctx.ui.text.success(f"Step '{step_name}' completed: {step_result.message}")
                 # Merge step metadata into workflow context data
-                ctx.data.update(step_result.metadata)
+                if step_result.metadata:
+                    ctx.data.update(step_result.metadata)
             
             ctx.ui.spacer.small() # Add a small space after each step
 
