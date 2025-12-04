@@ -25,11 +25,11 @@ def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the GitClient is not available, or the commit operation fails.
     """
     if not ctx.git:
-        return Error(msg.Steps.Commit.git_client_not_available)
+        return Error(msg.Steps.Commit.GIT_CLIENT_NOT_AVAILABLE)
 
     commit_message = ctx.get('commit_message')
     if not commit_message:
-        return Error(msg.Steps.Commit.commit_message_required)
+        return Error(msg.Steps.Commit.COMMIT_MESSAGE_REQUIRED)
         
     all_files = ctx.get('all_files', False)
 
@@ -37,12 +37,12 @@ def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
         commit_hash = ctx.git.commit(message=commit_message, all=all_files)
             
         return Success(
-            message=msg.Steps.Commit.commit_success.format(commit_hash=commit_hash),
+            message=msg.Steps.Commit.COMMIT_SUCCESS.format(commit_hash=commit_hash),
             metadata={"commit_hash": commit_hash}
         )
     except GitClientError as e:
-        return Error(msg.Steps.Commit.client_error_during_commit.format(e=e))
+        return Error(msg.Steps.Commit.CLIENT_ERROR_DURING_COMMIT.format(e=e))
     except GitCommandError as e:
-        return Error(msg.Steps.Commit.command_failed_during_commit.format(e=e))
+        return Error(msg.Steps.Commit.COMMAND_FAILED_DURING_COMMIT.format(e=e))
     except Exception as e:
-        return Error(msg.Steps.Commit.unexpected_error_during_commit.format(e=e))
+        return Error(msg.Steps.Commit.UNEXPECTED_ERROR_DURING_COMMIT.format(e=e))

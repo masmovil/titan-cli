@@ -355,7 +355,7 @@ class GitClient:
             GitError: if branch is protected
         """
         if self.is_protected_branch(branch):
-            raise GitError(f"Cannot delete protected branch: {branch}")
+            raise GitError(msg.Git.BRANCH_PROTECTED.format(branch=branch))
 
         delete_arg = "-D" if force else "-d"
         self._run_command(["git", "branch", delete_arg, branch])

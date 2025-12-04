@@ -24,6 +24,7 @@ google-generativeai = ">=0.8.5,<0.9.0"
 google-auth = ">=2.43.0,<3.0.0"
 openai = ">=2.8.1,<3.0.0"
 titan-plugin-git = {path = "plugins/titan-plugin-git", develop = true}
+titan-plugin-github = {path = "plugins/titan-plugin-github", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
