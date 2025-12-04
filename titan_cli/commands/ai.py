@@ -13,6 +13,7 @@ from ..ai.client import PROVIDER_CLASSES
 from ..ai.oauth_helper import OAuthHelper
 from ..ai.constants import get_default_model, get_provider_name
 from ..ai.models import AIRequest, AIMessage
+from ..ai.env_config import AIEnvDetector, get_env_aware_defaults
 from ..messages import msg
 
 
@@ -132,16 +133,55 @@ def configure_ai_interactive():
     text = TextRenderer()
     prompts = PromptsRenderer(text_renderer=text)
     secrets = SecretManager()
+    spacer = SpacerRenderer()
 
     text.title(msg.AI.CONFIG_TITLE)
     text.line()
 
+    # Step 0: Check for environment configuration
+    detected_configs = AIEnvDetector.detect_all()
+    has_env_config = any(cfg.detected for cfg in detected_configs.values())
+
+    if has_env_config:
+        text.info("🔍 Detected AI configuration from environment variables:")
+        spacer.line()
+        for provider, cfg in detected_configs.items():
+            if cfg.detected:
+                gateway_info = AIEnvDetector.get_gateway_info(provider)
+                if gateway_info:
+                    text.body(f"  • {provider.title()}: Corporate gateway at {gateway_info['domain']}", style="dim")
+                    if gateway_info['model']:
+                        text.body(f"    Default model: {gateway_info['model']}", style="dim")
+                else:
+                    text.body(f"  • {provider.title()}: Standard API configured", style="dim")
+        spacer.line()
+        text.body("💡 Titan will use these settings automatically if you select these providers.", style="dim")
+        spacer.line()
+
     # Step 1: Select Provider
     provider_menu = DynamicMenu(title=msg.AI.PROVIDER_SELECT_TITLE, emoji=msg.EMOJI.INFO) # Changed emoji to INFO
     cat = provider_menu.add_category(msg.AI.PROVIDER_SELECT_CATEGORY)
-    cat.add_item(msg.AI.ANTHROPIC_LABEL, msg.AI.ANTHROPIC_DESCRIPTION_MODEL.format(model="claude-3-opus-20240229"), "anthropic")
-    cat.add_item(msg.AI.OPENAI_LABEL, msg.AI.OPENAI_DESCRIPTION_MODEL.format(model="gpt-4-turbo"), "openai")
-    cat.add_item(msg.AI.GEMINI_LABEL, msg.AI.GEMINI_DESCRIPTION_MODEL.format(model="gemini-1.5-pro"), "gemini")
+
+    # Add badges for providers with env config
+    for prov_key, label, description_key in [
+        ("anthropic", msg.AI.ANTHROPIC_LABEL, "claude-3-opus-20240229"),
+        ("openai", msg.AI.OPENAI_LABEL, "gpt-4-turbo"),
+        ("gemini", msg.AI.GEMINI_LABEL, "gemini-1.5-pro")
+    ]:
+        env_cfg = detected_configs.get(prov_key)
+        desc = f"Model: {description_key}"
+        if env_cfg and env_cfg.detected:
+            if env_cfg.base_url:
+                desc = f"🏢 Corporate gateway configured"
+            else:
+                desc = f"✓ Environment configured"
+
+        if prov_key == "anthropic":
+            cat.add_item(label, desc, prov_key)
+        elif prov_key == "openai":
+            cat.add_item(label, desc, prov_key)
+        else:  # gemini
+            cat.add_item(label, desc, prov_key)
 
     provider_choice = prompts.ask_menu(provider_menu.to_menu())
     if not provider_choice:
@@ -150,6 +190,9 @@ def configure_ai_interactive():
 
     provider = provider_choice.action
     text.line()
+
+    # Get environment-aware defaults for this provider
+    env_defaults = get_env_aware_defaults(provider)
 
     # Step 2: Authentication
     auth_successful = False
@@ -200,12 +243,24 @@ def configure_ai_interactive():
     text.line()
 
     # Step 3: Custom Endpoint (Optional - for enterprise/corporate deployments)
-    base_url = None
-    if prompts.ask_confirm(
+    base_url = env_defaults.get("base_url")
+
+    # If environment has a base_url, inform and ask if they want to use it
+    if env_defaults.get("is_custom_endpoint"):
+        gateway_info = AIEnvDetector.get_gateway_info(provider)
+        text.info(f"🏢 Corporate gateway detected: {gateway_info['domain']}")
+        use_gateway = prompts.ask_confirm(
+            f"Use the corporate gateway at {base_url}?",
+            default=True
+        )
+        if not use_gateway:
+            base_url = None
+            text.warning("Using standard API endpoint instead")
+            text.line()
+    elif prompts.ask_confirm(
         msg.AI.CUSTOM_ENDPOINT_PROMPT,
         default=False
     ):
-        spacer = SpacerRenderer()
         spacer.line()
         text.info(msg.AI.CUSTOM_ENDPOINT_INFO_TITLE)
         text.body(msg.AI.CUSTOM_ENDPOINT_INFO_PROXY, style="dim")
@@ -233,7 +288,23 @@ def configure_ai_interactive():
         text.line()
 
     # Step 4: Model Selection
-    model = _select_model(provider, prompts, text)
+    # Use environment-detected model as default if available
+    suggested_model = env_defaults.get("model") or get_default_model(provider)
+
+    if env_defaults.get("model"):
+        text.info(f"💡 Environment suggests model: {env_defaults['model']}")
+        use_env_model = prompts.ask_confirm(
+            f"Use the suggested model '{env_defaults['model']}'?",
+            default=True
+        )
+        if use_env_model:
+            model = env_defaults["model"]
+            text.success(f"Using model: {model}")
+        else:
+            model = _select_model(provider, prompts, text)
+    else:
+        model = _select_model(provider, prompts, text)
+
     text.line()
 
     # Step 5: Advanced Options
