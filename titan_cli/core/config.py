@@ -38,12 +38,15 @@ class TitanConfig:
 
         # Initialize plugins now that config is ready
         self.registry.initialize_plugins(config=self, secrets=self.secrets)
-        
+
         # Store failed plugins for later display by CLI commands
         self._plugin_warnings = self.registry.list_failed()
 
-        # Initialize WorkflowRegistry
-        self._workflow_registry = WorkflowRegistry(config=self)
+        # Initialize WorkflowRegistry with dependency injection
+        self._workflow_registry = WorkflowRegistry(
+            project_root=self._project_root,
+            plugin_registry=self.registry
+        )
 
 
     def _find_project_config(self, start_path: Optional[Path] = None) -> Optional[Path]:

@@ -628,17 +628,21 @@ config = TitanConfig()
 secrets = SecretManager()
 
 # 2. Create the AI client
+if not config.config.ai:
+    print("AI not configured")
+    return
+
 try:
-    ai_client = AIClient(config, secrets)
+    ai_client = AIClient(config.config.ai, secrets)
 except AIConfigurationError as e:
-    # Handle cases where AI is not configured
+    # Handle cases where AI is not configured correctly
     print(f"AI not available: {e}")
     return
 
 # 3. Make a request
 if ai_client.is_available():
     messages = [AIMessage(role="user", content="Explain the meaning of life.")]
-    
+
     # Simple request
     response = ai_client.generate(messages)
     print(response.content)
@@ -792,127 +796,432 @@ def initialize(self, config, secrets):
 
 ---
 
-## 🚀 Workflow Engine
+## 🚀 Workflow System
 
-Titan CLI includes a lightweight, powerful workflow engine for composing and executing sequences of operations. This engine is built on the "Atomic Steps Pattern," where each step in a workflow is a self-contained, testable function.
+Titan CLI includes a powerful, declarative workflow system for automating development tasks. Workflows are defined in YAML files and can be discovered from multiple sources with a precedence-based resolution system.
 
-### File Structure (`engine/`)
+### Architecture Overview
 
-The engine is organized as follows:
+The workflow system follows a similar pattern to the plugin system, with clear separation between **management** (discovery, loading, resolution) and **execution** (running workflows):
 
 ```
-titan_cli/engine/
-├── __init__.py              # Public exports
-├── results.py               # WorkflowResult types (Success, Error, Skip)
-├── context.py               # WorkflowContext (dependency injection container)
-├── ui_container.py          # UIComponents container
-├── views_container.py       # UIViews container
-├── builder.py               # WorkflowContextBuilder (fluent API)
-└── workflow.py              # BaseWorkflow (orchestrator)
+titan_cli/
+├── core/workflows/          # Workflow Management (analogous to PluginRegistry)
+│   ├── workflow_registry.py # Central registry for discovering and managing workflows
+│   ├── workflow_sources.py  # Load workflows from multiple sources
+│   ├── workflow_exceptions.py # Workflow-specific exceptions
+│   └── models.py            # Workflow data models
+│
+└── engine/                  # Workflow Execution
+    ├── workflow_executor.py # Executes ParsedWorkflow by running steps
+    ├── context.py           # WorkflowContext (dependency injection container)
+    ├── builder.py           # WorkflowContextBuilder (fluent API)
+    ├── results.py           # WorkflowResult types (Success, Error, Skip)
+    ├── ui_container.py      # UIComponents container
+    └── views_container.py   # UIViews container
 ```
 
-### Core Concepts
+### Workflow Sources & Precedence
 
-#### 1. Steps (`StepFunction`)
+Workflows can be defined in multiple locations with a clear precedence hierarchy:
 
-A workflow is a list of "steps." Each step is a simple Python function that accepts a `WorkflowContext` and returns a `WorkflowResult`.
+```
+1. Project Workflows     (highest priority)
+   .titan/workflows/*.yaml
+   ✓ Specific to the project
+   ✓ Versioned with the codebase
+   ✓ Can override plugin/system workflows
 
-```python
-from titan_cli.engine import WorkflowContext, Success, Error
+2. User Workflows
+   ~/.titan/workflows/*.yaml
+   ✓ Personal workflows
+   ✓ Not shared with the team
 
-def my_step(ctx: WorkflowContext) -> WorkflowResult:
-    """Example step."""
-    if not ctx.ui:
-        return Error("UI components are not available.")
-    
-    ctx.ui.text.info("Executing my step...")
-    # ... perform logic ...
-    return Success("My step completed successfully.")
+3. System Workflows
+   titan_cli/workflows/*.yaml
+   ✓ Built-in workflows
+   ✓ Shipped with Titan CLI
+
+4. Plugin Workflows      (lowest priority)
+   plugins/*/workflows/*.yaml
+   ✓ Provided by installed plugins
+   ✓ Can be overridden at project level
 ```
 
-#### 2. Workflow Results (`results.py`)
+Workflows from higher-priority sources override those from lower-priority sources when they have the same name.
 
-Every step must return one of three `dataclass` objects to signal its outcome:
--   **`Success(message: str, metadata: dict)`**: The step was successful. Any `metadata` provided is automatically merged into the shared `ctx.data` dictionary for subsequent steps to use.
--   **`Error(message: str, exception: Exception)`**: The step failed. By default, this halts the entire workflow. You can optionally pass the original exception.
--   **`Skip(message: str, metadata: dict)`**: The step was not applicable and was skipped. This is not considered a failure. Any `metadata` is also auto-merged.
+### YAML Workflow Structure
 
-Module-level helper functions are provided to check the result type: `is_success(result)`, `is_error(result)`, `is_skip(result)`.
+Workflows are defined in YAML with the following structure:
 
-#### 3. The Context (`context.py` & `builder.py`)
+```yaml
+# .titan/workflows/create-pr.yaml
+name: "Create Pull Request"
+description: "Complete workflow for creating a PR with tests and linting"
 
-The `WorkflowContext` is a dependency injection container that holds everything a step might need:
--   Core dependencies (`config`, `secrets`).
--   Service clients (`ai`).
--   UI components, organized by architectural layer.
--   A shared data dictionary (`data`) for passing information between steps.
+# Optional: extend another workflow
+extends: "plugin:github/create-pr"
 
-The `WorkflowContextBuilder` provides a fluent API to construct the context with the required dependencies. It uses a **hybrid DI pattern**:
+# Default parameters (can be overridden)
+params:
+  base_branch: "develop"
+  draft: false
+
+# Hooks for injecting steps (when extending)
+hooks:
+  before_commit:
+    - id: lint
+      name: "Run Linter"
+      command: "npm run lint"
+      on_error: fail
+
+  before_push:
+    - id: test
+      name: "Run Tests"
+      command: "npm test"
+
+  after_pr:
+    - id: notify
+      name: "Notify Team"
+      plugin: slack
+      step: send_message
+      params:
+        channel: "#pull-requests"
+        message: "PR created: ${pr_url}"
+
+# Workflow steps
+steps:
+  - id: git_status
+    name: "Check Git Status"
+    plugin: git
+    step: get_status
+
+  # Hook injection point
+  - hook: before_commit
+
+  - id: create_commit
+    name: "Create Commit"
+    plugin: git
+    step: create_commit
+    params:
+      message: "${commit_message}"  # Variable substitution
+
+  - hook: before_push
+
+  - id: push
+    name: "Push to Remote"
+    plugin: git
+    step: push
+    on_error: fail  # Stop workflow if this fails
+
+  - id: create_pr
+    name: "Create Pull Request"
+    plugin: github
+    step: create_pr
+    params:
+      title: "${pr_title}"
+      base: "${base_branch}"
+      draft: "${draft}"
+
+  - hook: after_pr
+```
+
+### Step Types
+
+#### 1. Plugin Steps
+
+Execute functions provided by plugins:
+
+```yaml
+- id: commit
+  name: "Create Commit"
+  plugin: git           # Plugin name
+  step: create_commit   # Step function from plugin.get_steps()
+  params:               # Parameters passed to the step function
+    message: "${msg}"
+  on_error: fail        # fail (default) | continue | skip
+```
+
+#### 2. Command Steps
+
+Execute shell commands:
+
+```yaml
+- id: test
+  name: "Run Tests"
+  command: "npm test"   # Shell command to execute
+  on_error: continue    # Continue even if tests fail
+```
+
+### Parameter Substitution
+
+Workflows support dynamic parameter substitution using `${variable}` syntax:
+
+```yaml
+steps:
+  - id: create_pr
+    params:
+      title: "${pr_title}"      # From ctx.data (set by previous steps)
+      base: "${base_branch}"    # From workflow params
+      branch: "${current_branch}" # From context
+```
+
+**Resolution priority:**
+1. `ctx.data` (highest) - Set dynamically by previous steps
+2. `workflow.params` - Defined in the workflow YAML
+3. Config values (future) - From `.titan/config.toml`
+
+### Workflow Extension with Hooks
+
+Workflows can extend other workflows and inject steps at specific points using hooks:
+
+**Base workflow (from plugin):**
+
+```yaml
+# plugins/titan-plugin-github/workflows/create-pr.yaml
+name: "Create Pull Request"
+
+hooks:
+  - before_commit  # Hook injection points
+  - before_push
+  - after_pr
+
+steps:
+  - id: status
+    plugin: git
+    step: get_status
+
+  - hook: before_commit  # Steps can be injected here
+
+  - id: commit
+    plugin: git
+    step: create_commit
+```
+
+**Extended workflow (project-specific):**
+
+```yaml
+# .titan/workflows/create-pr.yaml
+extends: "plugin:github/create-pr"
+
+hooks:
+  before_commit:  # Inject steps at this hook
+    - id: lint
+      command: "npm run lint"
+    - id: format
+      command: "npm run prettier"
+```
+
+**Result:** The extended workflow executes `lint` and `format` at the `before_commit` hook point.
+
+### Core Components
+
+#### 1. WorkflowRegistry (`core/workflows/workflow_registry.py`)
+
+Central registry for discovering and managing workflows from all sources. Analogous to `PluginRegistry`.
 
 ```python
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
-from titan_cli.engine import WorkflowContextBuilder
 
-# 1. Initialize core dependencies
 config = TitanConfig()
-secrets = SecretManager()
 
-# 2. Build context with a fluent API
-# Use convenience auto-creation
-ctx = WorkflowContextBuilder(config, secrets).with_ui().with_ai().with_git().build()
+# List all available workflows
+workflows = config.workflows.list_available()
 
-# Use pure DI for testing
-mock_ai = MagicMock()
-mock_git = MagicMock()
-test_ctx = WorkflowContextBuilder(config, secrets).with_ai(ai_client=mock_ai).with_git(git_client=mock_git).build()
+# Get a specific workflow (fully resolved and parsed)
+workflow = config.workflows.get_workflow("create-pr")
+# Returns ParsedWorkflow with extends resolved and hooks merged
 ```
 
-#### 4. UI Architecture in Context
+**Key methods:**
+- `discover()` - Discover all workflows from all sources
+- `list_available()` - Get list of workflow names
+- `get_workflow(name)` - Get fully resolved ParsedWorkflow
 
-To maintain architectural purity, UI elements in the context are separated into two namespaces:
--   **`ctx.ui`**: Contains basic, pure Rich wrappers from `ui/components/`.
-    -   `ctx.ui.text`
-    -   `ctx.ui.panel`
-    -   `ctx.ui.table`
-    -   `ctx.ui.spacer`
--   **`ctx.views`**: Contains composite views from `ui/views/`.
-    -   `ctx.views.prompts`
-    -   `ctx.views.menu`
+#### 2. WorkflowExecutor (`engine/workflow_executor.py`)
 
-#### 5. The Orchestrator (`workflow.py`)
-
-The `BaseWorkflow` class takes a name and a list of steps. Its `.run()` method executes them sequentially, handling logging, error halting, and metadata merging automatically.
-
-### Example Usage
+Executes a `ParsedWorkflow` by iterating through steps, resolving plugin calls, and handling errors.
 
 ```python
-# 1. Define your steps
-def validate_user_step(ctx: WorkflowContext):
-    name = ctx.views.prompts.ask_text("Enter name:")
-    if not name:
-        return Error("Name is required.")
-    return Success("Name validated", metadata={"user_name": name})
+from titan_cli.engine.workflow_executor import WorkflowExecutor
+from titan_cli.engine.builder import WorkflowContextBuilder
 
-def greet_user_step(ctx: WorkflowContext):
-    user_name = ctx.get("user_name")
-    ctx.ui.text.success(f"Hello, {user_name}!")
-    return Success("Greeting displayed.")
+# 1. Get workflow from registry
+workflow = config.workflows.get_workflow("create-pr")
 
-# 2. Build the context
-config = TitanConfig()
-secrets = SecretManager()
-ctx = WorkflowContextBuilder(config, secrets).with_ui().build()
+# 2. Build execution context with dependency injection
+ctx = WorkflowContextBuilder(
+    plugin_registry=config.registry,
+    secrets=secrets,
+    ai_config=config.config.ai
+).with_ui().with_git().with_github().build()
 
-# 3. Define and run the workflow
-workflow = BaseWorkflow(
-    name="Greeting Workflow",
-    steps=[validate_user_step, greet_user_step]
+# 3. Execute workflow
+executor = WorkflowExecutor(config.registry)
+result = executor.execute(workflow, ctx)
+```
+
+#### 3. WorkflowContext (`engine/context.py`)
+
+Dependency injection container that holds everything a step needs:
+
+```python
+@dataclass
+class WorkflowContext:
+    # Core dependencies
+    config: TitanConfig
+    secrets: SecretManager
+
+    # Service clients (auto-loaded or injected)
+    ai: Optional[AIClient] = None
+    git: Optional[Any] = None     # GitClient from git plugin
+    github: Optional[Any] = None  # GitHubClient from github plugin
+
+    # UI components
+    ui: UIComponents              # text, panel, table, spacer
+    views: UIViews                # prompts, menu
+
+    # Shared data between steps
+    data: Dict[str, Any]          # Steps can read/write here
+```
+
+#### 4. WorkflowResult Types (`engine/results.py`)
+
+Every step must return one of three result types:
+
+```python
+from titan_cli.engine import Success, Error, Skip
+
+# Success - step completed
+return Success(
+    message="Commit created",
+    metadata={"commit_hash": "abc123"}  # Auto-merged into ctx.data
 )
-result = workflow.run(ctx)
 
-if is_error(result):
-    print(f"Workflow failed: {result.message}")
+# Error - step failed (halts workflow by default)
+return Error(
+    message="Failed to create commit",
+    exception=e  # Optional original exception
+)
+
+# Skip - step not applicable (not a failure)
+return Skip(
+    message="No changes to commit",
+    metadata={"clean": True}
+)
+```
+
+### Creating Plugin Steps
+
+Plugins can provide workflow steps by implementing `get_steps()`:
+
+```python
+# plugins/my-plugin/my_plugin/plugin.py
+class MyPlugin(TitanPlugin):
+    def get_steps(self) -> dict:
+        from .steps import my_step, another_step
+        return {
+            "my_step": my_step,
+            "another_step": another_step,
+        }
+
+# plugins/my-plugin/my_plugin/steps/my_step.py
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
+
+def my_step(ctx: WorkflowContext, **params) -> WorkflowResult:
+    """
+    Example plugin step.
+
+    Context Args (from workflow YAML params):
+        message (str): Message to display
+
+    Returns:
+        Success with metadata or Error
+    """
+    message = params.get("message", "Hello")
+
+    ctx.ui.text.info(f"Running my step: {message}")
+
+    # Access other services
+    if ctx.git:
+        status = ctx.git.get_status()
+
+    return Success(
+        "Step completed",
+        metadata={"output": "some value"}
+    )
+```
+
+### Example: Full Workflow Usage
+
+```yaml
+# .titan/workflows/deploy.yaml
+name: "Deploy to Staging"
+description: "Build, test, and deploy to staging environment"
+
+params:
+  environment: "staging"
+  skip_tests: false
+
+steps:
+  - id: install
+    name: "Install Dependencies"
+    command: "npm install"
+    on_error: fail
+
+  - id: test
+    name: "Run Tests"
+    command: "npm test"
+    on_error: "fail"  # Can use params: on_error: "${skip_tests ? 'continue' : 'fail'}"
+
+  - id: build
+    name: "Build Application"
+    command: "npm run build"
+
+  - id: deploy
+    name: "Deploy to Staging"
+    command: "./scripts/deploy.sh ${environment}"
+
+  - id: notify
+    name: "Notify Team"
+    plugin: slack
+    step: send_message
+    params:
+      channel: "#deployments"
+      message: "Deployed to ${environment}"
+```
+
+**Execute:**
+
+```bash
+titan workflow run deploy
+```
+
+### UI Output
+
+When executing, workflows provide rich terminal output:
+
+```
+Starting workflow: Create Pull Request
+Complete workflow for creating a PR with tests and linting
+
+Executing step: Check Git Status (git_status)
+✓ Step 'Check Git Status' completed: Working directory clean
+
+Executing step: Run Linter (lint)
+Running command: npm run lint
+✓ Step 'Run Linter' completed: Command executed successfully
+
+Executing step: Create Commit (create_commit)
+✓ Step 'Create Commit' completed: Committed abc123
+
+Executing step: Push to Remote (push)
+✓ Step 'Push to Remote' completed: Pushed to origin/feature-branch
+
+Executing step: Create Pull Request (create_pr)
+✓ Step 'Create Pull Request' completed: PR #123 created
+
+✓ Workflow 'Create Pull Request' completed successfully
 ```
 
 ---
@@ -1055,5 +1364,5 @@ renderer.render(menu)
 
 ---
 
-**Last Updated**: 2025-11-27
+**Last Updated**: 2025-12-04
 **Maintainers**: @finxeto, @raulpedrazaleon

@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Any
 import yaml
 from dataclasses import dataclass
 from copy import deepcopy
 
-if TYPE_CHECKING:
-    from titan_cli.core.config import TitanConfig
+from titan_cli.core.plugins.plugin_registry import PluginRegistry
 
-from .workflow_sources import WorkflowSource, ProjectWorkflowSource, WorkflowInfo
-from .workflow_exceptions import WorkflowNotFoundError
+from .workflow_sources import (
+    WorkflowSource,
+    ProjectWorkflowSource,
+    UserWorkflowSource,
+    SystemWorkflowSource,
+    PluginWorkflowSource,
+    WorkflowInfo,
+)
+from .workflow_exceptions import WorkflowNotFoundError, WorkflowError
+
 
 @dataclass
 class ParsedWorkflow:
@@ -18,11 +25,13 @@ class ParsedWorkflow:
     A fully parsed, resolved, and merged workflow, ready to be executed.
     This is the output of the registry's 'get_workflow' method.
     """
+
     name: str
     description: str
     source: str
     steps: List[Dict[str, Any]]
     params: Dict[str, Any]
+
 
 class WorkflowRegistry:
     """
@@ -33,16 +42,29 @@ class WorkflowRegistry:
     chains, merges configurations, and caches the final, parsed workflows.
     """
 
-    def __init__(self, config: 'TitanConfig'):
-        self.config = config
-        project_root = getattr(config, 'project_root', Path.cwd())
+    def __init__(self, project_root: Path, plugin_registry: PluginRegistry):
+        """
+        Initialize the WorkflowRegistry.
+
+        Args:
+            project_root: Root path of the current project
+            plugin_registry: Registry of installed plugins
+        """
+        self.project_root = project_root
+        self.plugin_registry = plugin_registry
+
+        # Define the base path for system workflows, assuming it's in the root of the package
+        # (e.g., titan_cli/workflows). The path is constructed relative to this file's location.
+        system_workflows_path = (
+            Path(__file__).resolve().parent.parent.parent / "workflows"
+        )
 
         # Workflow sources are listed in order of precedence (highest to lowest).
         self._sources: List[WorkflowSource] = [
             ProjectWorkflowSource(project_root / ".titan" / "workflows"),
-            # UserWorkflowSource will be added here
-            # SystemWorkflowSource will be added here
-            # PluginWorkflowSource will be added here
+            UserWorkflowSource(Path.home() / ".titan" / "workflows"),
+            SystemWorkflowSource(system_workflows_path),
+            PluginWorkflowSource(plugin_registry),
         ]
 
         # Cache for fully parsed workflows (similar to PluginRegistry._plugins).

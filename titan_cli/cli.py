@@ -243,9 +243,26 @@ def show_interactive_menu():
                     parsed_workflow = config.workflows.get_workflow(selected_workflow_name)
                     if parsed_workflow:
                         secrets = SecretManager(project_path=config.project_root)
-                        ctx_builder = WorkflowContextBuilder(config, secrets=secrets)
-                        ctx_builder.with_ui(text_renderer=text, prompts_renderer=prompts, spacer_renderer=spacer)
-                        
+
+                        # Build execution context with dependency injection
+                        from titan_cli.engine.ui_container import UIComponents
+                        from titan_cli.ui.components.panel import PanelRenderer
+                        from titan_cli.ui.components.table import TableRenderer
+
+                        ui = UIComponents(
+                            text=text,
+                            panel=PanelRenderer(),
+                            table=TableRenderer(),
+                            spacer=spacer
+                        )
+
+                        ctx_builder = WorkflowContextBuilder(
+                            plugin_registry=config.registry,
+                            secrets=secrets,
+                            ai_config=config.config.ai
+                        )
+                        ctx_builder.with_ui(ui=ui)
+
                         # Add registered plugins to context
                         for plugin_name in config.registry.list_installed():
                             plugin = config.registry.get_plugin(plugin_name)

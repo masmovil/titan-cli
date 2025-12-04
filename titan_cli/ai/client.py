@@ -4,7 +4,7 @@ AI Client - Main facade for AI functionality
 
 from typing import Optional, List
 
-from titan_cli.core.config import TitanConfig
+from titan_cli.core.models import AIConfig
 from titan_cli.core.secrets import SecretManager
 from .models import AIMessage, AIRequest, AIResponse
 from .providers import AIProvider, AnthropicProvider, GeminiProvider, OpenAIProvider
@@ -22,21 +22,21 @@ class AIClient:
     Main client for AI functionality.
 
     This facade simplifies AI usage by:
-    - Reading configuration from TitanConfig.
+    - Reading configuration from AIConfig.
     - Retrieving secrets from SecretManager.
     - Instantiating the correct AI provider.
     - Providing a simple `generate()` and `chat()` interface.
     """
 
-    def __init__(self, titan_config: TitanConfig, secrets: SecretManager):
+    def __init__(self, ai_config: AIConfig, secrets: SecretManager):
         """
         Initialize AI client.
 
         Args:
-            titan_config: The main TitanConfig object.
+            ai_config: The AI configuration.
             secrets: The SecretManager for handling API keys.
         """
-        self.titan_config = titan_config
+        self.ai_config = ai_config
         self.secrets = secrets
         self._provider: Optional[AIProvider] = None
 
@@ -54,11 +54,7 @@ class AIClient:
         if self._provider:
             return self._provider
 
-        ai_config = self.titan_config.config.ai
-        if not ai_config:
-            raise AIConfigurationError("AI configuration section is missing in config.")
-
-        provider_name = ai_config.provider
+        provider_name = self.ai_config.provider
         provider_class = PROVIDER_CLASSES.get(provider_name)
 
         if not provider_class:
@@ -75,9 +71,9 @@ class AIClient:
             raise AIConfigurationError(f"API key for {provider_name} not found.")
 
         # Get base_url from config if exists (for custom endpoints)
-        kwargs = {"api_key": api_key, "model": ai_config.model}
-        if ai_config.base_url:
-            kwargs["base_url"] = ai_config.base_url
+        kwargs = {"api_key": api_key, "model": self.ai_config.model}
+        if self.ai_config.base_url:
+            kwargs["base_url"] = self.ai_config.base_url
 
         self._provider = provider_class(**kwargs)
         return self._provider
@@ -99,14 +95,10 @@ class AIClient:
         Returns:
             AI response with generated content.
         """
-        ai_config = self.titan_config.config.ai
-        if not ai_config:
-            raise AIConfigurationError("AI configuration section is missing.")
-
         request = AIRequest(
             messages=messages,
-            max_tokens=max_tokens if max_tokens is not None else ai_config.max_tokens,
-            temperature=temperature if temperature is not None else ai_config.temperature,
+            max_tokens=max_tokens if max_tokens is not None else self.ai_config.max_tokens,
+            temperature=temperature if temperature is not None else self.ai_config.temperature,
         )
         return self.provider.generate(request)
 

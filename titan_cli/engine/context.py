@@ -2,41 +2,36 @@
 WorkflowContext - Dependency injection container for workflows.
 """
 
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 
 from titan_cli.core.secrets import SecretManager
 from .ui_container import UIComponents
 from .views_container import UIViews
 
-if TYPE_CHECKING:
-    from titan_cli.core.config import TitanConfig
-    from titan_cli.ai.client import AIClient
-
 
 @dataclass
 class WorkflowContext:
     """
     Context container for workflow execution.
-    
+
     Provides:
     - Dependency injection (clients, services)
     - Shared data storage between steps
     - UI components (organized by level)
-    - Access to configuration and secrets
-    
+    - Access to secrets
+
     UI Architecture:
         ctx.ui.text      # Basic components (Rich wrappers)
         ctx.ui.panel
         ctx.ui.table
         ctx.ui.spacer
-        
+
         ctx.views.prompts  # Composed views
         ctx.views.menu
     """
 
     # Core dependencies
-    config: TitanConfig
     secrets: SecretManager
 
     # UI (two-level architecture)
@@ -44,9 +39,9 @@ class WorkflowContext:
     views: Optional[UIViews] = None
 
     # Service clients (populated by builder)
-    ai: Optional["AIClient"] = None
-    git: Optional[Any] = None  # Use Any to avoid circular dependency on plugins
-    github: Optional[Any] = None # Use Any to avoid circular dependency on plugins
+    ai: Optional[Any] = None
+    git: Optional[Any] = None
+    github: Optional[Any] = None
 
     # Shared data storage between steps
     data: Dict[str, Any] = field(default_factory=dict)
