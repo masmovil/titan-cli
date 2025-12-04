@@ -380,8 +380,8 @@ class GitPluginConfig(BaseModel):
 
 class GitHubPluginConfig(BaseModel):
     """Configuration for GitHub plugin."""
-    repo_owner: str = Field(..., description="GitHub repository owner (user or organization).")
-    repo_name: str = Field(..., description="GitHub repository name.")
+    repo_owner: Optional[str] = Field(None, description="GitHub repository owner (user or organization). Auto-detected if not provided.")
+    repo_name: Optional[str] = Field(None, description="GitHub repository name. Auto-detected if not provided.")
     default_branch: Optional[str] = Field(None, description="Default branch to use (e.g., 'main', 'develop').")
     default_reviewers: List[str] = Field(default_factory=list, description="Default PR reviewers.")
     pr_template_path: Optional[str] = Field(None, description="Path to PR template file within the repository.")
