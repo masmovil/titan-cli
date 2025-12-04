@@ -7,6 +7,7 @@ from titan_cli.core.secrets import SecretManager
 from titan_cli.core.plugins.models import GitHubPluginConfig
 from .clients.github_client import GitHubClient 
 from .steps.create_pr_step import create_pr_step
+from .clients.github_client import GitHubError
 
 
 class GitHubPlugin(TitanPlugin):
@@ -35,11 +36,18 @@ class GitHubPlugin(TitanPlugin):
 
         # Validate configuration using Pydantic model
         validated_config = GitHubPluginConfig(**plugin_config_data)
+        
+        # Get the git client from the registry
+        git_plugin = config.registry.get_plugin("git")
+        if not git_plugin or not git_plugin.is_available():
+            raise GitHubError("The 'git' plugin is a required dependency and is not available.")
+        git_client = git_plugin.get_client()
 
-        # Initialize client with validated configuration
+        # Initialize client with validated configuration and git_client
         self._client = GitHubClient(
             config=validated_config,
-            secrets=secrets
+            secrets=secrets,
+            git_client=git_client
         )
 
     def _get_plugin_config(self, config: TitanConfig) -> dict:
@@ -61,13 +69,6 @@ class GitHubPlugin(TitanPlugin):
     def get_config_schema(self) -> dict:
         """Returns the JSON schema for the plugin's configuration."""
         return GitHubPluginConfig.model_json_schema()
-
-    def is_available(self) -> bool:
-        """
-        Checks if the GitHub CLI is installed and available.
-        """
-        import shutil
-        return shutil.which("gh") is not None and hasattr(self, '_client') and self._client is not None
 
     def is_available(self) -> bool:
         """

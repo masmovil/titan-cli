@@ -1,5 +1,6 @@
 # plugins/titan-plugin-git/titan_plugin_git/plugin.py
 import shutil
+from titan_cli.core.plugins.models import GitPluginConfig
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig # Needed for type hinting
 from titan_cli.core.secrets import SecretManager # Needed for type hinting
@@ -31,19 +32,18 @@ class GitPlugin(TitanPlugin):
         Reads config from:
             config.config.plugins["git"].config
         """
-        # Get plugin-specific configuration
-        plugin_config = self._get_plugin_config(config)
 
-        # Extract values with defaults
-        main_branch = plugin_config.get("main_branch", "main")
-        default_remote = plugin_config.get("default_remote", "origin")
-        protected_branches = plugin_config.get("protected_branches", ["main"])
+        # Get plugin-specific configuration data
+        plugin_config_data = self._get_plugin_config(config)
 
-        # Initialize client with configuration
+        # Validate configuration using Pydantic model
+        validated_config = GitPluginConfig(**plugin_config_data)
+
+        # Initialize client with validated configuration
         self._client = GitClient(
-            main_branch=main_branch,
-            default_remote=default_remote,
-            protected_branches=protected_branches
+            main_branch=validated_config.main_branch,
+            default_remote=validated_config.default_remote,
+            protected_branches=validated_config.protected_branches
         )
 
     def _get_plugin_config(self, config: TitanConfig) -> dict:

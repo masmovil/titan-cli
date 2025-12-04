@@ -7,30 +7,28 @@ Python client for GitHub operations using gh CLI.
 
 import json
 import subprocess
+import re
 from typing import List, Optional, Dict, Any
 
-from titan_cli.core.config import TitanConfig # Used for get_config
-from titan_cli.core.secrets import SecretManager # Used for get_config (implicitly)
-from titan_cli.core.plugins.models import GitHubPluginConfig # Need to import this for type hinting and defaults
+from titan_cli.core.secrets import SecretManager
+from titan_cli.core.plugins.models import GitHubPluginConfig
+from plugins.titan-plugin-git.titan_plugin_git.clients.git_client import GitClient # Import GitClient
 
 from ..models import (
     PullRequest,
     Review,
-    ReviewComment,
     PRSearchResult,
     PRMergeResult,
-    PRComment as GitHubPRComment, # Renamed to avoid clash with ReviewComment
-    User as GitHubUser # Renamed to avoid clash with Pydantic user
+    PRComment as GitHubPRComment,
 )
 from ..exceptions import (
     GitHubError,
     GitHubAuthenticationError,
     PRNotFoundError,
-    ReviewNotFoundError,
-    GitHubPermissionError,
     GitHubConfigurationError,
-    GitHubAPIError
+    GitHubAPIError,
 )
+from ..messages import msg
 
 
 class GitHubClient:
@@ -47,17 +45,14 @@ class GitHubClient:
         >>> print(pr.title)
     """
 
-    def __init__(
-        self,
-        config: GitHubPluginConfig,
-        secrets: SecretManager
-    ):
+    def __init__(self, config: GitHubPluginConfig, secrets: SecretManager, git_client: GitClient):
         """
         Initialize GitHub client
 
         Args:
             config: GitHub configuration
             secrets: SecretManager instance
+            git_client: Initialized GitClient instance
 
         Raises:
             GitHubAuthenticationError: If gh CLI is not authenticated
@@ -65,9 +60,20 @@ class GitHubClient:
         """
         self.config = config
         self.secrets = secrets
+        self.git_client = git_client
         self._check_auth()
         if not self.config.repo_owner or not self.config.repo_name:
             raise GitHubConfigurationError(msg.GitHubClient.config_repo_missing)
+
+        if not self.config.repo_owner or not self.config.repo_name:
+            # Try to auto-detect from git remote
+            try:
+                remote_url = subprocess.run(["git", "remote", "get-url", "origin"], ...)
+            # Parse owner/repo from URL
+            except:
+                raise GitHubConfigurationError(
+                    "repo_owner and repo_name must be configured"
+                )
 
     def _check_auth(self) -> None:
         """
@@ -77,15 +83,13 @@ class GitHubClient:
             GitHubAuthenticationError: If not authenticated
         """
         try:
-            subprocess.run(
-                ["gh", "auth", "status"],
-                capture_output=True,
-                check=True
-            )
+            subprocess.run(["gh", "auth", "status"], capture_output=True, check=True)
         except subprocess.CalledProcessError:
             raise GitHubAuthenticationError(msg.GitHubClient.not_authenticated)
 
-    def _run_gh_command(self, args: List[str], stdin_input: Optional[str] = None) -> str:
+    def _run_gh_command(
+        self, args: List[str], stdin_input: Optional[str] = None
+    ) -> str:
         """
         Run gh CLI command and return stdout
 
@@ -105,7 +109,7 @@ class GitHubClient:
                 input=stdin_input,
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
             )
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
@@ -121,6 +125,10 @@ class GitHubClient:
         if self.config.repo_owner and self.config.repo_name:
             return ["--repo", f"{self.config.repo_owner}/{self.config.repo_name}"]
         return []
+
+    def _get_repo_string(self) -> str:
+        """Get repo string in format 'owner/repo'"""
+        return f"{self.config.repo_owner}/{self.config.repo_name}"
 
     def get_pull_request(self, pr_number: int) -> PullRequest:
         """
@@ -143,15 +151,31 @@ class GitHubClient:
         try:
             # Get PR with all relevant fields
             fields = [
-                "number", "title", "body", "state", "author",
-                "baseRefName", "headRefName", "additions", "deletions",
-                "changedFiles", "mergeable", "isDraft", "createdAt",
-                "updatedAt", "mergedAt", "reviews", "labels"
+                "number",
+                "title",
+                "body",
+                "state",
+                "author",
+                "baseRefName",
+                "headRefName",
+                "additions",
+                "deletions",
+                "changedFiles",
+                "mergeable",
+                "isDraft",
+                "createdAt",
+                "updatedAt",
+                "mergedAt",
+                "reviews",
+                "labels",
             ]
 
             args = [
-                "pr", "view", str(pr_number),
-                "--json", ",".join(fields)
+                "pr",
+                "view",
+                str(pr_number),
+                "--json",
+                ",".join(fields),
             ] + self._get_repo_arg()
 
             output = self._run_gh_command(args)
@@ -160,10 +184,16 @@ class GitHubClient:
             return PullRequest.from_dict(data)
 
         except json.JSONDecodeError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to parse PR data: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to parse PR data: {e}"
+                )
+            )
         except GitHubAPIError as e:
             if "not found" in str(e).lower():
-                raise PRNotFoundError(msg.GitHubClient.pr_not_found.format(pr_number=pr_number))
+                raise PRNotFoundError(
+                    msg.GitHubClient.pr_not_found.format(pr_number=pr_number)
+                )
             raise
 
     def get_default_branch(self) -> str:
@@ -196,10 +226,7 @@ class GitHubClient:
         # Fallback to GitHub API
         try:
             # Get repository info including default branch
-            args = [
-                "repo", "view",
-                "--json", "defaultBranchRef"
-            ] + self._get_repo_arg()
+            args = ["repo", "view", "--json", "defaultBranchRef"] + self._get_repo_arg()
 
             output = self._run_gh_command(args)
             data = json.loads(output)
@@ -211,13 +238,16 @@ class GitHubClient:
             if branch_name:
                 return branch_name
 
-        except Exception:
+        except Exception as e:
+            # Log this, but don't re-raise immediately, try final fallback
             pass
 
-        # Final fallback
-        return "develop"
+        # Final fallback: use git plugin's main_branch
+        return self.git_client.main_branch
 
-    def list_pending_review_prs(self, max_results: int = 50, include_team_reviews: bool = False) -> PRSearchResult:
+    def list_pending_review_prs(
+        self, max_results: int = 50, include_team_reviews: bool = False
+    ) -> PRSearchResult:
         """
         List PRs pending your review in the current repository
 
@@ -242,11 +272,16 @@ class GitHubClient:
 
             # Get all PRs with review-requested: @me
             args = [
-                "pr", "list",
-                "--search", "review-requested: @me",
-                "--state", "open",
-                "--limit", str(max_results),
-                "--json", "number,title,author,updatedAt,labels,isDraft,reviewRequests"
+                "pr",
+                "list",
+                "--search",
+                "review-requested: @me",
+                "--state",
+                "open",
+                "--limit",
+                str(max_results),
+                "--json",
+                "number,title,author,updatedAt,labels,isDraft,reviewRequests",
             ] + self._get_repo_arg()
 
             output = self._run_gh_command(args)
@@ -265,13 +300,20 @@ class GitHubClient:
                 for pr in all_prs:
                     review_requests = pr.get("reviewRequests", [])
                     # Check if current user is in the review requests
-                    if any(req and req.get("login") == current_user for req in review_requests):
+                    if any(
+                        req and req.get("login") == current_user
+                        for req in review_requests
+                    ):
                         filtered_prs.append(pr)
 
                 return PRSearchResult.from_list(filtered_prs)
 
         except json.JSONDecodeError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to parse search results: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to parse search results: {e}"
+                )
+            )
 
     def list_my_prs(self, state: str = "open", max_results: int = 50) -> PRSearchResult:
         """
@@ -290,11 +332,16 @@ class GitHubClient:
         """
         try:
             args = [
-                "pr", "list",
-                "--author", " @me",
-                "--state", state,
-                "--limit", str(max_results),
-                "--json", "number,title,author,updatedAt,labels,isDraft,state"
+                "pr",
+                "list",
+                "--author",
+                " @me",
+                "--state",
+                state,
+                "--limit",
+                str(max_results),
+                "--json",
+                "number,title,author,updatedAt,labels,isDraft,state",
             ] + self._get_repo_arg()
 
             output = self._run_gh_command(args)
@@ -303,9 +350,15 @@ class GitHubClient:
             return PRSearchResult.from_list(data)
 
         except json.JSONDecodeError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to parse PR list: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to parse PR list: {e}"
+                )
+            )
 
-    def list_all_prs(self, state: str = "open", max_results: int = 50) -> PRSearchResult:
+    def list_all_prs(
+        self, state: str = "open", max_results: int = 50
+    ) -> PRSearchResult:
         """
         List all PRs in the repository
 
@@ -322,10 +375,14 @@ class GitHubClient:
         """
         try:
             args = [
-                "pr", "list",
-                "--state", state,
-                "--limit", str(max_results),
-                "--json", "number,title,author,updatedAt,labels,isDraft,state,reviewRequests"
+                "pr",
+                "list",
+                "--state",
+                state,
+                "--limit",
+                str(max_results),
+                "--json",
+                "number,title,author,updatedAt,labels,isDraft,state,reviewRequests",
             ] + self._get_repo_arg()
 
             output = self._run_gh_command(args)
@@ -334,7 +391,11 @@ class GitHubClient:
             return PRSearchResult.from_list(data)
 
         except json.JSONDecodeError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to parse PR list: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to parse PR list: {e}"
+                )
+            )
 
     def get_pr_diff(self, pr_number: int, file_path: Optional[str] = None) -> str:
         """
@@ -365,7 +426,9 @@ class GitHubClient:
 
         except GitHubAPIError as e:
             if "not found" in str(e).lower():
-                raise PRNotFoundError(msg.GitHubClient.pr_not_found.format(pr_number=pr_number))
+                raise PRNotFoundError(
+                    msg.GitHubClient.pr_not_found.format(pr_number=pr_number)
+                )
             raise
 
     def get_pr_files(self, pr_number: int) -> List[str]:
@@ -384,8 +447,11 @@ class GitHubClient:
         """
         try:
             args = [
-                "pr", "view", str(pr_number),
-                "--json", "files"
+                "pr",
+                "view",
+                str(pr_number),
+                "--json",
+                "files",
             ] + self._get_repo_arg()
 
             output = self._run_gh_command(args)
@@ -394,7 +460,11 @@ class GitHubClient:
             return [f["path"] for f in data.get("files", [])]
 
         except json.JSONDecodeError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to parse files: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to parse files: {e}"
+                )
+            )
 
     def checkout_pr(self, pr_number: int) -> str:
         """
@@ -425,7 +495,9 @@ class GitHubClient:
 
         except GitHubAPIError as e:
             if "not found" in str(e).lower():
-                raise PRNotFoundError(msg.GitHubClient.pr_not_found.format(pr_number=pr_number))
+                raise PRNotFoundError(
+                    msg.GitHubClient.pr_not_found.format(pr_number=pr_number)
+                )
             raise
 
     def add_comment(self, pr_number: int, body: str) -> None:
@@ -444,15 +516,20 @@ class GitHubClient:
         """
         try:
             args = [
-                "pr", "comment", str(pr_number),
-                "--body", body
+                "pr",
+                "comment",
+                str(pr_number),
+                "--body",
+                body,
             ] + self._get_repo_arg()
 
             self._run_gh_command(args)
 
         except GitHubAPIError as e:
             if "not found" in str(e).lower():
-                raise PRNotFoundError(msg.GitHubClient.pr_not_found.format(pr_number=pr_number))
+                raise PRNotFoundError(
+                    msg.GitHubClient.pr_not_found.format(pr_number=pr_number)
+                )
             raise
 
     def get_pr_commit_sha(self, pr_number: int) -> str:
@@ -470,8 +547,11 @@ class GitHubClient:
         """
         try:
             args = [
-                "pr", "view", str(pr_number),
-                "--json", "commits"
+                "pr",
+                "view",
+                str(pr_number),
+                "--json",
+                "commits",
             ] + self._get_repo_arg()
 
             output = self._run_gh_command(args)
@@ -479,14 +559,22 @@ class GitHubClient:
             commits = data.get("commits", [])
 
             if not commits:
-                raise GitHubAPIError(f"No commits found for PR #{pr_number}")
+                raise GitHubAPIError(
+                    msg.GitHubClient.api_error.format(
+                        error_msg=f"No commits found for PR #{pr_number}"
+                    )
+                )
 
             return commits[-1]["oid"]
 
         except (json.JSONDecodeError, KeyError, IndexError) as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to get commit SHA: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to get commit SHA: {e}"
+                )
+            )
 
-    def get_pr_reviews(self, pr_number: int) -> List['Review']:
+    def get_pr_reviews(self, pr_number: int) -> List["Review"]:
         """
         Get all reviews for a PR
 
@@ -502,23 +590,21 @@ class GitHubClient:
         """
         try:
             repo = self._get_repo_string()
-            result = self._run_gh_command([
-                "api",
-                f"/repos/{repo}/pulls/{pr_number}/reviews",
-                "--jq", "."
-            ])
+            result = self._run_gh_command(
+                ["api", f"/repos/{repo}/pulls/{pr_number}/reviews", "--jq", "."]
+            )
 
             reviews_data = json.loads(result)
             return [Review.from_dict(r) for r in reviews_data]
 
         except (json.JSONDecodeError, KeyError) as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to get PR reviews: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to get PR reviews: {e}"
+                )
+            )
 
-    def create_draft_review(
-        self,
-        pr_number: int,
-        payload: Dict[str, Any]
-    ) -> int:
+    def create_draft_review(self, pr_number: int, payload: Dict[str, Any]) -> int:
         """
         Create a draft review on a PR
 
@@ -543,32 +629,35 @@ class GitHubClient:
             args = [
                 "api",
                 f"/repos/{repo}/pulls/{pr_number}/reviews",
-                "--method", "POST",
-                "--input", "-"
+                "--method",
+                "POST",
+                "--input",
+                "-",
             ]
 
             # Run gh command with JSON payload via stdin
             import subprocess
+
             result = subprocess.run(
                 ["gh"] + args,
                 input=json.dumps(payload),
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
             )
 
             response = json.loads(result.stdout)
             return response["id"]
 
         except (json.JSONDecodeError, KeyError, subprocess.CalledProcessError) as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to create draft review: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to create draft review: {e}"
+                )
+            )
 
     def submit_review(
-        self,
-        pr_number: int,
-        review_id: int,
-        event: str,
-        body: str = ""
+        self, pr_number: int, review_id: int, event: str, body: str = ""
     ) -> None:
         """
         Submit a review
@@ -587,8 +676,10 @@ class GitHubClient:
             args = [
                 "api",
                 f"/repos/{repo}/pulls/{pr_number}/reviews/{review_id}/events",
-                "--method", "POST",
-                "-f", f"event={event}"
+                "--method",
+                "POST",
+                "-f",
+                f"event={event}",
             ]
 
             if body:
@@ -597,13 +688,13 @@ class GitHubClient:
             self._run_gh_command(args)
 
         except GitHubAPIError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to submit review: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to submit review: {e}"
+                )
+            )
 
-    def delete_review(
-        self,
-        pr_number: int,
-        review_id: int
-    ) -> None:
+    def delete_review(self, pr_number: int, review_id: int) -> None:
         """
         Delete a draft review
 
@@ -619,20 +710,25 @@ class GitHubClient:
             args = [
                 "api",
                 f"/repos/{repo}/pulls/{pr_number}/reviews/{review_id}",
-                "--method", "DELETE"
+                "--method",
+                "DELETE",
             ]
 
             self._run_gh_command(args)
 
         except GitHubAPIError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to delete review: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to delete review: {e}"
+                )
+            )
 
     def merge_pr(
         self,
         pr_number: int,
         merge_method: str = "squash",
         commit_title: Optional[str] = None,
-        commit_message: Optional[str] = None
+        commit_message: Optional[str] = None,
     ) -> PRMergeResult:
         """
         Merge a pull request
@@ -657,7 +753,9 @@ class GitHubClient:
             if merge_method not in valid_methods:
                 return PRMergeResult(
                     merged=False,
-                    message=f"Invalid merge method: {merge_method}. Must be one of: {', '.join(valid_methods)}"
+                    message=msg.GitHubClient.invalid_merge_method.format(
+                        method=merge_method, valid_methods=", ".join(valid_methods)
+                    ),
                 )
 
             # Build command
@@ -678,30 +776,23 @@ class GitHubClient:
             sha = None
             if result:
                 import re
-                sha_match = re.search(r'\(([a-f0-9]{40})\)', result)
+
+                sha_match = re.search(r"\(([a-f0-9]{40})\)", result)
                 if sha_match:
                     sha = sha_match.group(1)
                 else:
                     # Try short SHA (7 chars)
-                    sha_match = re.search(r'\(([a-f0-9]{7,})\)', result)
+                    sha_match = re.search(r"\(([a-f0-9]{7,})\)", result)
                     if sha_match:
                         sha = sha_match.group(1)
 
-            return PRMergeResult(
-                merged=True,
-                sha=sha,
-                message="Successfully merged"
-            )
+            return PRMergeResult(merged=True, sha=sha, message="Successfully merged")
 
         except GitHubAPIError as e:
-            return PRMergeResult(
-                merged=False,
-                message=str(e)
-            )
+            return PRMergeResult(merged=False, message=str(e))
         except Exception as e:
             return PRMergeResult(
-                merged=False,
-                message=msg.GitHubClient.unexpected_error.format(error=e)
+                merged=False, message=msg.GitHubClient.unexpected_error.format(error=e)
             )
 
     def get_current_user(self) -> str:
@@ -761,9 +852,15 @@ class GitHubClient:
             return comments
 
         except (json.JSONDecodeError, GitHubAPIError) as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to get PR comments: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to get PR comments: {e}"
+                )
+            )
 
-    def get_pending_comments(self, pr_number: int, author: Optional[str] = None) -> List[GitHubPRComment]:
+    def get_pending_comments(
+        self, pr_number: int, author: Optional[str] = None
+    ) -> List[GitHubPRComment]:
         """
         Get comments pending response from PR author
 
@@ -821,15 +918,21 @@ class GitHubClient:
             # This properly handles multiline text, special characters, and code blocks
             args = [
                 "api",
-                "-X", "POST",
+                "-X",
+                "POST",
                 f"/repos/{repo}/pulls/{pr_number}/comments/{comment_id}/replies",
-                "-F", "body= @-"
+                "-F",
+                "body= @-",
             ]
 
             self._run_gh_command(args, stdin_input=body)
 
         except GitHubAPIError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to reply to comment: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to reply to comment: {e}"
+                )
+            )
 
     def add_issue_comment(self, pr_number: int, body: str) -> None:
         """
@@ -848,23 +951,24 @@ class GitHubClient:
             # This properly handles multiline text, special characters, and code blocks
             args = [
                 "api",
-                "-X", "POST",
+                "-X",
+                "POST",
                 f"/repos/{repo}/issues/{pr_number}/comments",
-                "-F", "body= @-"
+                "-F",
+                "body= @-",
             ]
 
             self._run_gh_command(args, stdin_input=body)
 
         except GitHubAPIError as e:
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=f"Failed to add comment: {e}"))
+            raise GitHubAPIError(
+                msg.GitHubClient.api_error.format(
+                    error_msg=f"Failed to add comment: {e}"
+                )
+            )
 
     def create_pull_request(
-        self,
-        title: str,
-        body: str,
-        base: str,
-        head: str,
-        draft: bool = False
+        self, title: str, body: str, base: str, head: str, draft: bool = False
     ) -> Dict[str, Any]:
         """
         Create a pull request
@@ -896,11 +1000,16 @@ class GitHubClient:
         """
         try:
             args = [
-                "pr", "create",
-                "--base", base,
-                "--head", head,
-                "--title", title,
-                "--body", body
+                "pr",
+                "create",
+                "--base",
+                base,
+                "--head",
+                head,
+                "--title",
+                title,
+                "--body",
+                body,
             ]
 
             if draft:
@@ -914,15 +1023,17 @@ class GitHubClient:
 
             # Extract PR number from URL
             # URL format: https://github.com/owner/repo/pull/123
-            pr_number = int(pr_url.split('/')[-1])
+            pr_number = int(pr_url.split("/")[-1])
 
             return {
                 "number": pr_number,
                 "url": pr_url,
-                "state": "draft" if draft else "open"
+                "state": "draft" if draft else "open",
             }
 
         except ValueError as e:
-            raise GitHubAPIError(msg.GitHubClient.failed_to_parse_pr_number.format(url=pr_url))
+            raise GitHubAPIError(
+                msg.GitHubClient.failed_to_parse_pr_number.format(url=pr_url)
+            )
         except GitHubAPIError as e:
             raise GitHubAPIError(msg.GitHubClient.pr_creation_failed.format(error=e))

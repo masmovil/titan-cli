@@ -1,8 +1,9 @@
 # plugins/titan-plugin-github/titan_plugin_github/steps/create_pr_step.py
+from typing import Union
 from titan_cli.engine import WorkflowContext, Success, Error
 from ..exceptions import GitHubAPIError
 
-def create_pr_step(ctx: WorkflowContext) -> Success or Error:
+def create_pr_step(ctx: WorkflowContext) -> Union[Success, Error]:
     """
     Creates a GitHub pull request.
 
