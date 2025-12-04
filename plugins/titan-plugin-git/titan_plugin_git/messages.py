@@ -35,4 +35,44 @@ class Messages:
         git_client_init_warning: str = "Warning: GitPlugin could not initialize GitClient: {e}"
         git_client_not_available: str = "GitPlugin not initialized or Git CLI not available."
 
+    class Git:
+        """Git operations messages"""
+
+        # Commits
+        COMMITTING = "Committing changes..."
+        COMMIT_SUCCESS = "Committed: {sha}"
+        COMMIT_FAILED = "Commit failed: {error}"
+        NO_CHANGES = "No changes to commit"
+
+        # Branches
+        BRANCH_CREATING = "Creating branch: {name}"
+        BRANCH_CREATED = "Branch created: {name}"
+        BRANCH_SWITCHING = "Switching to branch: {name}"
+        BRANCH_SWITCHED = "Switched to branch: {name}"
+        BRANCH_DELETING = "Deleting branch: {name}"
+        BRANCH_DELETED = "Branch deleted: {name}"
+        BRANCH_EXISTS = "Branch already exists: {name}"
+        BRANCH_NOT_FOUND = "Branch not found: {name}"
+        BRANCH_INVALID_NAME = "Invalid branch name: {name}"
+        BRANCH_PROTECTED = "Cannot delete protected branch: {branch}"
+
+
+        # Push/Pull
+        PUSHING = "Pushing to remote..."
+        PUSH_SUCCESS = "Pushed to {remote}/{branch}"
+        PUSH_FAILED = "Push failed: {error}"
+        PULLING = "Pulling from remote..."
+        PULL_SUCCESS = "Pulled from {remote}/{branch}"
+        PULL_FAILED = "Pull failed: {error}"
+
+        # Status
+        STATUS_CLEAN = "Working directory clean"
+        STATUS_DIRTY = "Uncommitted changes detected"
+
+        # Repository
+        NOT_A_REPO = "Not a git repository"
+        REPO_INIT = "Initializing git repository..."
+        REPO_INITIALIZED = "Git repository initialized"
+
+
 msg = Messages()

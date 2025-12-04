@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.plugins.models import GitHubPluginConfig
-from titan_plugin_git.clients.git_client import GitClient # Import GitClient
+from titan_plugin_git.clients.git_client import GitClient
 
 from ..models import (
     PullRequest,
@@ -83,7 +83,7 @@ class GitHubClient:
         try:
             subprocess.run(["gh", "auth", "status"], capture_output=True, check=True)
         except subprocess.CalledProcessError:
-            raise GitHubAuthenticationError(msg.GitHubClient.not_authenticated)
+            raise GitHubAuthenticationError(msg.GitHub.not_authenticated)
 
     def _run_gh_command(
         self, args: List[str], stdin_input: Optional[str] = None
@@ -112,11 +112,11 @@ class GitHubClient:
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.strip() if e.stderr else str(e)
-            raise GitHubAPIError(msg.GitHubClient.api_error.format(error_msg=error_msg))
+            raise GitHubAPIError(msg.GitHub.api_error.format(error_msg=error_msg))
         except FileNotFoundError:
-            raise GitHubError(msg.GitHubClient.cli_not_found)
+            raise GitHubError(msg.GitHub.cli_not_found)
         except Exception as e:
-            raise GitHubError(msg.GitHubClient.unexpected_error.format(error=e))
+            raise GitHubError(msg.GitHub.unexpected_error.format(error=e))
 
     def _get_repo_arg(self) -> List[str]:
         """Get --repo argument for gh commands"""
@@ -183,14 +183,14 @@ class GitHubClient:
 
         except json.JSONDecodeError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to parse PR data: {e}"
                 )
             )
         except GitHubAPIError as e:
             if "not found" in str(e).lower():
                 raise PRNotFoundError(
-                    msg.GitHubClient.pr_not_found.format(pr_number=pr_number)
+                    msg.GitHub.pr_not_found.format(pr_number=pr_number)
                 )
             raise
 
@@ -308,7 +308,7 @@ class GitHubClient:
 
         except json.JSONDecodeError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to parse search results: {e}"
                 )
             )
@@ -349,7 +349,7 @@ class GitHubClient:
 
         except json.JSONDecodeError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to parse PR list: {e}"
                 )
             )
@@ -390,7 +390,7 @@ class GitHubClient:
 
         except json.JSONDecodeError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to parse PR list: {e}"
                 )
             )
@@ -425,7 +425,7 @@ class GitHubClient:
         except GitHubAPIError as e:
             if "not found" in str(e).lower():
                 raise PRNotFoundError(
-                    msg.GitHubClient.pr_not_found.format(pr_number=pr_number)
+                    msg.GitHub.pr_not_found.format(pr_number=pr_number)
                 )
             raise
 
@@ -459,7 +459,7 @@ class GitHubClient:
 
         except json.JSONDecodeError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to parse files: {e}"
                 )
             )
@@ -494,7 +494,7 @@ class GitHubClient:
         except GitHubAPIError as e:
             if "not found" in str(e).lower():
                 raise PRNotFoundError(
-                    msg.GitHubClient.pr_not_found.format(pr_number=pr_number)
+                    msg.GitHub.pr_not_found.format(pr_number=pr_number)
                 )
             raise
 
@@ -526,7 +526,7 @@ class GitHubClient:
         except GitHubAPIError as e:
             if "not found" in str(e).lower():
                 raise PRNotFoundError(
-                    msg.GitHubClient.pr_not_found.format(pr_number=pr_number)
+                    msg.GitHub.pr_not_found.format(pr_number=pr_number)
                 )
             raise
 
@@ -558,7 +558,7 @@ class GitHubClient:
 
             if not commits:
                 raise GitHubAPIError(
-                    msg.GitHubClient.api_error.format(
+                    msg.GitHub.api_error.format(
                         error_msg=f"No commits found for PR #{pr_number}"
                     )
                 )
@@ -567,7 +567,7 @@ class GitHubClient:
 
         except (json.JSONDecodeError, KeyError, IndexError) as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to get commit SHA: {e}"
                 )
             )
@@ -597,7 +597,7 @@ class GitHubClient:
 
         except (json.JSONDecodeError, KeyError) as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to get PR reviews: {e}"
                 )
             )
@@ -649,7 +649,7 @@ class GitHubClient:
 
         except (json.JSONDecodeError, KeyError, subprocess.CalledProcessError) as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to create draft review: {e}"
                 )
             )
@@ -687,7 +687,7 @@ class GitHubClient:
 
         except GitHubAPIError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to submit review: {e}"
                 )
             )
@@ -716,7 +716,7 @@ class GitHubClient:
 
         except GitHubAPIError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to delete review: {e}"
                 )
             )
@@ -751,7 +751,7 @@ class GitHubClient:
             if merge_method not in valid_methods:
                 return PRMergeResult(
                     merged=False,
-                    message=msg.GitHubClient.invalid_merge_method.format(
+                    message=msg.GitHub.invalid_merge_method.format(
                         method=merge_method, valid_methods=", ".join(valid_methods)
                     ),
                 )
@@ -790,7 +790,7 @@ class GitHubClient:
             return PRMergeResult(merged=False, message=str(e))
         except Exception as e:
             return PRMergeResult(
-                merged=False, message=msg.GitHubClient.unexpected_error.format(error=e)
+                merged=False, message=msg.GitHub.unexpected_error.format(error=e)
             )
 
     def get_current_user(self) -> str:
@@ -851,7 +851,7 @@ class GitHubClient:
 
         except (json.JSONDecodeError, GitHubAPIError) as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to get PR comments: {e}"
                 )
             )
@@ -927,7 +927,7 @@ class GitHubClient:
 
         except GitHubAPIError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to reply to comment: {e}"
                 )
             )
@@ -960,7 +960,7 @@ class GitHubClient:
 
         except GitHubAPIError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.api_error.format(
+                msg.GitHub.api_error.format(
                     error_msg=f"Failed to add comment: {e}"
                 )
             )
@@ -1031,7 +1031,7 @@ class GitHubClient:
 
         except ValueError as e:
             raise GitHubAPIError(
-                msg.GitHubClient.failed_to_parse_pr_number.format(url=pr_url)
+                msg.GitHub.failed_to_parse_pr_number.format(url=pr_url)
             )
         except GitHubAPIError as e:
-            raise GitHubAPIError(msg.GitHubClient.pr_creation_failed.format(error=e))
+            raise GitHubAPIError(msg.GitHub.pr_creation_failed.format(error=e))
