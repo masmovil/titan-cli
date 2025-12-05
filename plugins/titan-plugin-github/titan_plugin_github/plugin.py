@@ -7,6 +7,7 @@ from titan_cli.core.secrets import SecretManager
 from titan_cli.core.plugins.models import GitHubPluginConfig
 from .clients.github_client import GitHubClient
 from .steps.create_pr_step import create_pr_step
+from .steps.review_pr_step import review_pr_step, analyze_pr_security_step, analyze_pr_performance_step
 from .clients.github_client import GitHubError
 from .utils import detect_github_repo
 
@@ -108,4 +109,7 @@ class GitHubPlugin(TitanPlugin):
         """
         return {
             "create_pr": create_pr_step,
+            "review_pr": review_pr_step,
+            "analyze_pr_security": analyze_pr_security_step,
+            "analyze_pr_performance": analyze_pr_performance_step,
         }
