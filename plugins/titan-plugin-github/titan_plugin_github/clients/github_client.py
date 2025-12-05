@@ -25,7 +25,6 @@ from ..exceptions import (
     GitHubError,
     GitHubAuthenticationError,
     PRNotFoundError,
-    GitHubConfigurationError,
     GitHubAPIError,
 )
 from ..messages import msg

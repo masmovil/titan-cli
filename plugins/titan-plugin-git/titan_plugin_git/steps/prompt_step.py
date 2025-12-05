@@ -7,8 +7,19 @@ def prompt_for_commit_message_step(ctx: WorkflowContext) -> WorkflowResult:
     Prompts the user for a commit message and saves it to the context.
     Skips if the working directory is clean.
 
-    Sets:
-        ctx.data['commit_message']: The message entered by the user.
+    Requires:
+        ctx.views.prompts: A PromptsRenderer instance.
+
+    Inputs (from ctx.data):
+        git_status (GitStatus): The git status object, used to check if the working directory is clean.
+
+    Outputs (saved to ctx.data):
+        commit_message (str): The message entered by the user.
+    
+    Returns:
+        Success: If the commit message was captured.
+        Error: If the user cancels or the message is empty.
+        Skip: If the working directory is clean.
     """
     # Skip if there's nothing to commit
     git_status = ctx.data.get("git_status")

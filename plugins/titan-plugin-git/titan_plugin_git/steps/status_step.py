@@ -9,17 +9,17 @@ from ..messages import msg
 
 def get_git_status_step(ctx: WorkflowContext) -> WorkflowResult:
     """
-    A workflow step that retrieves the current git status.
-    
+    Retrieves the current git status and saves it to the context.
+
     Requires:
         ctx.git: An initialized GitClient.
-    
-    Sets:
-        ctx.data['git_status']: The GitStatus object.
-    
+
+    Outputs (saved to ctx.data):
+        git_status (GitStatus): The full git status object, which includes the `is_clean` flag.
+
     Returns:
         Success: If the status was retrieved successfully.
-        Error: If the GitClient is not available.
+        Error: If the GitClient is not available or the git command fails.
     """
     if not ctx.git:
         return Error(msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE)

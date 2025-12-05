@@ -4,10 +4,17 @@ from titan_plugin_git.messages import msg
 
 def get_current_branch_step(ctx: WorkflowContext) -> WorkflowResult:
     """
-    Gets the current git branch and saves it to the context as 'pr_head_branch'.
+    Retrieves the current git branch name and saves it to the context.
 
-    Sets:
-        ctx.data['pr_head_branch']: The name of the current branch.
+    Requires:
+        ctx.git: An initialized GitClient.
+
+    Outputs (saved to ctx.data):
+        pr_head_branch (str): The name of the current branch, to be used as the head branch for a PR.
+
+    Returns:
+        Success: If the current branch was retrieved successfully.
+        Error: If the GitClient is not available or the git command fails.
     """
     if not ctx.git:
         return Error(msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE)
@@ -23,10 +30,17 @@ def get_current_branch_step(ctx: WorkflowContext) -> WorkflowResult:
 
 def get_base_branch_step(ctx: WorkflowContext) -> WorkflowResult:
     """
-    Gets the configured main/base branch and saves it to the context as 'pr_base_branch'.
+    Retrieves the configured main/base branch name and saves it to the context.
 
-    Sets:
-        ctx.data['pr_base_branch']: The name of the base branch.
+    Requires:
+        ctx.git: An initialized GitClient.
+
+    Outputs (saved to ctx.data):
+        pr_base_branch (str): The name of the base branch, to be used as the base branch for a PR.
+
+    Returns:
+        Success: If the base branch was retrieved successfully.
+        Error: If the GitClient is not available or the git command fails.
     """
     if not ctx.git:
         return Error(msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE)

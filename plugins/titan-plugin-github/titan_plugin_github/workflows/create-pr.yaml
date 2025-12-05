@@ -1,15 +1,9 @@
 name: "Create Pull Request"
 description: "Generic PR creation workflow"
-source: "plugin:github"
 
 params:
   base_branch: "main"
   draft: false
-
-hooks:
-  - before_commit
-  - before_push
-  - after_pr
 
 steps:
   - id: git_status
