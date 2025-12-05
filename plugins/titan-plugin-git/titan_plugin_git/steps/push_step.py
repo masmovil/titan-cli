@@ -17,7 +17,7 @@ def create_git_push_step(ctx: WorkflowContext) -> WorkflowResult:
         ctx.git: An initialized GitClient.
 
     Outputs (saved to ctx.data):
-        (none)
+        pr_head_branch (str): The name of the branch that was pushed.
 
     Returns:
         Success: If the push was successful.
@@ -43,7 +43,8 @@ def create_git_push_step(ctx: WorkflowContext) -> WorkflowResult:
         ctx.git.push(remote=remote_to_use, branch=branch_to_use, set_upstream=set_upstream)
         
         return Success(
-            message=msg.Git.PUSH_SUCCESS.format(remote=remote_to_use, branch=branch_to_use)
+            message=msg.Git.PUSH_SUCCESS.format(remote=remote_to_use, branch=branch_to_use),
+            metadata={"pr_head_branch": branch_to_use}
         )
     except GitCommandError as e:
         return Error(msg.Steps.Push.PUSH_FAILED.format(e=e))

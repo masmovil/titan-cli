@@ -32,16 +32,6 @@ steps:
     plugin: git
     step: push
 
-  - id: get_base_branch
-    name: "Get Base Branch"
-    plugin: git
-    step: get_base_branch
-  
-  - id: get_head_branch
-    name: "Get Head Branch"
-    plugin: git
-    step: get_current_branch
-
   - id: prompt_pr_title
     name: "Prompt for PR Title"
     plugin: github
