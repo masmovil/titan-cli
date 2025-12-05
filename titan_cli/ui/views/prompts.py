@@ -5,7 +5,12 @@ Class-based, theme-aware wrapper for rich.prompt. This is considered a 'view'
 because it is a composite component that uses other components (like TextRenderer)
 to display its own UI (e.g., error messages).
 """
-
+import os
+import sys
+import subprocess
+import tempfile
+from pathlib import Path
+import platform
 from typing import Optional, List, Callable, Tuple
 from rich.console import Console
 from rich.prompt import Prompt, Confirm, IntPrompt
@@ -71,6 +76,118 @@ class PromptsRenderer:
                 continue
 
             return value
+
+    def ask_multiline(
+        self, 
+        prompt: str,
+        default: str = "",
+        template: Optional[str] = None
+    ) -> str:
+        """
+        Open external editor for multi-line input (cross-platform).
+        
+        Falls back to inline input if editor fails.
+        """
+        self.text.info(prompt)
+
+        # Intentar con editor externo
+        try:
+            return self._ask_multiline_editor(default or template or "")
+        except Exception as e:
+            # Fallback a input inline
+            self.text.warning(f"Could not open editor: {e}")
+            return self._ask_multiline_inline(default or template or "")
+
+    def _get_editor(self) -> str:
+        """Get appropriate editor for current platform."""
+        # 1. User preference
+        if editor := os.environ.get('EDITOR') or os.environ.get('VISUAL'):
+            return editor
+
+        # 2. Platform defaults
+        system = platform.system()
+
+        if system == 'Windows':
+            # Intentar editores comunes en Windows
+            for editor in ['code --wait', 'notepad++', 'notepad']:
+                try:
+                    # Check si existe
+                    cmd = editor.split()[0]
+                    if system == 'Windows':
+                        cmd += '.exe' if not cmd.endswith('.exe') else ''
+
+                    # Verificar que existe
+                    subprocess.run(['where' if system == 'Windows' else 'which', cmd],
+                                   capture_output=True, check=True)
+                    return editor
+                except subprocess.CalledProcessError:
+                    continue
+
+            # Fallback final
+            return 'notepad'
+
+        elif system == 'Darwin':  # macOS
+            # Preferir nano por ser más user-friendly
+            return 'nano'
+
+        else:  # Linux y otros
+            return 'nano'
+
+    def _ask_multiline_editor(self, content: str) -> str:
+        """Open external editor."""
+        editor_cmd = self._get_editor()
+
+        # Create temp file
+        with tempfile.NamedTemporaryFile(
+            mode='w+',
+            suffix='.md',
+            delete=False,
+            encoding='utf-8'
+        ) as tf:
+            temp_path = tf.name
+            if content:
+                tf.write(content)
+                tf.flush()
+
+        try:
+            self.text.body(f"Opening {editor_cmd}... (save and close to continue)", style="dim")
+
+            # Ejecutar editor
+            if platform.system() == 'Windows':
+                # Windows requiere manejo especial
+                subprocess.run(editor_cmd, shell=True, check=True)
+            else:
+                # Unix-like
+                subprocess.run(editor_cmd.split() + [temp_path], check=True)
+
+            # Leer resultado
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                result = f.read().strip()
+
+            return result
+
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    def _ask_multiline_inline(self, default: str = "") -> str:
+        """Fallback: multi-line input in terminal."""
+        self.text.body("(Press Ctrl+D on Unix / Ctrl+Z then Enter on Windows to finish):", style="dim")
+
+        lines = []
+        if default:
+            lines = default.split('\n')
+            # Mostrar contenido por defecto
+            for line in lines:
+                self.console.print(f"  {line}", style="dim")
+
+        try:
+            while True:
+                line = input()
+                lines.append(line)
+        except EOFError:
+            pass
+
+        return '\n'.join(lines).strip()
 
     def ask_confirm(
         self,

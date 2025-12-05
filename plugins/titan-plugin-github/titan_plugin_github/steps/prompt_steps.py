@@ -17,8 +17,7 @@ def prompt_for_pr_title_step(ctx: WorkflowContext, **kwargs) -> WorkflowResult:
 def prompt_for_pr_body_step(ctx: WorkflowContext, **kwargs) -> WorkflowResult:
     """Prompts the user for a PR body and saves it to context."""
     try:
-        ctx.ui.text.info(msg.Prompts.ENTER_PR_BODY_INFO)
-        body = ctx.views.prompts.ask_text(msg.Prompts.ENTER_PR_BODY)
+        body = ctx.views.prompts.ask_multiline(msg.Prompts.ENTER_PR_BODY)
         # Body can be empty
         return Success("PR body captured", metadata={"pr_body": body})
     except (KeyboardInterrupt, EOFError):
