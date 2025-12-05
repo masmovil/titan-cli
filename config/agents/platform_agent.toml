@@ -1,0 +1,66 @@
+# Platform Agent Configuration
+# Uses TAP (Titan Adapter Protocol) with AI-driven tool selection
+
+[agent]
+name = "platform_agent"
+description = "Platform engineering agent for Git, GitHub, and development workflows"
+version = "1.0.0"
+
+# TAP Configuration
+[tap]
+# Which AI provider adapter to use (from config/tap/adapters.toml)
+provider = "anthropic"
+
+# Tools available to the agent (TAP protocol)
+[[tap.tools]]
+name = "get_git_status"
+description = "Gets the current Git repository status (modified files, branch, etc.)"
+enabled = true
+
+[[tap.tools]]
+name = "analyze_git_diff"
+description = "Analyzes git diff to understand what changed in the code"
+enabled = true
+
+[[tap.tools]]
+name = "create_commit"
+description = "Creates a Git commit with a conventional commit message"
+enabled = true
+
+# AI Prompts
+[prompts]
+system = """
+You are a Platform Engineering expert assistant.
+
+Your role is to automate and streamline development workflows including:
+- Git repository management and commits
+- GitHub PR and issue management
+- CI/CD automation
+- Development tooling
+
+For Git commits, always use conventional commit format:
+type(scope): description
+
+Types: feat, fix, docs, style, refactor, test, chore
+
+WORKFLOW:
+1. Use get_git_status to see what files have changed
+2. Use analyze_git_diff to understand the nature of the changes
+3. Use create_commit to create the commit with an appropriate message
+
+RULES:
+- Always follow conventional commit format
+- Be concise but descriptive
+- Group related changes when possible
+- Ask for clarification if changes are unclear
+"""
+
+user_template = """
+Analyze the current Git changes and create appropriate commit(s).
+
+Context: {context}
+"""
+
+# Workflow Configuration (optional - for non-TAP fallback)
+[workflow]
+steps = ["get_git_status_step", "create_git_commit_step"]
