@@ -46,8 +46,9 @@ class MenuRenderer:
 
         counter = 1
         for category in menu.categories:
-            self.text.body(f"{category.emoji} {category.name}", style="bold")
-            self.spacer.line()
+            if category.name: # Only print category header if name is not empty
+                self.text.body(f"{category.emoji} {category.name}", style="bold")
+                self.spacer.line()
             for item in category.items:
                 # Use styled_text for multi-styled line
                 self.text.styled_text(
