@@ -144,9 +144,12 @@ DESCRIPTION:
         # Clean up title (remove quotes if present)
         title = title.strip('"').strip("'")
 
-        # Validate title length
-        if len(title) > 72:
-            title = title[:69] + "..."
+        # Debug: Check if description is empty
+        if not description or description == "":
+            if ctx.ui:
+                ctx.ui.text.warning(f"⚠️  AI generated an empty description. Full response was:")
+                ctx.ui.text.body(ai_response[:500])
+            return Error("AI generated an empty PR description")
 
         # Show preview to user
         if ctx.ui:
@@ -155,6 +158,11 @@ DESCRIPTION:
             # Show and confirm title
             ctx.ui.text.subtitle("📝 AI Generated PR Title:")
             ctx.ui.text.body(f"  {title}", style="bold cyan")
+
+            # Warn if title is too long
+            if len(title) > 72:
+                ctx.ui.text.warning(f"  ⚠️  Title is {len(title)} chars (recommended: ≤72)")
+
             ctx.ui.spacer.small()
 
             use_title = ctx.views.prompts.ask_confirm(

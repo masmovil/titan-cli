@@ -98,16 +98,16 @@ Return ONLY the commit message, nothing else."""
         # Clean up the message (remove quotes if present)
         commit_message = commit_message.strip('"').strip("'").strip()
 
-        # Validate message length
-        if len(commit_message) > 72:
-            # Try to truncate intelligently
-            commit_message = commit_message[:69] + "..."
-
         # Show preview to user
         if ctx.ui:
             ctx.ui.spacer.small()
             ctx.ui.text.subtitle("📝 AI Generated Commit Message:")
             ctx.ui.text.body(f"  {commit_message}", style="bold cyan")
+
+            # Warn if message is too long
+            if len(commit_message) > 72:
+                ctx.ui.text.warning(f"  ⚠️  Message is {len(commit_message)} chars (recommended: ≤72)")
+
             ctx.ui.spacer.small()
 
             # Ask user if they want to use it
