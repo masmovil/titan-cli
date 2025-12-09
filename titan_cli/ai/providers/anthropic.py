@@ -78,12 +78,18 @@ class AnthropicProvider(AIProvider):
 
             response = self.client.messages.create(**api_params)
 
+            # Calculate total tokens
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            total_tokens = input_tokens + output_tokens
+
             return AIResponse(
                 content=response.content[0].text,
                 model=response.model,
                 usage={
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens
                 },
                 finish_reason=response.stop_reason
             )

@@ -1,6 +1,5 @@
 # plugins/titan-plugin-git/titan_plugin_git/steps/handle_changes_step.py
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
-from titan_plugin_git.exceptions import GitClientError, GitCommandError
 from titan_plugin_git.messages import msg
 
 
@@ -51,60 +50,25 @@ def handle_uncommitted_changes_step(ctx: WorkflowContext) -> WorkflowResult:
         summary=', '.join(changes_summary)
     ))
 
-    # Prompt user for action
+    # Generate AI commit message directly (no menu)
     try:
-        choices = [
-            ("commit", msg.Steps.HandleChanges.CHOICE_MANUAL_COMMIT),
-            ("stash", msg.Steps.HandleChanges.CHOICE_STASH),
-            ("cancel", msg.Steps.HandleChanges.CHOICE_CANCEL)
-        ]
-
-        # If AI is available, offer AI commit message option
+        # If AI available, generate commit message automatically
         if ctx.ai:
-            choices.insert(0, ("ai_commit", msg.Steps.HandleChanges.CHOICE_AI_COMMIT))
+            # Get uncommitted diff
+            diff = ctx.git.get_uncommitted_diff()
+            if not diff:
+                return Error(msg.Steps.HandleChanges.NO_CHANGES_TO_COMMIT)
 
-        action = ctx.views.prompts.ask_choice(
-            msg.Steps.HandleChanges.PROMPT_HOW_TO_HANDLE,
-            choices
-        )
+            # Build AI prompt
+            all_files = git_status.modified_files + git_status.untracked_files + git_status.staged_files
+            files_summary = "\n".join([f"  - {f}" for f in all_files]) if all_files else "(checking diff)"
 
-        if action == "cancel":
-            return Error(msg.Steps.HandleChanges.USER_CANCELLED)
+            # Limit diff size to avoid token overflow
+            diff_preview = diff[:4000] if len(diff) > 4000 else diff
+            if len(diff) > 4000:
+                diff_preview += "\n\n... (diff truncated for brevity)"
 
-        elif action == "stash":
-            # Stash changes
-            try:
-                stash_message = msg.Steps.HandleChanges.STASH_MESSAGE_TEMPLATE
-                success = ctx.git.stash_push(message=stash_message)
-                if success:
-                    ctx.ui.text.success(msg.Steps.HandleChanges.STASH_SUCCESS)
-                    return Success(
-                        msg.Steps.HandleChanges.STASH_RESULT_SUCCESS,
-                        metadata={"stashed_changes": True, "stash_message": stash_message}
-                    )
-                else:
-                    return Error(msg.Steps.HandleChanges.STASH_FAILED)
-            except (GitClientError, GitCommandError) as e:
-                return Error(msg.Steps.HandleChanges.STASH_ERROR.format(e=e))
-
-        elif action == "ai_commit":
-            # Generate AI commit message and commit
-            try:
-                # Get uncommitted diff
-                diff = ctx.git.get_uncommitted_diff()
-                if not diff:
-                    return Error(msg.Steps.HandleChanges.NO_CHANGES_TO_COMMIT)
-
-                # Build AI prompt
-                all_files = git_status.modified_files + git_status.untracked_files + git_status.staged_files
-                files_summary = "\n".join([f"  - {f}" for f in all_files]) if all_files else "(checking diff)"
-
-                # Limit diff size to avoid token overflow
-                diff_preview = diff[:4000] if len(diff) > 4000 else diff
-                if len(diff) > 4000:
-                    diff_preview += "\n\n... (diff truncated for brevity)"
-
-                prompt = f"""Analyze these code changes and generate a conventional commit message.
+            prompt = f"""Analyze these code changes and generate a conventional commit message.
 
 ## Changed Files ({len(all_files)} total)
 {files_summary}
@@ -128,63 +92,55 @@ Examples:
 
 Return ONLY the commit message, nothing else."""
 
-                ctx.ui.text.info(msg.Steps.HandleChanges.AI_GENERATING)
+            ctx.ui.text.info(msg.Steps.HandleChanges.AI_GENERATING)
 
-                # Call AI
-                from titan_cli.ai.models import AIMessage
-                messages = [AIMessage(role="user", content=prompt)]
-                response = ctx.ai.generate(messages, max_tokens=150, temperature=0.7)
+            # Call AI
+            from titan_cli.ai.models import AIMessage
+            messages = [AIMessage(role="user", content=prompt)]
+            response = ctx.ai.generate(messages, max_tokens=150, temperature=0.7)
 
-                commit_message = response.content.strip().strip('"').strip("'").strip()
+            commit_message = response.content.strip().strip('"').strip("'").strip()
 
-                # Show the message and ask for confirmation
-                ctx.ui.text.info(msg.Steps.HandleChanges.AI_GENERATED_MESSAGE)
-                ctx.ui.text.info(f"\n{commit_message}\n")
+            # Show the message and ask for confirmation
+            ctx.ui.text.info(msg.Steps.HandleChanges.AI_GENERATED_MESSAGE)
+            ctx.ui.text.info(f"\n{commit_message}\n")
 
-                confirm = ctx.views.prompts.ask_yes_no(
-                    msg.Steps.HandleChanges.AI_CONFIRM_PROMPT,
-                    default=True
-                )
-                if not confirm:
-                    # Fall through to manual commit
-                    action = "commit"
-                else:
-                    # Commit with AI message
-                    commit_hash = ctx.git.commit(message=commit_message, all=True)
-                    ctx.ui.text.success(msg.Steps.HandleChanges.COMMIT_SUCCESS.format(
-                        commit_hash_short=commit_hash[:8]
-                    ))
-                    return Success(
-                        msg.Steps.HandleChanges.COMMIT_SUCCESS_AI.format(commit_hash=commit_hash),
-                        metadata={"commit_hash": commit_hash, "commit_message": commit_message}
-                    )
-            except Exception as e:
-                ctx.ui.text.warning(msg.Steps.HandleChanges.AI_FAILED_WARNING.format(e=e))
-                ctx.ui.text.info(msg.Steps.HandleChanges.AI_FALLBACK)
-                action = "commit"
+            confirm = ctx.views.prompts.ask_confirm(
+                msg.Steps.HandleChanges.AI_CONFIRM_PROMPT,
+                default=True
+            )
 
-        if action == "commit":
-            # Prompt for manual commit message
-            try:
-                commit_message = ctx.views.prompts.ask_multiline(
-                    msg.Steps.HandleChanges.COMMIT_PROMPT,
-                    default_text=msg.Steps.HandleChanges.COMMIT_PROMPT_DEFAULT
-                )
-
-                if not commit_message or commit_message.strip().startswith("#"):
-                    return Error(msg.Steps.HandleChanges.COMMIT_MESSAGE_EMPTY)
-
-                # Commit changes
+            if confirm:
+                # Commit with AI message
                 commit_hash = ctx.git.commit(message=commit_message, all=True)
                 ctx.ui.text.success(msg.Steps.HandleChanges.COMMIT_SUCCESS.format(
                     commit_hash_short=commit_hash[:8]
                 ))
                 return Success(
-                    msg.Steps.HandleChanges.COMMIT_SUCCESS_FULL.format(commit_hash=commit_hash),
+                    msg.Steps.HandleChanges.COMMIT_SUCCESS_AI.format(commit_hash=commit_hash),
                     metadata={"commit_hash": commit_hash, "commit_message": commit_message}
                 )
-            except (GitClientError, GitCommandError) as e:
-                return Error(msg.Steps.HandleChanges.COMMIT_FAILED.format(e=e))
+            # If user rejects, fall through to manual commit below
+
+        # Manual commit (fallback if no AI or user rejected AI suggestion)
+        ctx.ui.text.info("Enter your commit message manually:")
+        commit_message = ctx.views.prompts.ask_multiline(
+            msg.Steps.HandleChanges.COMMIT_PROMPT,
+            default_text=msg.Steps.HandleChanges.COMMIT_PROMPT_DEFAULT
+        )
+
+        if not commit_message or commit_message.strip().startswith("#"):
+            return Error(msg.Steps.HandleChanges.COMMIT_MESSAGE_EMPTY)
+
+        # Commit changes
+        commit_hash = ctx.git.commit(message=commit_message, all=True)
+        ctx.ui.text.success(msg.Steps.HandleChanges.COMMIT_SUCCESS.format(
+            commit_hash_short=commit_hash[:8]
+        ))
+        return Success(
+            msg.Steps.HandleChanges.COMMIT_SUCCESS_FULL.format(commit_hash=commit_hash),
+            metadata={"commit_hash": commit_hash, "commit_message": commit_message}
+        )
 
     except (KeyboardInterrupt, EOFError):
         return Error(msg.Steps.HandleChanges.USER_CANCELLED_OPERATION)
