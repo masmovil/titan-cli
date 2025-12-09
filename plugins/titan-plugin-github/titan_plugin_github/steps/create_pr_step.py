@@ -1,17 +1,16 @@
 # plugins/titan-plugin-github/titan_plugin_github/steps/create_pr_step.py
-from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from ..exceptions import GitHubAPIError
 
 def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Creates a GitHub pull request using data from the workflow context.
-    Skips if no new commit was created in the workflow.
 
     Requires:
         ctx.github: An initialized GitHubClient.
+        ctx.git: An initialized GitClient.
 
     Inputs (from ctx.data):
-        commit_hash (str, optional): The hash of the created commit. If not present, the step is skipped.
         pr_title (str): The title of the pull request.
         pr_body (str, optional): The body/description of the pull request.
         pr_head_branch (str): The branch with the new changes.
@@ -24,13 +23,8 @@ def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the PR is created successfully.
         Error: If any required context arguments are missing or if the API call fails.
-        Skip: If no commit was made.
     """
-    # 1. Skip if no commit was made
-    if not ctx.get('commit_hash'):
-        return Skip("No new commit was created, skipping pull request creation.")
-
-    # 2. Get GitHub client from context
+    # 1. Get GitHub client from context
     if not ctx.github:
         return Error("GitHub client is not available in the workflow context.")
     if not ctx.git:

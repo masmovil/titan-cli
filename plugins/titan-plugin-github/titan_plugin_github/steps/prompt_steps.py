@@ -1,17 +1,13 @@
 # plugins/titan-plugin-github/titan_plugin_github/steps/prompt_steps.py
-from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from ..messages import msg
 
 def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Interactively prompts the user for a Pull Request title.
-    Skips if no new commit was created.
 
     Requires:
         ctx.views.prompts: A PromptsRenderer instance.
-
-    Inputs (from ctx.data):
-        commit_hash (str, optional): The hash of the created commit. If not present, the step is skipped.
 
     Outputs (saved to ctx.data):
         pr_title (str): The title entered by the user.
@@ -19,11 +15,7 @@ def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the title was captured successfully.
         Error: If the user cancels or the title is empty.
-        Skip: If no commit was made.
     """
-    # Skip if no commit was made
-    if not ctx.get('commit_hash'):
-        return Skip("No new commit was created, skipping PR title prompt.")
 
     try:
         title = ctx.views.prompts.ask_text(msg.Prompts.ENTER_PR_TITLE)
@@ -38,13 +30,9 @@ def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
 def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Interactively prompts the user for a Pull Request body using an external editor.
-    Skips if no new commit was created.
 
     Requires:
         ctx.views.prompts: A PromptsRenderer instance.
-
-    Inputs (from ctx.data):
-        commit_hash (str, optional): The hash of the created commit. If not present, the step is skipped.
 
     Outputs (saved to ctx.data):
         pr_body (str): The body/description entered by the user.
@@ -52,11 +40,7 @@ def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the body was captured successfully.
         Error: If the user cancels.
-        Skip: If no commit was made.
     """
-    # Skip if no commit was made
-    if not ctx.get('commit_hash'):
-        return Skip("No new commit was created, skipping PR body prompt.")
 
     try:
         body = ctx.views.prompts.ask_multiline(msg.Prompts.ENTER_PR_BODY)

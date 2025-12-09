@@ -1,16 +1,14 @@
 # plugins/titan-plugin-git/titan_plugin_git/steps/push_step.py
 from typing import Optional
-from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from titan_plugin_git.exceptions import GitCommandError
 from titan_plugin_git.messages import msg
 
 def create_git_push_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Pushes changes to a remote repository.
-    Skips if there was no commit created in the workflow.
 
     Requires (from ctx.data):
-        commit_hash (str, optional): The hash of the created commit. If not present, the step is skipped.
         remote (str, optional): The name of the remote to push to. Defaults to the client's default remote.
         branch (str, optional): The name of the branch to push. Defaults to the current branch.
         set_upstream (bool, optional): Whether to set the upstream tracking branch. Defaults to False.
@@ -24,11 +22,7 @@ def create_git_push_step(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the push was successful.
         Error: If the push operation fails.
-        Skip: If no commit was made.
     """
-    # If there was no commit, there is nothing to push
-    if not ctx.get('commit_hash'):
-        return Skip("No new commit was created, skipping push.")
 
     if not ctx.git:
         return Error(msg.Steps.Push.GIT_CLIENT_NOT_AVAILABLE)
