@@ -83,7 +83,7 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
                 template = f.read()
 
         # Build comprehensive prompt with template
-        prompt = f"""Analyze this branch and generate a professional pull request following the template.
+        prompt = f"""Analyze this branch and generate a professional pull request.
 
 ## Branch Information
 - Head branch: {head_branch}
@@ -98,35 +98,30 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
 {diff_preview}
 ```
 
-## PR Template to Follow
-{template if template else "No template found - use standard format"}
-
 ## Instructions
-Generate a complete Pull Request that:
+Generate a concise Pull Request that:
 1. **Title**: Follow conventional commits (type(scope): description), max 72 chars
    - Examples: "feat(auth): add OAuth2 integration", "fix(api): resolve race condition in cache"
-2. **Body**: Follow the PR template exactly, filling in all sections:
-   - Summary: What changed and why (2-3 sentences)
-   - Type of Change: Mark appropriate checkboxes with [x]
-   - Changes Made: Bullet list of key changes
-   - Testing: How this was tested
-   - Checklist: Mark completed items with [x]
+2. **Description**: CRITICAL - Maximum 500 characters. Be concise and focus on:
+   - What changed (1-2 sentences)
+   - Why it changed (1 sentence)
+   - Key bullet points if needed (max 3)
 
 Format your response EXACTLY like this:
 TITLE: <conventional commit title>
 
 DESCRIPTION:
-<full PR body following the template>"""
+<concise description - MAX 500 chars>"""
 
         # Show progress
         if ctx.ui:
             ctx.ui.text.info("🤖 Generating PR description with AI...")
 
-        # Call AI
+        # Call AI (max_tokens reduced since we only need title + 500 char description)
         from titan_cli.ai.models import AIMessage
 
         messages = [AIMessage(role="user", content=prompt)]
-        response = ctx.ai.generate(messages, max_tokens=2048, temperature=0.7)
+        response = ctx.ai.generate(messages, max_tokens=800, temperature=0.7)
 
         ai_response = response.content
 
@@ -144,11 +139,15 @@ DESCRIPTION:
         # Clean up title (remove quotes if present)
         title = title.strip('"').strip("'")
 
-        # Debug: Show what we got from AI
-        if ctx.ui:
-            ctx.ui.text.info(f"Debug - AI response length: {len(ai_response)} chars")
-            ctx.ui.text.info(f"Debug - Title extracted: '{title}' ({len(title)} chars)")
-            ctx.ui.text.info(f"Debug - Description extracted: '{description[:100]}...' ({len(description)} chars)")
+        # Truncate title if too long
+        if len(title) > 72:
+            title = title[:69] + "..."
+
+        # Truncate description to 500 chars max
+        if len(description) > 500:
+            if ctx.ui:
+                ctx.ui.text.warning(f"⚠️  AI generated {len(description)} chars, truncating to 500")
+            description = description[:497] + "..."
 
         # Validate description has real content (not just whitespace)
         if not description or len(description.strip()) < 10:
@@ -161,10 +160,12 @@ DESCRIPTION:
         # Show preview to user
         if ctx.ui:
             ctx.ui.spacer.small()
+            ctx.ui.text.subtitle("📝 AI Generated PR:")
+            ctx.ui.spacer.small()
 
-            # Show and confirm title
-            ctx.ui.text.subtitle("📝 AI Generated PR Title:")
-            ctx.ui.text.body(f"  {title}", style="bold cyan")
+            # Show title
+            ctx.ui.text.body("Title:", style="bold")
+            ctx.ui.text.body(f"  {title}", style="cyan")
 
             # Warn if title is too long
             if len(title) > 72:
@@ -172,29 +173,24 @@ DESCRIPTION:
 
             ctx.ui.spacer.small()
 
-            use_title = ctx.views.prompts.ask_confirm(
-                "Use this title?",
+            # Show description (max 500 chars already enforced)
+            ctx.ui.text.body("Description:", style="bold")
+
+            # Print line by line for better formatting
+            for line in description.split('\n'):
+                ctx.ui.text.body(f"  {line}", style="dim")
+
+            ctx.ui.spacer.small()
+
+            # Single confirmation for both title and description
+            use_ai_pr = ctx.views.prompts.ask_confirm(
+                "Use this AI-generated PR?",
                 default=True
             )
 
-            if not use_title:
-                ctx.ui.text.warning("AI title rejected. Will prompt for manual input.")
-                return Skip("User rejected AI-generated title")
-
-            # Show and confirm description
-            ctx.ui.spacer.small()
-            ctx.ui.text.subtitle("📝 AI Generated PR Description:")
-            ctx.ui.panel.render(description, title="Description", border_style="cyan")
-            ctx.ui.spacer.small()
-
-            use_description = ctx.views.prompts.ask_confirm(
-                "Use this description?",
-                default=True
-            )
-
-            if not use_description:
-                ctx.ui.text.warning("AI description rejected. Will prompt for manual input.")
-                return Skip("User rejected AI-generated description")
+            if not use_ai_pr:
+                ctx.ui.text.warning("AI suggestion rejected. Will prompt for manual input.")
+                return Skip("User rejected AI-generated PR")
 
         # Success - save to context
         return Success(
