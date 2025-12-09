@@ -48,23 +48,26 @@ class Error:
 class Skip:
     """
     Step was skipped (not applicable).
-    
+
     Use when a step doesn't need to run:
     - Optional tool not configured
     - Condition not met
     - User chose to skip
-    
+
     Attributes:
         message: Why the step was skipped (required)
         metadata: Metadata to auto-merge into ctx.data
-    
+        silent: If True, don't show warning message (for expected skips)
+
     Examples:
         >>> if not ctx.ai:
         >>>     return Skip("AI not configured")
         >>> return Skip("No changes detected", metadata={"clean": True})
+        >>> return Skip("PR title already provided", silent=True)  # No warning shown
     """
     message: str
     metadata: Optional[dict[str, Any]] = None
+    silent: bool = False
 
 
 # Type alias for workflow results

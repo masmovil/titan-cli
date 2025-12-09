@@ -20,7 +20,7 @@ def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     # Skip if title already exists (e.g., from AI generation)
     if ctx.get("pr_title"):
-        return Skip("PR title already provided, skipping manual prompt.")
+        return Skip("PR title already provided, skipping manual prompt.", silent=True)
 
     try:
         title = ctx.views.prompts.ask_text(msg.Prompts.ENTER_PR_TITLE)
@@ -50,7 +50,7 @@ def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     # Skip if body already exists (e.g., from AI generation)
     if ctx.get("pr_body"):
-        return Skip("PR body already provided, skipping manual prompt.")
+        return Skip("PR body already provided, skipping manual prompt.", silent=True)
 
     try:
         body = ctx.views.prompts.ask_multiline(msg.Prompts.ENTER_PR_BODY)

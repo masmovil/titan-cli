@@ -81,7 +81,12 @@ class WorkflowExecutor:
                     ctx.ui.text.error(f"Workflow '{workflow.name}' stopped due to step failure.")
                     return Error(f"Workflow failed at step '{step_name}'", step_result.exception)
             elif is_skip(step_result):
-                ctx.ui.text.warning(f"Step '{step_name}' skipped: {step_result.message}")
+                # Only show warning if not silent
+                if not step_result.silent:
+                    ctx.ui.text.warning(f"Step '{step_name}' skipped: {step_result.message}")
+                # Merge skip metadata into workflow context data
+                if step_result.metadata:
+                    ctx.data.update(step_result.metadata)
             else:
                 ctx.ui.text.success(f"Step '{step_name}' completed: {step_result.message}")
                 # Merge step metadata into workflow context data
