@@ -8,6 +8,7 @@ import tomli
 import tomli_w
 import importlib.metadata
 from pathlib import Path
+from typing import Optional
 
 from titan_cli.ui.views.banner import render_titan_banner
 from titan_cli.messages import msg
@@ -16,6 +17,8 @@ from titan_cli.commands.init import init_app
 from titan_cli.commands.projects import projects_app, list_projects
 from titan_cli.commands.ai import ai_app
 from titan_cli.commands.plugins import plugins_app
+from titan_cli.commands.code import code_app, launch_code
+from titan_cli.utils.claude_integration import ClaudeCodeLauncher
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.errors import ConfigWriteError
@@ -46,6 +49,7 @@ app.add_typer(init_app)
 app.add_typer(projects_app)
 app.add_typer(ai_app)
 app.add_typer(plugins_app)
+app.add_typer(code_app)
 
 
 # --- Helper function for version retrieval ---
@@ -103,9 +107,123 @@ def _prompt_for_project_root(text: TextRenderer, prompts: PromptsRenderer) -> bo
         return False
 
 
+def _show_submenu(
+    prompts: PromptsRenderer,
+    text: TextRenderer,
+    config: TitanConfig,
+    title: str,
+    emoji: str,
+    actions: dict,
+    on_confirm_return_to_main: bool = True
+):
+    """Shows a generic submenu for various configurations."""
+    while True:
+        submenu_builder = DynamicMenu(title=title, emoji=emoji)
+        action_category = submenu_builder.add_category("Actions")
+        for action_name, action_desc, action_id in actions["actions"]:
+            action_category.add_item(action_name, action_desc, action_id)
+        submenu_builder.add_category("Back").add_item("Return to Main Menu", "", "back")
+
+        choice_item = prompts.ask_menu(submenu_builder.to_menu())
+        if not choice_item or choice_item.action == "back":
+            break
+
+        if choice_item.action in actions["handlers"]:
+            actions["handlers"][choice_item.action]()
+
+        prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+
+def _show_projects_submenu(prompts: PromptsRenderer, text: TextRenderer, config: TitanConfig):
+    """Shows the submenu for project management."""
+    def list_projects_handler():
+        list_projects()
+
+    def configure_project_handler():
+        text.title(msg.Projects.CONFIGURE_TITLE)
+        project_root = config.get_project_root()
+        if not project_root:
+            text.error(msg.Errors.PROJECT_ROOT_NOT_SET)
+            return
+
+        _conf, unconfigured = discover_projects(str(project_root))
+        if not unconfigured:
+            text.success("No unconfigured Git projects found to initialize.")
+        else:
+            project_menu_builder = DynamicMenu(title=msg.Interactive.SELECT_PROJECT_TITLE, emoji="✨")
+            cat_idx = project_menu_builder.add_category("Unconfigured Projects")
+            for p in unconfigured:
+                try:
+                    rel_path = str(p.relative_to(project_root))
+                except ValueError:
+                    rel_path = str(p)
+                cat_idx.add_item(p.name, rel_path, str(p.resolve()))
+
+            project_menu_builder.add_category("Cancel").add_item("Back to Main Menu", "Return without initializing.", "cancel")
+            
+            project_menu = project_menu_builder.to_menu()
+            chosen_project_item = prompts.ask_menu(project_menu, allow_quit=False)
+
+            if chosen_project_item and chosen_project_item.action != "cancel":
+                initialize_project(Path(chosen_project_item.action))
+
+    _show_submenu(
+        prompts,
+        text,
+        config,
+        title="Project Management",
+        emoji="📂",
+        actions={
+            "actions": [
+                ("List Configured Projects", "Scan the project root and show all configured Titan projects.", "list"),
+                ("Configure a New Project", "Select an unconfigured project to initialize with Titan.", "configure")
+            ],
+            "handlers": {
+                "list": list_projects_handler,
+                "configure": configure_project_handler
+            }
+        }
+    )
+
+
+def _show_ai_config_submenu(prompts: PromptsRenderer, text: TextRenderer, config: TitanConfig):
+    """Shows the submenu for AI configuration."""
+    from titan_cli.commands.ai import configure_ai_interactive, _test_ai_connection
+    
+    def configure_ai_handler():
+        configure_ai_interactive()
+
+    def test_ai_handler():
+        config.load()
+        secrets = SecretManager() # Re-init to load any new secrets
+        if not config.config.ai:
+            text.error("No AI provider configured. Please run 'Configure AI Provider' first.")
+        else:
+            provider = config.config.ai.provider
+            model = config.config.ai.model
+            base_url = config.config.ai.base_url
+            _test_ai_connection(provider, secrets, model, base_url)
+
+    _show_submenu(
+        prompts,
+        text,
+        config,
+        title="AI Configuration",
+        emoji="⚙️",
+        actions={
+            "actions": [
+                ("Configure AI Provider", "Set up Anthropic, OpenAI, or Gemini", "ai_configure"),
+                ("Test AI Connection", "Verify AI provider is working", "ai_test")
+            ],
+            "handlers": {
+                "ai_configure": configure_ai_handler,
+                "ai_test": test_ai_handler
+            }
+        }
+    )
+        
 def show_interactive_menu():
     """
-    Displays the main interactive menu for the Titan CLI.
+    Displays the main interactive menu for the Titan CLI. 
     
     This function serves as the primary user interface when the CLI is run
     without any subcommands. It handles the initial setup, displays a persistent
@@ -137,19 +255,11 @@ def show_interactive_menu():
         
         # Build and show the main menu
         menu_builder = DynamicMenu(title=msg.Interactive.MAIN_MENU_TITLE, emoji="🚀")
-        menu_builder.add_category("Project Management", emoji="📂") \
-            .add_item(msg.Projects.LIST_TITLE, "Scan the project root and show all configured Titan projects.", "list") \
-            .add_item(msg.Projects.CONFIGURE_TITLE, "Select an unconfigured project to initialize with Titan.", "configure")
-
-        menu_builder.add_category("Workflows", emoji="⚡") \
-            .add_item("Run a Workflow", "Execute a predefined or custom workflow.", "run_workflow")
-
-        menu_builder.add_category("AI Configuration", emoji="🤖") \
-            .add_item("Configure AI Provider", "Set up Anthropic, OpenAI, or Gemini", "ai_configure") \
-            .add_item("Test AI Connection", "Verify AI provider is working", "ai_test")
-
-        menu_builder.add_category("Exit", emoji="🚪") \
-            .add_item("Exit", "Exit the application.", "exit")
+        menu_builder.add_top_level_item("Launch Claude Code", "Open an interactive session with Claude Code CLI.", "code")
+        menu_builder.add_top_level_item("Project Management", "List, configure, or initialize projects.", "projects")
+        menu_builder.add_top_level_item("Workflows", "Execute a predefined or custom workflow.", "run_workflow")
+        menu_builder.add_top_level_item("AI Configuration", "Configure AI providers and test connections.", "ai_config")
+        menu_builder.add_top_level_item("Exit", "Exit the application.", "exit")
 
         menu = menu_builder.to_menu()
 
@@ -164,48 +274,13 @@ def show_interactive_menu():
         if choice_item:
             choice_action = choice_item.action
 
-        if choice_action == "list":
-            list_projects()
+        if choice_action == "code":
+            launch_code(prompt=None)
             spacer.line()
             prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-        
-        elif choice_action == "configure":
-            text.title(msg.Projects.CONFIGURE_TITLE)
-            spacer.line()
-            project_root = config.get_project_root() # Re-fetch in case it was just set
-            if not project_root:
-                text.error(msg.Errors.PROJECT_ROOT_NOT_SET)
-                break # Exit loop if something is wrong
 
-            _conf, unconfigured = discover_projects(str(project_root))
-            if not unconfigured:
-                text.success("No unconfigured Git projects found to initialize.")
-            else:
-                project_menu_builder = DynamicMenu(title=msg.Interactive.SELECT_PROJECT_TITLE, emoji="✨")
-                cat_idx = project_menu_builder.add_category("Unconfigured Projects")
-                for p in unconfigured:
-                    try:
-                        rel_path = str(p.relative_to(project_root))
-                    except ValueError:
-                        rel_path = str(p)
-                    cat_idx.add_item(p.name, rel_path, str(p.resolve()))
-
-                project_menu_builder.add_category("Cancel").add_item("Back to Main Menu", "Return without initializing.", "cancel")
-                
-                project_menu = project_menu_builder.to_menu()
-
-                try:
-                    chosen_project_item = prompts.ask_menu(project_menu, allow_quit=False)
-                except (KeyboardInterrupt, EOFError):
-                    chosen_project_item = None
-                
-                spacer.line()
-
-                if chosen_project_item and chosen_project_item.action != "cancel":
-                    initialize_project(Path(chosen_project_item.action))
-
-            spacer.line()
-            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+        elif choice_action == "projects":
+            _show_projects_submenu(prompts, text, config)
         
         elif choice_action == "run_workflow":
             text.title("Run a Workflow")
@@ -288,32 +363,13 @@ def show_interactive_menu():
             spacer.line()
             prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
 
-        elif choice_action == "ai_configure":
-            from titan_cli.commands.ai import configure_ai_interactive
-            configure_ai_interactive()
-            spacer.line()
-            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-
-        elif choice_action == "ai_test":
-            from titan_cli.commands.ai import _test_ai_connection
-            # We need to reload config and secrets in case they were just changed
-            config.load() 
-            secrets = SecretManager()
-            if not config.config.ai:
-                text.error("No AI provider configured. Please run 'Configure AI Provider' first.")
-            else:
-                provider = config.config.ai.provider
-                model = config.config.ai.model
-                
-                base_url = config.config.ai.base_url
-                
-                _test_ai_connection(provider, secrets, model, base_url)
-            spacer.line()
-            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+        elif choice_action == "ai_config":
+            _show_ai_config_submenu(prompts, text, config)
 
         elif choice_action == "exit":
             text.body(msg.Interactive.GOODBYE)
             break
+
 
 
 @app.callback()

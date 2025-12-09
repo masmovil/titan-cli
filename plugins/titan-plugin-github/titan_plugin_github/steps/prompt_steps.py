@@ -16,6 +16,7 @@ def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
         Success: If the title was captured successfully.
         Error: If the user cancels or the title is empty.
     """
+
     try:
         title = ctx.views.prompts.ask_text(msg.Prompts.ENTER_PR_TITLE)
         if not title:
@@ -40,6 +41,7 @@ def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
         Success: If the body was captured successfully.
         Error: If the user cancels.
     """
+
     try:
         body = ctx.views.prompts.ask_multiline(msg.Prompts.ENTER_PR_BODY)
         # Body can be empty

@@ -8,6 +8,7 @@ def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
 
     Requires:
         ctx.github: An initialized GitHubClient.
+        ctx.git: An initialized GitClient.
 
     Inputs (from ctx.data):
         pr_title (str): The title of the pull request.

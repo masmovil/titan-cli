@@ -14,9 +14,33 @@ from ..ai.oauth_helper import OAuthHelper
 from ..ai.constants import get_default_model, get_provider_name
 from ..ai.models import AIRequest, AIMessage
 from ..messages import msg
-
+from ..utils.claude_integration import ClaudeCodeLauncher # New import
+from typing import Optional # New import
 
 ai_app = typer.Typer(name="ai", help="Configure and manage AI providers.")
+
+@ai_app.command("chat")
+def chat(prompt: Optional[str] = None):
+    """Launch Claude Code for AI assistance."""
+    text = TextRenderer()
+
+    if not ClaudeCodeLauncher.is_available():
+        text.error(msg.Code.NOT_INSTALLED)
+        text.body(msg.Code.INSTALL_INSTRUCTIONS)
+        raise typer.Exit(1)
+
+    text.info(msg.Code.LAUNCHING)
+    if prompt:
+        text.body(msg.Code.INITIAL_PROMPT.format(prompt=prompt))
+    text.line()
+
+    exit_code = ClaudeCodeLauncher.launch(prompt=prompt)
+
+    text.line()
+    text.success(msg.Code.RETURNED)
+
+    if exit_code != 0:
+        raise typer.Exit(exit_code)
 
 
 def _select_model(provider: str, prompts: PromptsRenderer, text: TextRenderer) -> str:

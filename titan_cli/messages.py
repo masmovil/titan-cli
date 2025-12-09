@@ -242,6 +242,16 @@ class Messages:
         MODEL_NOT_AVAILABLE = "Model not available: {model}"
         RATE_LIMIT = "Rate limit reached. Please try again later."
 
+    class Code:
+        """Claude Code CLI integration messages"""
+        HELP_TEXT = "Launch Claude Code CLI from anywhere in Titan."
+        NOT_INSTALLED = "Claude Code not installed"
+        INSTALL_INSTRUCTIONS = "Install: npm install -g @anthropic/claude-code"
+        LAUNCHING = "🤖 Launching Claude Code..."
+        INITIAL_PROMPT = "Initial prompt: {prompt}"
+        INTERRUPTED = "\nClaude Code interrupted"
+        RETURNED = "✓ Back in Titan CLI"
+
     # ═══════════════════════════════════════════════════════════════
     # Secrets Management
     # ═══════════════════════════════════════════════════════════════

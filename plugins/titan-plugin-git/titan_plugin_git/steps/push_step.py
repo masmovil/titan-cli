@@ -23,6 +23,7 @@ def create_git_push_step(ctx: WorkflowContext) -> WorkflowResult:
         Success: If the push was successful.
         Error: If the push operation fails.
     """
+
     if not ctx.git:
         return Error(msg.Steps.Push.GIT_CLIENT_NOT_AVAILABLE)
 
