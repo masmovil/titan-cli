@@ -36,7 +36,7 @@ def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
 
     commit_message = ctx.get('commit_message')
     if not commit_message:
-        return Error(msg.Steps.Commit.COMMIT_MESSAGE_REQUIRED)
+        return Skip("No commit message provided, skipping commit.")
         
     all_files = ctx.get('all_files', True)
 

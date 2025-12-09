@@ -1,11 +1,8 @@
 name: "Create Pull Request with AI"
-description: "Fully automated AI-powered PR creation (atomic commits + smart PR description)"
-source: "plugin:github"
+description: "AI-powered PR creation with smart commit messages and descriptions"
 
 params:
-  base_branch: "main"
   draft: false
-  use_ai: true  # AI is always enabled for this workflow
 
 hooks:
   - before_commit
@@ -18,20 +15,13 @@ steps:
     plugin: git
     step: get_status
 
-  # AI creates atomic commits automatically
-  - id: ai_atomic_commits
-    name: "AI Create Atomic Commits"
-    plugin: github
-    step: ai_create_atomic_commits
-    optional: true  # Fallback to manual if AI fails
-
   - hook: before_commit
 
-  # If AI didn't create commits, prompt for manual commit
-  - id: prompt_for_commit
-    name: "Prompt for Commit Message"
+  # AI generates commit message from uncommitted changes
+  - id: ai_commit_message
+    name: "AI Generate Commit Message"
     plugin: git
-    step: prompt_for_commit_message
+    step: ai_generate_commit_message
 
   - id: create_commit
     name: "Create Commit"
@@ -45,37 +35,18 @@ steps:
     plugin: git
     step: push
 
-  - id: get_base_branch
-    name: "Get Base Branch"
-    plugin: git
-    step: get_base_branch
-
-  - id: get_head_branch
-    name: "Get Head Branch"
-    plugin: git
-    step: get_current_branch
-
-  # AI analyzes full branch diff and generates PR with template
-  - id: ai_suggest_pr
+  # AI analyzes full branch diff and generates PR
+  - id: ai_pr_description
     name: "AI Generate PR Description"
     plugin: github
     step: ai_suggest_pr_description
-    optional: false  # This is required for AI workflow
-
-  # Fallback to manual prompts only if AI fails
-  - id: prompt_pr_title
-    name: "Prompt for PR Title"
-    plugin: github
-    step: prompt_for_pr_title
-
-  - id: prompt_pr_body
-    name: "Prompt for PR Body"
-    plugin: github
-    step: prompt_for_pr_body
 
   - id: create_pr
     name: "Create Pull Request"
     plugin: github
     step: create_pr
+    requires:
+      - pr_title
+      - pr_head_branch
 
   - hook: after_pr

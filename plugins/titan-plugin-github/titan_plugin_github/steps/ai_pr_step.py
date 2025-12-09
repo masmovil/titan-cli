@@ -1,122 +1,81 @@
+# plugins/titan-plugin-github/titan_plugin_github/steps/ai_pr_step.py
 """
 AI-powered PR description generation step.
 
-Uses PlatformAgent to analyze git changes and suggest PR title and body.
+Uses AIClient to analyze git changes and suggest PR title and body.
 """
 
+from pathlib import Path
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
-from titan_cli.agents import PlatformAgent
 
 
-def ai_suggest_pr_description(ctx: WorkflowContext, **kwargs) -> WorkflowResult:
+def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
     """
-    Generate PR title and body using AI analysis.
+    Generate PR title and description using AI analysis.
 
-    This step analyzes the current branch changes and uses AI to suggest
-    a professional PR title and description.
+    Analyzes the full branch diff (all commits) and uses AI to suggest
+    a professional PR title and description following the PR template.
 
-    Reads from ctx.data:
-        - use_ai: Whether to use AI (default: false, opt-in)
-        - git_status: Current git status
-        - current_branch: Current branch name
-        - base_branch: Base branch for comparison
+    Requires:
+        ctx.github: An initialized GitHubClient.
+        ctx.git: An initialized GitClient.
+        ctx.ai: An initialized AIClient.
 
-    Writes to ctx.data:
-        - pr_title: AI-generated PR title
-        - pr_body: AI-generated PR description
+    Inputs (from ctx.data):
+        pr_head_branch (str): The head branch for the PR.
+
+    Outputs (saved to ctx.data):
+        pr_title (str): AI-generated PR title.
+        pr_body (str): AI-generated PR description.
 
     Returns:
         Success: PR title and body generated
-        Skip: AI not requested, not configured, or no changes found
+        Skip: AI not configured or user declined
         Error: Failed to generate PR description
-
-    Example:
-        In workflow YAML:
-        ```yaml
-        params:
-          use_ai: true  # Explicitly opt-in to AI
-
-        steps:
-          - id: ai_suggest_pr
-            name: "AI Suggest PR Description"
-            plugin: github
-            step: ai_suggest_pr_description
-            optional: true
-        ```
     """
-    # Check if user explicitly opted-in to AI (default is false)
-    use_ai = ctx.data.get("use_ai", False)
-    if not use_ai:
-        return Skip("AI not requested (use_ai=false). Using manual prompts for deterministic behavior.")
-
     # Check if AI is configured
-    if not ctx.ai:
+    if not ctx.ai or not ctx.ai.is_available():
         return Skip("AI not configured. Run 'titan ai configure' to enable AI features.")
 
-    # Get git status
-    git_status = ctx.data.get("git_status")
-    if not git_status or git_status.is_clean:
-        return Skip("No changes to analyze for PR")
+    # Get GitHub and Git clients
+    if not ctx.github:
+        return Error("GitHub client is not available in the workflow context.")
+    if not ctx.git:
+        return Error("Git client is not available in the workflow context.")
 
     # Get branch info
-    current_branch = ctx.data.get("current_branch", "unknown")
-    base_branch = ctx.data.get("base_branch", "main")
+    head_branch = ctx.get("pr_head_branch")
+    if not head_branch:
+        return Error("Missing pr_head_branch in context")
+
+    base_branch = ctx.git.main_branch
 
     try:
-        # Get git client for branch diff analysis
-        git_client = ctx.git
-        if not git_client:
-            return Error("Git client not available")
-
         # Get full branch diff (this is the key for AI analysis)
         if ctx.ui:
-            ctx.ui.text.info(f"📊 Analyzing branch diff: {current_branch} vs {base_branch}...")
+            ctx.ui.text.info(f"📊 Analyzing branch diff: {head_branch} vs {base_branch}...")
 
+        # Get commits in the branch
         try:
-            # Get commits in the branch
-            commits_result = git_client.get_branch_commits(base_branch, current_branch)
-            commits = commits_result if commits_result else ctx.data.get("branch_commits", [])
-
-            # Get full diff of the branch
-            branch_diff = git_client.get_branch_diff(base_branch, current_branch)
-
+            commits = ctx.git.get_branch_commits(base_branch, head_branch)
+            branch_diff = ctx.git.get_branch_diff(base_branch, head_branch)
         except Exception as e:
-            if ctx.ui:
-                ctx.ui.text.warning(f"Could not get branch diff: {e}")
-            # Fallback to individual file diffs
-            commits = []
-            branch_diff = ""
-            files_changed = git_status.modified_files + git_status.untracked_files
-            for file_path in files_changed[:10]:  # Limit to avoid token overflow
-                try:
-                    diff = git_client.get_file_diff(file_path)
-                    branch_diff += f"\n### {file_path}\n{diff}\n"
-                except:
-                    pass
+            return Error(f"Failed to get branch diff: {e}")
+
+        if not branch_diff or not commits:
+            return Skip("No changes found between branches")
 
         # Build context for AI
-        files_changed = git_status.modified_files + git_status.untracked_files
-        files_text = "\n".join(f"  - {f}" for f in files_changed[:30])
-
-        if len(files_changed) > 30:
-            files_text += f"\n  ... and {len(files_changed) - 30} more files"
-
-        commits_text = ""
-        if commits:
-            commits_text = "\n".join(f"  - {c}" for c in commits[:15])
-            if len(commits) > 15:
-                commits_text += f"\n  ... and {len(commits) - 15} more commits"
+        commits_text = "\n".join([f"  - {c}" for c in commits[:15]])
+        if len(commits) > 15:
+            commits_text += f"\n  ... and {len(commits) - 15} more commits"
 
         # Limit diff size to avoid token overflow
         diff_preview = branch_diff[:8000] if branch_diff else "No diff available"
         if len(branch_diff) > 8000:
             diff_preview += "\n\n... (diff truncated for brevity)"
 
-        # Load PlatformAgent for PR generation
-        agent = PlatformAgent.from_toml("config/agents/platform_agent.toml")
-
         # Read PR template
-        from pathlib import Path
         template_path = Path(".github/pull_request_template.md")
         template = ""
         if template_path.exists():
@@ -124,19 +83,15 @@ def ai_suggest_pr_description(ctx: WorkflowContext, **kwargs) -> WorkflowResult:
                 template = f.read()
 
         # Build comprehensive prompt with template
-        user_context = f"""Analyze this branch and generate a professional pull request following the template.
+        prompt = f"""Analyze this branch and generate a professional pull request following the template.
 
 ## Branch Information
-- Current branch: {current_branch}
+- Head branch: {head_branch}
 - Base branch: {base_branch}
-- Files changed: {len(files_changed)}
-- Total commits: {len(commits) if commits else 'unknown'}
+- Total commits: {len(commits)}
 
 ## Commits in Branch
-{commits_text if commits_text else "No commit information available"}
-
-## Changed Files
-{files_text}
+{commits_text}
 
 ## Branch Diff Preview
 ```diff
@@ -161,34 +116,28 @@ Format your response EXACTLY like this:
 TITLE: <conventional commit title>
 
 DESCRIPTION:
-<full PR body following the template>
-"""
+<full PR body following the template>"""
 
         # Show progress
         if ctx.ui:
             ctx.ui.text.info("🤖 Generating PR description with AI...")
 
-        # Run agent in analysis mode
-        result = agent.run(
-            ctx=ctx,
-            user_context=user_context,
-            mode="analysis"
-        )
+        # Call AI
+        from titan_cli.ai.models import AIMessage
 
-        if not isinstance(result, Success):
-            return result
+        messages = [AIMessage(role="user", content=prompt)]
+        response = ctx.ai.generate(messages, max_tokens=2048, temperature=0.7)
 
-        # Parse AI response
-        response = result.message
+        ai_response = response.content
 
-        if "TITLE:" not in response or "DESCRIPTION:" not in response:
+        if "TITLE:" not in ai_response or "DESCRIPTION:" not in ai_response:
             return Error(
                 f"AI response format incorrect. Expected 'TITLE:' and 'DESCRIPTION:' sections.\n"
-                f"Got: {response[:200]}..."
+                f"Got: {ai_response[:200]}..."
             )
 
         # Extract title and description
-        parts = response.split("DESCRIPTION:", 1)
+        parts = ai_response.split("DESCRIPTION:", 1)
         title = parts[0].replace("TITLE:", "").strip()
         description = parts[1].strip() if len(parts) > 1 else ""
 
@@ -228,11 +177,6 @@ DESCRIPTION:
             }
         )
 
-    except FileNotFoundError:
-        return Skip(
-            "PlatformAgent config not found at config/agents/platform_agent.toml. "
-            "Falling back to manual PR creation."
-        )
     except Exception as e:
         # Don't fail the workflow, just skip AI and use manual prompts
         if ctx.ui:

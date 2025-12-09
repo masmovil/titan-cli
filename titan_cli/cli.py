@@ -339,6 +339,7 @@ def show_interactive_menu():
                             ai_config=config.config.ai
                         )
                         ctx_builder.with_ui(ui=ui)
+                        ctx_builder.with_ai()  # Initialize AI client
 
                         # Add registered plugins to context
                         for plugin_name in config.registry.list_installed():
@@ -443,6 +444,7 @@ def show_interactive_menu():
                     ai_config=config.config.ai
                 )
                 ctx_builder.with_ui(ui=ui)
+                ctx_builder.with_ai()  # Initialize AI client
 
                 # Add registered plugins to context
                 for plugin_name in config.registry.list_installed():
