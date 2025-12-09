@@ -41,10 +41,10 @@ class DynamicMenu:
         self.categories.append(category)
         return CategoryBuilder(self, len(self.categories) - 1)
 
-    # Original add_item for categories - KEEP THIS ONE
     def add_item(self, category_index: int, label: str, description: str, action: str):
         """
         Adds a new item to the specified category.
+        This is primarily an internal method used by `CategoryBuilder`.
         """
         if not (0 <= category_index < len(self.categories)):
             raise IndexError("Category index out of range.")

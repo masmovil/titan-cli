@@ -384,34 +384,3 @@ def version():
     """Show Titan CLI version."""
     cli_version = get_version()
     typer.echo(msg.CLI.VERSION.format(version=cli_version))
-
-@app.command("code")
-def launch_code(
-    prompt: Optional[str] = typer.Argument(None, help="Initial prompt for Claude")
-):
-    """
-    Launch Claude Code CLI from anywhere in Titan.
-    
-    Examples:
-        titan code
-        titan code "help me debug this workflow"
-    """
-    text = TextRenderer()
-
-    if not ClaudeCodeLauncher.is_available():
-        text.error("Claude Code not installed")
-        text.body("Install: npm install -g @anthropic/claude-code")
-        raise typer.Exit(1)
-
-    text.info("🤖 Launching Claude Code...")
-    if prompt:
-        text.body(f"Initial prompt: {prompt}")
-    text.line()
-
-    try:
-        ClaudeCodeLauncher.launch(prompt=prompt)
-    except KeyboardInterrupt:
-        text.warning("\nClaude Code interrupted")
-
-    text.line()
-    text.success("✓ Back in Titan CLI")

@@ -22,6 +22,8 @@ steps:
     name: "Create Commit"
     plugin: git
     step: create_commit
+    # Dependency: 'commit_message' is required by this step, but only if there are
+    # changes to commit. The step handles skipping if the working directory is clean.
 
   - hook: before_push
 
@@ -29,6 +31,8 @@ steps:
     name: "Push to Remote"
     plugin: git
     step: push
+    # Dependency: This step automatically skips if no new commit (commit_hash)
+    # was created by the 'create_commit' step.
 
   - id: prompt_pr_title
     name: "Prompt for PR Title"
@@ -44,6 +48,8 @@ steps:
     name: "Create Pull Request"
     plugin: github
     step: create_pr
+    # Dependency: This step automatically skips if no new commit (commit_hash)
+    # was created, as there would be nothing to push or create a PR for.
     requires:
       - pr_title
       - pr_head_branch
