@@ -1,0 +1,63 @@
+name: "Create Pull Request with AI"
+description: "AI-powered PR creation with smart commit messages and descriptions"
+
+params:
+  draft: false
+
+hooks:
+  - before_commit
+  - before_push
+  - after_pr
+
+steps:
+  - id: git_status
+    name: "Check Git Status"
+    plugin: git
+    step: get_status
+
+  - hook: before_commit
+
+  # AI generates commit message from uncommitted changes
+  - id: ai_commit_message
+    name: "AI Generate Commit Message"
+    plugin: git
+    step: ai_generate_commit_message
+
+  - id: create_commit
+    name: "Create Commit"
+    plugin: git
+    step: create_commit
+
+  - hook: before_push
+
+  - id: push
+    name: "Push to Remote"
+    plugin: git
+    step: push
+
+  # AI analyzes full branch diff and generates PR
+  - id: ai_pr_description
+    name: "AI Generate PR Description"
+    plugin: github
+    step: ai_suggest_pr_description
+
+  # Fallback to manual prompts if AI was rejected
+  - id: prompt_pr_title
+    name: "Prompt for PR Title"
+    plugin: github
+    step: prompt_for_pr_title
+
+  - id: prompt_pr_body
+    name: "Prompt for PR Body"
+    plugin: github
+    step: prompt_for_pr_body
+
+  - id: create_pr
+    name: "Create Pull Request"
+    plugin: github
+    step: create_pr
+    requires:
+      - pr_title
+      - pr_head_branch
+
+  - hook: after_pr

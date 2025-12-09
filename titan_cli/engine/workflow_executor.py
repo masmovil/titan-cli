@@ -21,17 +21,27 @@ class WorkflowExecutor:
     def __init__(self, plugin_registry: PluginRegistry):
         self._plugin_registry = plugin_registry
 
-    def execute(self, workflow: ParsedWorkflow, ctx: WorkflowContext) -> WorkflowResult:
+    def execute(self, workflow: ParsedWorkflow, ctx: WorkflowContext, params_override: Optional[Dict[str, Any]] = None) -> WorkflowResult:
         """
         Executes the given ParsedWorkflow.
-        
+
         Args:
             workflow: The ParsedWorkflow object to execute.
             ctx: The WorkflowContext for the execution.
-            
+            params_override: Optional dictionary to override workflow params.
+
         Returns:
             A WorkflowResult indicating the overall outcome.
         """
+        # Merge workflow params into ctx.data with optional overrides
+        effective_params = {**workflow.params}
+        if params_override:
+            effective_params.update(params_override)
+
+        # Load params into ctx.data so steps can access them
+        ctx.data.update(effective_params)
+
+
         ctx.ui.text.styled_text(("Starting workflow: ", "info"), (workflow.name, "info bold"))
         ctx.ui.text.body(workflow.description, style="dim")
         ctx.ui.spacer.small()
@@ -54,10 +64,10 @@ class WorkflowExecutor:
             try:
                 if "plugin" in step_config and "step" in step_config:
                     # Execute plugin step
-                    step_result = self._execute_plugin_step(step_config, ctx, workflow.params)
+                    step_result = self._execute_plugin_step(step_config, ctx)
                 elif "command" in step_config:
                     # Execute shell command
-                    step_result = self._execute_command_step(step_config, ctx, workflow.params)
+                    step_result = self._execute_command_step(step_config, ctx)
                 else:
                     step_result = Error(f"Invalid step configuration for '{step_id}': Missing 'plugin/step' or 'command'.", WorkflowExecutionError("Invalid step config"))
 
@@ -83,7 +93,7 @@ class WorkflowExecutor:
         ctx.ui.text.success(f"Workflow '{workflow.name}' completed successfully.")
         return Success(f"Workflow '{workflow.name}' finished.", {})
 
-    def _execute_plugin_step(self, step_config: Dict[str, Any], ctx: WorkflowContext, workflow_params: Dict[str, Any]) -> WorkflowResult:
+    def _execute_plugin_step(self, step_config: Dict[str, Any], ctx: WorkflowContext) -> WorkflowResult:
         plugin_name = step_config["plugin"]
         step_func_name = step_config["step"]
         step_params = step_config.get("params", {})
@@ -91,7 +101,7 @@ class WorkflowExecutor:
         # Validate required context variables
         required_vars = step_config.get("requires", [])
         for var in required_vars:
-            if var not in ctx.data and var not in workflow_params:
+            if var not in ctx.data:
                 return Error(f"Step '{step_func_name}' is missing required context variable: '{var}'")
 
         plugin_instance = self._plugin_registry.get_plugin(plugin_name)
@@ -104,8 +114,8 @@ class WorkflowExecutor:
             return Error(f"Step '{step_func_name}' not found in plugin '{plugin_name}'.", WorkflowExecutionError(f"Step '{step_func_name}' not found"))
 
         # Prepare parameters for the step function
-        resolved_params = self._resolve_parameters(step_params, ctx, workflow_params)
-        
+        resolved_params = self._resolve_parameters(step_params, ctx)
+
         # Execute the step function.
         try:
             return step_func(ctx=ctx, **resolved_params)
@@ -113,17 +123,17 @@ class WorkflowExecutor:
             return Error(f"Error executing plugin step '{step_func_name}' from plugin '{plugin_name}': {e}", e)
 
 
-    def _execute_command_step(self, step_config: Dict[str, Any], ctx: WorkflowContext, workflow_params: Dict[str, Any]) -> WorkflowResult:
+    def _execute_command_step(self, step_config: Dict[str, Any], ctx: WorkflowContext) -> WorkflowResult:
         command_template = step_config["command"]
 
         # Validate required context variables
         required_vars = step_config.get("requires", [])
         for var in required_vars:
-            if var not in ctx.data and var not in workflow_params:
+            if var not in ctx.data:
                 return Error(f"Command step '{step_config.get('id', 'anonymous_command')}' is missing required context variable: '{var}'")
 
         # Resolve command parameters first
-        resolved_command = self._resolve_parameters_in_string(command_template, ctx, workflow_params)
+        resolved_command = self._resolve_parameters_in_string(command_template, ctx)
 
         ctx.ui.text.body(f"Running command: {resolved_command}", style="dim")
         
@@ -144,39 +154,36 @@ class WorkflowExecutor:
         except Exception as e:
             return Error(f"Unhandled error during command execution: {e}", e)
 
-    def _resolve_parameters(self, params: Dict[str, Any], ctx: WorkflowContext, workflow_params: Dict[str, Any]) -> Dict[str, Any]:
+    def _resolve_parameters(self, params: Dict[str, Any], ctx: WorkflowContext) -> Dict[str, Any]:
         """
-        Resolves parameter values by substituting placeholders from context data and workflow params.
-        Priority: ctx.data > workflow_params
+        Resolves parameter values by substituting placeholders from context data.
+        All workflow params are already in ctx.data.
         """
         resolved = {}
         for key, value in params.items():
             if isinstance(value, str):
-                resolved[key] = self._resolve_parameters_in_string(value, ctx, workflow_params)
+                resolved[key] = self._resolve_parameters_in_string(value, ctx)
             else:
                 resolved[key] = value # Keep non-string parameters as is
         return resolved
 
-    def _resolve_parameters_in_string(self, text: str, ctx: WorkflowContext, workflow_params: Dict[str, Any]) -> str:
+    def _resolve_parameters_in_string(self, text: str, ctx: WorkflowContext) -> str:
         """
-        Substitutes ${placeholder} in a string using values from ctx.data and workflow_params.
+        Substitutes ${placeholder} in a string using values from ctx.data.
+        All workflow params are already in ctx.data.
         """
         import re
-        
+
         def replace_placeholder(match):
             placeholder = match.group(1) # e.g., "commit_message"
-            
-            # 1. Check ctx.data (highest priority, dynamically updated by steps)
+
+            # Check ctx.data (all params including workflow-level are here)
             if placeholder in ctx.data:
                 return str(ctx.data[placeholder])
-            
-            # 2. Check workflow-level params (static for the workflow)
-            if placeholder in workflow_params:
-                return str(workflow_params[placeholder])
 
-            # 3. Check config (e.g., config.git.main_branch) - requires more complex path parsing
+            # Check config (e.g., config.git.main_branch) - requires more complex path parsing
             # For now, we will not implement full config path resolution here, but it's a future enhancement
-            
+
             # If not found, return original placeholder or raise an error
             return match.group(0) # Keep placeholder if not resolved
 

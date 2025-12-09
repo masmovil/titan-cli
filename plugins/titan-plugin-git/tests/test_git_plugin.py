@@ -1,7 +1,7 @@
 # plugins/titan-plugin-git/tests/test_git_plugin.py
 import pytest
 from unittest.mock import MagicMock
-from titan_cli.engine import WorkflowContext, is_success, is_error, Skip
+from titan_cli.engine import WorkflowContext, is_success, is_error, is_skip, Skip
 from titan_plugin_git.steps.status_step import get_git_status_step
 from titan_plugin_git.steps.commit_step import create_git_commit_step
 from titan_plugin_git.clients.git_client import GitClient
@@ -140,7 +140,7 @@ def test_create_git_commit_step_no_client():
 
 def test_create_git_commit_step_missing_message():
     """
-    Test that create_git_commit_step returns an Error if commit message is missing.
+    Test that create_git_commit_step returns a Skip if commit message is missing.
     """
     # 1. Arrange
     mock_git_client = MagicMock(spec=GitClient)
@@ -148,13 +148,13 @@ def test_create_git_commit_step_missing_message():
     mock_context.git = mock_git_client
     mock_context.data = {'git_status': GitStatus(branch="main", is_clean=False, modified_files=[], untracked_files=[], staged_files=[])} # Add mock data with all args
     mock_context.get.return_value = None # Simulate no commit message
-    
+
     # 2. Act
     result = create_git_commit_step(mock_context)
-    
+
     # 3. Assert
-    assert is_error(result)
-    assert "Commit message cannot be empty." in result.message # Updated assertion
+    assert is_skip(result)  # Changed from is_error to is_skip
+    assert "No commit message provided" in result.message  # Updated message
     mock_git_client.commit.assert_not_called()
 
 

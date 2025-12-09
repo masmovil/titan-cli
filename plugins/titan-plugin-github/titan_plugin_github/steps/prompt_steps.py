@@ -1,10 +1,11 @@
 # plugins/titan-plugin-github/titan_plugin_github/steps/prompt_steps.py
-from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from ..messages import msg
 
 def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Interactively prompts the user for a Pull Request title.
+    Skips if pr_title already exists.
 
     Requires:
         ctx.views.prompts: A PromptsRenderer instance.
@@ -15,7 +16,11 @@ def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the title was captured successfully.
         Error: If the user cancels or the title is empty.
+        Skip: If pr_title already exists.
     """
+    # Skip if title already exists (e.g., from AI generation)
+    if ctx.get("pr_title"):
+        return Skip("PR title already provided, skipping manual prompt.")
 
     try:
         title = ctx.views.prompts.ask_text(msg.Prompts.ENTER_PR_TITLE)
@@ -30,6 +35,7 @@ def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
 def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Interactively prompts the user for a Pull Request body using an external editor.
+    Skips if pr_body already exists.
 
     Requires:
         ctx.views.prompts: A PromptsRenderer instance.
@@ -40,7 +46,11 @@ def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the body was captured successfully.
         Error: If the user cancels.
+        Skip: If pr_body already exists.
     """
+    # Skip if body already exists (e.g., from AI generation)
+    if ctx.get("pr_body"):
+        return Skip("PR body already provided, skipping manual prompt.")
 
     try:
         body = ctx.views.prompts.ask_multiline(msg.Prompts.ENTER_PR_BODY)

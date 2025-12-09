@@ -104,7 +104,8 @@ class GitPlugin(TitanPlugin):
         from .steps.prompt_step import prompt_for_commit_message_step
         from .steps.push_step import create_git_push_step
         from .steps.branch_steps import get_current_branch_step, get_base_branch_step
-        
+        from .steps.ai_commit_message_step import ai_generate_commit_message
+
         return {
             "get_status": get_git_status_step,
             "create_commit": create_git_commit_step,
@@ -112,4 +113,5 @@ class GitPlugin(TitanPlugin):
             "push": create_git_push_step,
             "get_current_branch": get_current_branch_step,
             "get_base_branch": get_base_branch_step,
+            "ai_generate_commit_message": ai_generate_commit_message,
         }

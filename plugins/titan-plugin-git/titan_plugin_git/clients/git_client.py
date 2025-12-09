@@ -664,3 +664,73 @@ class GitClient:
         except GitCommandError:
             # This might be raised for other reasons, returning empty is safe.
             return ""
+
+    def get_uncommitted_diff(self) -> str:
+        """
+        Get diff of all uncommitted changes (staged + unstaged).
+
+        Returns:
+            Diff output as string
+        """
+        try:
+            # git diff HEAD shows all changes vs last commit (staged + unstaged)
+            return self._run_command(["git", "diff", "HEAD"], check=False)
+        except GitCommandError:
+            return ""
+
+    def get_file_diff(self, file_path: str) -> str:
+        """
+        Get diff for a specific file.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Diff output as string
+        """
+        try:
+            return self._run_command(["git", "diff", "HEAD", "--", file_path], check=False)
+        except GitCommandError:
+            return ""
+
+    def get_branch_diff(self, base_branch: str, head_branch: str) -> str:
+        """
+        Get diff between two branches.
+
+        Args:
+            base_branch: Base branch name
+            head_branch: Head branch name
+
+        Returns:
+            Diff output as string
+        """
+        try:
+            return self._run_command(
+                ["git", "diff", f"{base_branch}...{head_branch}"],
+                check=False
+            )
+        except GitCommandError:
+            return ""
+
+    def get_branch_commits(self, base_branch: str, head_branch: str) -> list[str]:
+        """
+        Get list of commits in head_branch that are not in base_branch.
+
+        Args:
+            base_branch: Base branch name
+            head_branch: Head branch name
+
+        Returns:
+            List of commit messages
+        """
+        try:
+            output = self._run_command([
+                "git", "log",
+                f"{base_branch}..{head_branch}",
+                "--pretty=format:%s"
+            ])
+            if output.strip():
+                return output.strip().split("\n")
+            return []
+        except GitCommandError:
+            return []

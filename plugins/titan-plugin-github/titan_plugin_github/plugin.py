@@ -6,9 +6,7 @@ from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.plugins.models import GitHubPluginConfig
-from .clients.github_client import GitHubClient
-from .steps.create_pr_step import create_pr_step
-from .clients.github_client import GitHubError
+from .clients.github_client import GitHubClient, GitHubError
 from .utils import detect_github_repo
 
 class GitHubPlugin(TitanPlugin):
@@ -116,8 +114,10 @@ class GitHubPlugin(TitanPlugin):
         """
         from .steps.create_pr_step import create_pr_step
         from .steps.prompt_steps import prompt_for_pr_title_step, prompt_for_pr_body_step
+        from .steps.ai_pr_step import ai_suggest_pr_description
         return {
             "create_pr": create_pr_step,
             "prompt_for_pr_title": prompt_for_pr_title_step,
             "prompt_for_pr_body": prompt_for_pr_body_step,
+            "ai_suggest_pr_description": ai_suggest_pr_description,
         }

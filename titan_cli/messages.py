@@ -162,7 +162,7 @@ class Messages:
         PROVIDER_NOT_CONFIGURED = "No AI provider configured. Run: titan ai configure"
         PROVIDER_INVALID = "Invalid AI provider: {provider}"
         API_KEY_MISSING = "API key not found for provider: {provider}"
-        API_KEY_PROMPT = "Enter your {provider.title()} API Key"
+        API_KEY_PROMPT = "Enter your {provider} API Key"
         API_KEY_ALREADY_CONFIGURED = "API key already configured for {provider}."
         API_KEY_REPLACE_PROMPT = "Do you want to replace the existing key?"
         GEMINI_OAUTH_PROMPT = "Use OAuth for Gemini authentication?"
