@@ -328,7 +328,7 @@ def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, sp
         if not git_status.is_clean:
             panel = PanelRenderer()
 
-            # Warning panel for uncommitted changes
+            # 1. Warning panel for uncommitted changes
             panel.print(
                 msg.Workflow.UNCOMMITTED_CHANGES_WARNING,
                 panel_type="warning",
@@ -336,12 +336,15 @@ def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, sp
             )
             spacer.small()
 
-            # Info panel explaining what the workflow will do
-            panel.print(
+            # 2. Custom-styled panel for workflow steps
+            info_panel = panel.render(
                 msg.Workflow.WORKFLOW_STEPS_INFO,
-                panel_type="info",
-                title="Workflow Steps"
+                title="Workflow Steps",
+                style="primary",
+                border_style="double",
+                title_align="center"
             )
+            panel.console.print(info_panel)
             spacer.small()
 
             proceed = prompts.ask_confirm(msg.Workflow.CONTINUE_PROMPT, default=True)
