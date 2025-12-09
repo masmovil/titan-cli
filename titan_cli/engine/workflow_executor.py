@@ -41,23 +41,28 @@ class WorkflowExecutor:
         # Load params into ctx.data so steps can access them
         ctx.data.update(effective_params)
 
+        # Inject workflow metadata into context
+        ctx.workflow_name = workflow.name
+        ctx.total_steps = len([s for s in workflow.steps if not ("hook" in s and len(s) == 1)])
 
         ctx.ui.text.styled_text(("Starting workflow: ", "info"), (workflow.name, "info bold"))
         ctx.ui.text.body(workflow.description, style="dim")
         ctx.ui.spacer.small()
 
+        step_index = 0
         for step_config in workflow.steps:
             # If the step is just a hook placeholder, skip it.
             # The registry has already handled merging.
             if "hook" in step_config and len(step_config) == 1:
                 continue
 
+            # Inject current step number into context
+            step_index += 1
+            ctx.current_step = step_index
+
             step_id = step_config.get("id", "anonymous_step")
             step_name = step_config.get("name", step_id)
             on_error = step_config.get("on_error", "fail") # Default to fail
-
-            ctx.ui.text.styled_text(("Executing step: ", "info"), (step_name, "info bold"), (f" ({step_id})", "info dim"))
-
 
             step_result: WorkflowResult = Success("Step not executed (default)", {}) # Default result
 
@@ -76,19 +81,15 @@ class WorkflowExecutor:
 
             # Handle step result
             if is_error(step_result):
+                # Steps may not show their own errors, so show it here
                 ctx.ui.text.error(f"Step '{step_name}' failed: {step_result.message}")
                 if on_error == "fail":
                     ctx.ui.text.error(f"Workflow '{workflow.name}' stopped due to step failure.")
                     return Error(f"Workflow failed at step '{step_name}'", step_result.exception)
-            elif is_skip(step_result):
-                ctx.ui.text.warning(f"Step '{step_name}' skipped: {step_result.message}")
             else:
-                ctx.ui.text.success(f"Step '{step_name}' completed: {step_result.message}")
-                # Merge step metadata into workflow context data
+                # Merge step metadata into workflow context data (for Success and Skip)
                 if step_result.metadata:
                     ctx.data.update(step_result.metadata)
-            
-            ctx.ui.spacer.small() # Add a small space after each step
 
         ctx.ui.text.success(f"Workflow '{workflow.name}' completed successfully.")
         return Success(f"Workflow '{workflow.name}' finished.", {})

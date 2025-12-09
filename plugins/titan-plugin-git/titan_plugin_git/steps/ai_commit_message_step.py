@@ -26,8 +26,18 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the operation fails.
         Skip: If no changes, AI not configured, or user declined.
     """
+    # Show step header
+    if ctx.views:
+        ctx.views.step_header("ai_commit_message", ctx.current_step, ctx.total_steps)
+
     # Check if AI is configured
     if not ctx.ai or not ctx.ai.is_available():
+        if ctx.ui:
+            ctx.ui.panel.print(
+                msg.Steps.AICommitMessage.AI_NOT_CONFIGURED,
+                panel_type="info"
+            )
+            ctx.ui.spacer.small()
         return Skip(msg.Steps.AICommitMessage.AI_NOT_CONFIGURED)
 
     # Get git client
@@ -37,6 +47,12 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
     # Get git status
     git_status = ctx.get('git_status')
     if not git_status or git_status.is_clean:
+        if ctx.ui:
+            ctx.ui.panel.print(
+                msg.Steps.AICommitMessage.NO_CHANGES_TO_COMMIT,
+                panel_type="info"
+            )
+            ctx.ui.spacer.small()
         return Skip(msg.Steps.AICommitMessage.NO_CHANGES_TO_COMMIT)
 
     try:
@@ -118,6 +134,14 @@ Return ONLY the commit message, nothing else."""
 
             if not use_ai:
                 return Skip(msg.Steps.AICommitMessage.USER_DECLINED)
+
+        # Show success panel
+        if ctx.ui:
+            ctx.ui.panel.print(
+                "AI commit message generated successfully",
+                panel_type="success"
+            )
+            ctx.ui.spacer.small()
 
         # Success - save to context
         return Success(

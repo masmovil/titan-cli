@@ -94,3 +94,47 @@ def preview_menu():
     except ModuleNotFoundError:
         typer.secho("Error: Preview script not found.", fg=typer.colors.RED)
         raise typer.Exit(1)
+
+
+@preview_app.command("workflow")
+def preview_workflow(name: str):
+    """
+    Shows a preview of a workflow with mocked data.
+
+    Args:
+        name: Name of the workflow to preview (e.g., 'create-pr-ai')
+    """
+    from pathlib import Path
+    import sys
+
+    normalized_name = name.replace('-', '_')
+    preview_filename = f"{normalized_name}_preview.py"
+
+    # Try multiple locations for the preview file
+    search_paths = [
+        # 1. System workflows
+        Path(__file__).parent / "workflows" / "__previews__" / preview_filename,
+        # 2. GitHub plugin workflows (relative to this file)
+        Path(__file__).parent.parent / "plugins" / "titan-plugin-github" / "titan_plugin_github" / "workflows" / "__previews__" / preview_filename,
+        # 3. Git plugin workflows
+        Path(__file__).parent.parent / "plugins" / "titan-plugin-git" / "titan_plugin_git" / "workflows" / "__previews__" / preview_filename,
+    ]
+
+    for preview_path in search_paths:
+        if preview_path.exists():
+            try:
+                # Execute the file directly
+                with open(preview_path, 'r') as f:
+                    code = compile(f.read(), preview_path, 'exec')
+                    exec(code, {'__name__': '__main__'})
+                return  # Success!
+            except Exception as e:
+                typer.secho(f"Error executing preview: {e}", fg=typer.colors.RED)
+                raise typer.Exit(1)
+
+    # If we get here, preview was not found in any location
+    typer.secho(f"Error: Preview for workflow '{name}' not found.", fg=typer.colors.RED)
+    typer.secho(f"Searched in:", fg=typer.colors.YELLOW)
+    for path in search_paths:
+        typer.secho(f"  - {path}", fg=typer.colors.YELLOW)
+    raise typer.Exit(1)

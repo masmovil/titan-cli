@@ -256,44 +256,57 @@ def _handle_run_workflow_action(config: TitanConfig, text: TextRenderer, spacer:
 
     if chosen_workflow_item and chosen_workflow_item.action != "cancel":
         selected_workflow_name = chosen_workflow_item.action
-        text.info(f"Preparing to run workflow: {selected_workflow_name}")
-        spacer.small()
 
         try:
             parsed_workflow = config.workflows.get_workflow(selected_workflow_name)
-            if parsed_workflow:
-                secrets = SecretManager(project_path=config.project_root)
-
-                ui = UIComponents(
-                    text=text,
-                    panel=PanelRenderer(),
-                    table=TableRenderer(),
-                    spacer=spacer
-                )
-
-                ctx_builder = WorkflowContextBuilder(
-                    plugin_registry=config.registry,
-                    secrets=secrets,
-                    ai_config=config.config.ai
-                )
-                ctx_builder.with_ui(ui=ui)
-                ctx_builder.with_ai()  # Initialize AI client
-
-                # Add registered plugins to context
-                for plugin_name in config.registry.list_installed():
-                    plugin = config.registry.get_plugin(plugin_name)
-                    if plugin:
-                        client = plugin.get_client()
-                        # Add client to context using a generic method if possible,
-                        # or specific methods like with_git(), with_github()
-                        if hasattr(ctx_builder, f"with_{plugin_name}"):
-                            getattr(ctx_builder, f"with_{plugin_name}")(client)
-
-                execution_context = ctx_builder.build()
-                executor = WorkflowExecutor(config.registry)
-                executor.execute(parsed_workflow, execution_context)
-            else:
+            if not parsed_workflow:
                 text.error(f"Failed to load workflow '{selected_workflow_name}'.")
+                spacer.line()
+                prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+                return
+
+            # Show workflow info panel and ask for confirmation
+            panel = PanelRenderer()
+            if not _show_workflow_info_panel(parsed_workflow, panel, spacer, prompts):
+                spacer.line()
+                prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+                return
+
+            spacer.line()
+            text.info("✨ Executing workflow...")
+            spacer.small()
+
+            # Build execution context
+            secrets = SecretManager(project_path=config.project_root)
+
+            ui = UIComponents(
+                text=text,
+                panel=panel,
+                table=TableRenderer(),
+                spacer=spacer
+            )
+
+            ctx_builder = WorkflowContextBuilder(
+                plugin_registry=config.registry,
+                secrets=secrets,
+                ai_config=config.config.ai
+            )
+            ctx_builder.with_ui(ui=ui)
+            ctx_builder.with_ai()  # Initialize AI client
+
+            # Add registered plugins to context
+            for plugin_name in config.registry.list_installed():
+                plugin = config.registry.get_plugin(plugin_name)
+                if plugin:
+                    client = plugin.get_client()
+                    if hasattr(ctx_builder, f"with_{plugin_name}"):
+                        getattr(ctx_builder, f"with_{plugin_name}")(client)
+
+            execution_context = ctx_builder.build()
+            executor = WorkflowExecutor(config.registry)
+
+            # Execute workflow (steps handle their own UI)
+            executor.execute(parsed_workflow, execution_context)
 
         except (WorkflowNotFoundError, WorkflowExecutionError) as e:
             text.error(str(e))
@@ -302,6 +315,37 @@ def _handle_run_workflow_action(config: TitanConfig, text: TextRenderer, spacer:
 
     spacer.line()
     prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+
+
+def _show_workflow_info_panel(workflow, panel: PanelRenderer, spacer: SpacerRenderer, prompts: PromptsRenderer) -> bool:
+    """
+    Shows a generic info panel for any workflow with its steps and asks for confirmation.
+
+    Args:
+        workflow: ParsedWorkflow instance
+        panel: Panel renderer
+        spacer: Spacer renderer
+        prompts: Prompts renderer
+
+    Returns:
+        bool: True if user wants to execute, False to cancel
+    """
+    # Build list of steps
+    steps_list = "\n".join([
+        f"  {i+1}. {step.get('id', 'unnamed')}"
+        for i, step in enumerate(workflow.steps)
+    ])
+
+    content = f"{workflow.description}\n\nSteps:\n{steps_list}"
+
+    panel.print(
+        content,
+        panel_type="info",
+        title=f"Workflow: {workflow.name}"
+    )
+    spacer.small()
+
+    return prompts.ask_confirm("Execute this workflow?", default=True)
 
 
 def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, spacer: SpacerRenderer, prompts: PromptsRenderer):
@@ -318,41 +362,6 @@ def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, sp
         spacer.line()
         prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
         return
-
-    # Check if there are uncommitted changes
-    git_plugin = config.registry.get_plugin("git")
-    if git_plugin and git_plugin.is_available():
-        git_client = git_plugin.get_client()
-        git_status = git_client.get_status()
-
-        if not git_status.is_clean:
-            panel = PanelRenderer()
-
-            # 1. Warning panel for uncommitted changes
-            panel.print(
-                msg.Workflow.UNCOMMITTED_CHANGES_WARNING,
-                panel_type="warning",
-                title=msg.Workflow.UNCOMMITTED_CHANGES_PROMPT_TITLE
-            )
-            spacer.small()
-
-            # 2. Custom-styled panel for workflow steps
-            info_panel = panel.render(
-                msg.Workflow.WORKFLOW_STEPS_INFO,
-                title="Workflow Steps",
-                style="primary",
-                border_style="double",
-                title_align="center"
-            )
-            panel.console.print(info_panel)
-            spacer.small()
-
-            proceed = prompts.ask_confirm(msg.Workflow.CONTINUE_PROMPT, default=True)
-            if not proceed:
-                spacer.line()
-                prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-                return
-            spacer.line()
 
     # Discover workflows to find the create-pr-ai workflow
     available_workflows = config.workflows.discover()
@@ -377,7 +386,15 @@ def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, sp
             prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
             return
 
-        text.info("✨ Executing workflow with AI-powered PR description...")
+        # Show workflow info panel and ask for confirmation
+        panel = PanelRenderer()
+        if not _show_workflow_info_panel(parsed_workflow, panel, spacer, prompts):
+            spacer.line()
+            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+            return
+
+        spacer.line()
+        text.info("✨ Executing workflow...")
         spacer.small()
 
         # Build execution context
@@ -385,7 +402,7 @@ def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, sp
 
         ui = UIComponents(
             text=text,
-            panel=PanelRenderer(),
+            panel=panel,
             table=TableRenderer(),
             spacer=spacer
         )
@@ -409,7 +426,7 @@ def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, sp
         execution_context = ctx_builder.build()
         executor = WorkflowExecutor(config.registry)
 
-        # Execute AI workflow (use_ai is already true in create-pr-ai.yaml)
+        # Execute workflow (steps handle their own UI)
         executor.execute(parsed_workflow, execution_context)
 
     except (WorkflowNotFoundError, WorkflowExecutionError) as e:

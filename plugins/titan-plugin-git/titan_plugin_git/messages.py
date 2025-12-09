@@ -57,7 +57,9 @@ class Messages:
         class Status:
             GIT_CLIENT_NOT_AVAILABLE: str = "Git client is not available in the workflow context."
             STATUS_RETRIEVED_SUCCESS: str = "Git status retrieved successfully."
+            STATUS_RETRIEVED_WITH_UNCOMMITTED: str = "Git status retrieved. Working directory is not clean."
             WORKING_DIRECTORY_NOT_CLEAN: str = " Working directory is not clean."
+            WORKING_DIRECTORY_IS_CLEAN: str = "Git status retrieved. Working directory is clean."
             FAILED_TO_GET_STATUS: str = "Failed to get git status: {e}"
 
         class Commit:

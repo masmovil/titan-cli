@@ -34,8 +34,18 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
         Skip: AI not configured or user declined
         Error: Failed to generate PR description
     """
+    # Show step header
+    if ctx.views:
+        ctx.views.step_header("ai_pr_description", ctx.current_step, ctx.total_steps)
+
     # Check if AI is configured
     if not ctx.ai or not ctx.ai.is_available():
+        if ctx.ui:
+            ctx.ui.panel.print(
+                msg.GitHub.AI.AI_NOT_CONFIGURED,
+                panel_type="info"
+            )
+            ctx.ui.spacer.small()
         return Skip(msg.GitHub.AI.AI_NOT_CONFIGURED)
 
     # Get GitHub and Git clients
@@ -259,6 +269,14 @@ DESCRIPTION:
             if not use_ai_pr:
                 ctx.ui.text.warning(msg.GitHub.AI.AI_SUGGESTION_REJECTED)
                 return Skip("User rejected AI-generated PR")
+
+        # Show success panel
+        if ctx.ui:
+            ctx.ui.panel.print(
+                "AI PR description generated successfully",
+                panel_type="success"
+            )
+            ctx.ui.spacer.small()
 
         # Success - save to context
         return Success(
