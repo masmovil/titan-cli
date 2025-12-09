@@ -85,7 +85,7 @@ class BaseAIAgent(ABC):
         # Convert to AgentResponse
         return AgentResponse(
             content=response.content,
-            tokens_used=response.usage.total_tokens if response.usage else 0,
+            tokens_used=response.usage.get("total_tokens", 0) if response.usage else 0,
             provider=self.ai_client._provider.__class__.__name__,
             cached=False
         )
