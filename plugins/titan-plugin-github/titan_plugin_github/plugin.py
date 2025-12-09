@@ -1,4 +1,7 @@
 # plugins/titan-plugin-github/titan_plugin_github/plugin.py
+from pathlib import Path
+from typing import Optional
+
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager

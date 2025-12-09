@@ -3,6 +3,9 @@ Titan CLI - Main CLI application
 
 Combines all tool commands into a single CLI interface.
 """
+from titan_cli.engine.ui_container import UIComponents
+from titan_cli.ui.components.panel import PanelRenderer
+from titan_cli.ui.components.table import TableRenderer
 import typer
 import tomli
 import tomli_w
@@ -261,11 +264,6 @@ def _handle_run_workflow_action(config: TitanConfig, text: TextRenderer, spacer:
             if parsed_workflow:
                 secrets = SecretManager(project_path=config.project_root)
 
-                # Build execution context with dependency injection
-                from titan_cli.engine.ui_container import UIComponents
-                from titan_cli.ui.components.panel import PanelRenderer
-                from titan_cli.ui.components.table import TableRenderer
-
                 ui = UIComponents(
                     text=text,
                     panel=PanelRenderer(),
@@ -308,6 +306,8 @@ def _handle_run_workflow_action(config: TitanConfig, text: TextRenderer, spacer:
 
 def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, spacer: SpacerRenderer, prompts: PromptsRenderer):
     """Handle the 'create PR with AI' menu action."""
+    from titan_cli.ui.components.panel import PanelRenderer
+
     text.title("Create Pull Request with AI")
     spacer.line()
 
@@ -326,14 +326,25 @@ def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, sp
         git_status = git_client.get_status()
 
         if not git_status.is_clean:
-            text.warning("⚠️  You have uncommitted changes.")
-            text.info("This workflow will:")
-            text.info("  1. Prompt you for a commit message (or skip if you prefer)")
-            text.info("  2. Create and push the commit")
-            text.info("  3. Use AI to generate PR title and description automatically")
+            panel = PanelRenderer()
+
+            # Warning panel for uncommitted changes
+            panel.print(
+                msg.Workflow.UNCOMMITTED_CHANGES_WARNING,
+                panel_type="warning",
+                title=msg.Workflow.UNCOMMITTED_CHANGES_PROMPT_TITLE
+            )
             spacer.small()
 
-            proceed = prompts.ask_confirm("Continue?", default=True)
+            # Info panel explaining what the workflow will do
+            panel.print(
+                msg.Workflow.WORKFLOW_STEPS_INFO,
+                panel_type="info",
+                title="Workflow Steps"
+            )
+            spacer.small()
+
+            proceed = prompts.ask_confirm(msg.Workflow.CONTINUE_PROMPT, default=True)
             if not proceed:
                 spacer.line()
                 prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
@@ -368,10 +379,6 @@ def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, sp
 
         # Build execution context
         secrets = SecretManager(project_path=config.project_root)
-
-        from titan_cli.engine.ui_container import UIComponents
-        from titan_cli.ui.components.panel import PanelRenderer
-        from titan_cli.ui.components.table import TableRenderer
 
         ui = UIComponents(
             text=text,
