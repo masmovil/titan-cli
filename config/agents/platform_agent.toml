@@ -1,25 +1,25 @@
 # Platform Agent Configuration
-# Uses TAP (Titan Adapter Protocol) with AI-driven tool selection
+# Supports both interactive (TAP) and analysis modes
 
 [agent]
 name = "platform_agent"
 description = "Platform engineering agent for Git, GitHub, and development workflows"
 version = "1.0.0"
 
-# TAP Configuration
+# TAP Configuration (for interactive mode)
+# Note: Interactive mode requires TAP integration (feat/platform-agent branch)
 [tap]
-# Which AI provider adapter to use (from config/tap/adapters.toml)
 provider = "anthropic"
 
-# Tools available to the agent (TAP protocol)
+# Tools for interactive mode (when TAP is available)
 [[tap.tools]]
 name = "get_git_status"
-description = "Gets the current Git repository status (modified files, branch, etc.)"
+description = "Gets the current Git repository status"
 enabled = true
 
 [[tap.tools]]
 name = "analyze_git_diff"
-description = "Analyzes git diff to understand what changed in the code"
+description = "Analyzes git diff to understand what changed"
 enabled = true
 
 [[tap.tools]]
@@ -27,8 +27,10 @@ name = "create_commit"
 description = "Creates a Git commit with a conventional commit message"
 enabled = true
 
-# AI Prompts
+# Prompts
 [prompts]
+
+# System prompt for interactive mode (with tools)
 system = """
 You are a Platform Engineering expert assistant.
 
@@ -41,9 +43,9 @@ Your role is to automate and streamline development workflows including:
 For Git commits, always use conventional commit format:
 type(scope): description
 
-Types: feat, fix, docs, style, refactor, test, chore
+Types: feat, fix, docs, style, refactor, test, chore, ci, build, perf
 
-WORKFLOW:
+WORKFLOW (Interactive Mode with Tools):
 1. Use get_git_status to see what files have changed
 2. Use analyze_git_diff to understand the nature of the changes
 3. Use create_commit to create the commit with an appropriate message
@@ -55,12 +57,34 @@ RULES:
 - Ask for clarification if changes are unclear
 """
 
+# System prompt for analysis mode (without tools)
+analysis_system = """
+You are a Platform Engineering expert analyzing Git repository changes.
+
+Your role is to provide concise, actionable insights about code changes.
+
+When analyzing changes:
+1. Understand what changed and why
+2. Identify the type of change (feature, fix, refactor, etc.)
+3. Consider the scope and impact
+4. Suggest improvements if relevant
+
+For commit message suggestions, use conventional commit format:
+type(scope): description
+
+Types: feat, fix, docs, style, refactor, test, chore, ci, build, perf
+
+RULES:
+- Be concise (commit messages under 72 characters)
+- Focus on WHAT changed, not HOW
+- Use lowercase for type and description
+- Be specific but not verbose
+- Return actionable recommendations
+"""
+
+# User prompt template
 user_template = """
-Analyze the current Git changes and create appropriate commit(s).
+Analyze the current Git changes and provide insights.
 
 Context: {context}
 """
-
-# Workflow Configuration (optional - for non-TAP fallback)
-[workflow]
-steps = ["get_git_status_step", "create_git_commit_step"]

@@ -1,12 +1,15 @@
 """
 Titan CLI Agents
 
-AI-powered autonomous agents using TAP (Tool Anything Protocol).
+AI-powered autonomous agents with dual mode support:
+- Interactive Mode: AI executes tools autonomously (TAP)
+- Analysis Mode: AI analyzes data as workflow steps
 
 Available Agents:
-- PlatformAgent: TAP + TOML configuration (platform engineering workflows)
-- AutoCommitAgent: TAP + Cascade (production, token-optimized)
-- AutoCommitLangGraphAgent: TAP + LangGraph (complex workflows)
+- PlatformAgent: Dual mode agent (interactive + analysis)
+
+Available Workflow Steps:
+- See titan_cli.agents.steps for workflow step wrappers
 """
 
 from .platform_agent import PlatformAgent

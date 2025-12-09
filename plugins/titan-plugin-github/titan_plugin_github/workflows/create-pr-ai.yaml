@@ -1,10 +1,16 @@
-name: "Create Pull Request"
-description: "Generic PR creation workflow"
+name: "Create Pull Request with AI"
+description: "Fully automated AI-powered PR creation (atomic commits + smart PR description)"
+source: "plugin:github"
 
 params:
   base_branch: "main"
   draft: false
-  use_ai: false  # Set to true to use AI for PR description generation
+  use_ai: true  # AI is always enabled for this workflow
+
+hooks:
+  - before_commit
+  - before_push
+  - after_pr
 
 steps:
   - id: git_status
@@ -12,8 +18,16 @@ steps:
     plugin: git
     step: get_status
 
+  # AI creates atomic commits automatically
+  - id: ai_atomic_commits
+    name: "AI Create Atomic Commits"
+    plugin: github
+    step: ai_create_atomic_commits
+    optional: true  # Fallback to manual if AI fails
+
   - hook: before_commit
 
+  # If AI didn't create commits, prompt for manual commit
   - id: prompt_for_commit
     name: "Prompt for Commit Message"
     plugin: git
@@ -23,8 +37,6 @@ steps:
     name: "Create Commit"
     plugin: git
     step: create_commit
-    # Dependency: 'commit_message' is required by this step, but only if there are
-    # changes to commit. The step handles skipping if the working directory is clean.
 
   - hook: before_push
 
@@ -32,8 +44,6 @@ steps:
     name: "Push to Remote"
     plugin: git
     step: push
-    # Dependency: This step automatically skips if no new commit (commit_hash)
-    # was created by the 'create_commit' step.
 
   - id: get_base_branch
     name: "Get Base Branch"
@@ -45,13 +55,14 @@ steps:
     plugin: git
     step: get_current_branch
 
-  # AI suggests PR title and body (only runs if use_ai=true, deterministic by default)
+  # AI analyzes full branch diff and generates PR with template
   - id: ai_suggest_pr
-    name: "AI Suggest PR Description"
+    name: "AI Generate PR Description"
     plugin: github
     step: ai_suggest_pr_description
-    optional: true  # Skips if use_ai=false or AI not configured, falls back to manual prompts
+    optional: false  # This is required for AI workflow
 
+  # Fallback to manual prompts only if AI fails
   - id: prompt_pr_title
     name: "Prompt for PR Title"
     plugin: github
@@ -66,7 +77,5 @@ steps:
     name: "Create Pull Request"
     plugin: github
     step: create_pr
-    # Dependency: This step automatically skips if no new commit (commit_hash)
-    # was created, as there would be nothing to push or create a PR for.
 
   - hook: after_pr

@@ -1,89 +1,55 @@
 """
-Platform Agent - TAP + TOML Configuration
+Platform Agent - Dual Mode Support
 
-Platform engineering agent for automating Git, GitHub, and development workflows.
+Platform engineering agent that can run in two modes:
+1. Interactive Mode: AI executes tools autonomously (TAP)
+2. Analysis Mode: AI analyzes pre-computed data (workflow step)
 
-This agent demonstrates TAP implementation:
-- TOML-based configuration (consistent with project standards)
-- TAP tools for AI decision-making
-- Framework-agnostic architecture
-- Extensible for platform engineering tasks
+Example Interactive:
+    agent = PlatformAgent.from_toml("config/agents/platform_agent.toml")
+    result = agent.run(ctx, mode="interactive")
+
+Example Analysis:
+    workflow = BaseWorkflow(steps=[
+        get_git_status_step,
+        platform_agent_analysis_step
+    ])
 """
 
 from pathlib import Path
-from typing import List, Any, Optional
+from typing import Optional
 import sys
 
 # Use tomli for Python < 3.11, tomllib for Python >= 3.11
 if sys.version_info >= (3, 11):
     import tomllib
 else:
-    import tomli as tomllib
+    try:
+        import tomli as tomllib
+    except ImportError:
+        # Fallback if tomli not installed
+        import tomllib
 
-from dataclasses import dataclass, field
-from typing import Dict
-
-from titan_cli.engine.context import WorkflowContext
-from titan_cli.engine.results import WorkflowResult, Success, Error
-from titan_cli.tap.manager import AdapterManager
-
-
-# TAP Tool definitions (same as in GitHub plugin)
-@dataclass
-class ToolParameter:
-    """Metadata for a tool parameter."""
-    type_hint: str
-    description: str = ""
-    required: bool = True
-
-
-@dataclass
-class ToolSchema:
-    """Schema definition for a tool."""
-    name: str
-    description: str
-    parameters: Dict[str, ToolParameter] = field(default_factory=dict)
-
-
-class TitanTool:
-    """Base class for Titan tools."""
-
-    def __init__(self, schema: ToolSchema):
-        self.schema = schema
-        self.name = schema.name
-        self.description = schema.description
-
-    def execute(self, **kwargs) -> Any:
-        """Execute the tool - to be overridden."""
-        raise NotImplementedError
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 
 
 class PlatformAgent:
     """
-    Platform engineering agent using TAP + TOML configuration.
+    Platform engineering agent with dual mode support.
 
-    Architecture:
-    - Configuration loaded from TOML file (consistent with project standards)
-    - TAP tools for AI to use autonomously
-    - AI provider via TAP adapter (framework-agnostic)
-    - Extensible for Git, GitHub, CI/CD, and automation workflows
+    Modes:
+    - interactive: AI decides which tools to execute (requires TAP)
+    - analysis: AI analyzes data from ctx.data (no tool execution)
 
-    Example:
-        ctx = WorkflowContext(git=git_client, ai=ai_client, ui=ui_client)
-        agent = PlatformAgent.from_toml("config/agents/platform_agent.toml")
-        result = agent.run(ctx)
+    The analysis mode allows using the agent as a workflow step.
     """
 
-    def __init__(
-        self,
-        config: dict,
-        config_path: Optional[Path] = None
-    ):
+    def __init__(self, config: dict, config_path: Optional[Path] = None):
         """
         Initialize agent with configuration.
 
         Args:
-            config: Agent configuration dictionary
+            config: Agent configuration dictionary from TOML
             config_path: Path to config file (for reference)
         """
         self.config = config
@@ -101,6 +67,9 @@ class PlatformAgent:
 
         Returns:
             PlatformAgent instance
+
+        Raises:
+            FileNotFoundError: If config file doesn't exist
         """
         path = Path(config_path)
         if not path.exists():
@@ -111,234 +80,261 @@ class PlatformAgent:
 
         return cls(config, path)
 
-    def get_tap_tools(self, ctx: WorkflowContext) -> List[TitanTool]:
+    def run(
+        self,
+        ctx: WorkflowContext,
+        user_context: str = "",
+        mode: str = "analysis"
+    ) -> WorkflowResult:
         """
-        Get TAP tools defined in TOML configuration.
+        Run the agent in specified mode.
 
         Args:
-            ctx: Workflow context with Git client
+            ctx: Workflow context with dependencies
+            user_context: User instructions/prompt
+            mode: "interactive" (with tools) or "analysis" (without tools)
 
         Returns:
-            List of TitanTool instances
+            WorkflowResult (Success, Error, or Skip)
         """
-        tools = []
+        if mode == "interactive":
+            return self._run_interactive_mode(ctx, user_context)
+        elif mode == "analysis":
+            return self._run_analysis_mode(ctx, user_context)
+        else:
+            return Error(f"Invalid mode: {mode}. Use 'interactive' or 'analysis'")
 
-        for tool_config in self.config['tap']['tools']:
-            if not tool_config.get('enabled', True):
-                continue
-
-            tool_name = tool_config['name']
-
-            # Map tool names to implementations
-            if tool_name == 'get_git_status':
-                tools.append(GetGitStatusTool(ctx.git))
-            elif tool_name == 'analyze_git_diff':
-                tools.append(AnalyzeGitDiffTool(ctx.git))
-            elif tool_name == 'create_commit':
-                tools.append(CreateCommitTool(ctx.git))
-
-        return tools
-
-    def get_system_prompt(self) -> str:
-        """Get system prompt from configuration."""
-        return self.config.get('prompts', {}).get('system', '')
-
-    def get_user_prompt(self, context: str = "") -> str:
+    def _run_interactive_mode(
+        self,
+        ctx: WorkflowContext,
+        user_context: str
+    ) -> WorkflowResult:
         """
-        Get user prompt from configuration template.
+        Interactive mode: AI executes tools autonomously.
 
-        Args:
-            context: Additional context to include
+        This mode requires TAP integration (not implemented in this branch).
+        Will be fully implemented when merging with feat/platform-agent.
 
         Returns:
-            Formatted user prompt
+            Error: TAP not available in this branch
         """
-        template = self.config.get('prompts', {}).get('user_template', '{context}')
-        return template.format(context=context)
+        return Error(
+            "Interactive mode requires TAP integration. "
+            "Use analysis mode or wait for feat/platform-agent merge."
+        )
 
-    def run(self, ctx: WorkflowContext, user_context: str = "") -> WorkflowResult:
+    def _run_analysis_mode(
+        self,
+        ctx: WorkflowContext,
+        user_context: str
+    ) -> WorkflowResult:
         """
-        Run the agent using TAP.
+        Analysis mode: AI analyzes data from ctx.data.
+
+        This mode reads pre-computed data (populated by previous workflow steps)
+        and uses AI to analyze it without executing any tools.
 
         Args:
             ctx: Workflow context
-            user_context: Additional context for the user prompt
+            user_context: Task description
 
         Returns:
-            WorkflowResult with execution outcome
+            Success: With AI analysis
+            Skip: If no AI or no data
+            Error: If AI generation fails
         """
-        if ctx.ui and ctx.ui.text:
-            ctx.ui.text.title(f"🤖 {self.name}")
-            ctx.ui.text.info(self.description)
-            ctx.ui.text.line()
+        # Check AI availability
+        if not ctx.ai:
+            return Skip("AI not configured, skipping analysis")
 
+        # Extract data from context
+        analysis_data = self._extract_context_data(ctx)
+
+        if not analysis_data:
+            return Skip("No data in context to analyze")
+
+        # Build analysis prompt
+        prompt = self._build_analysis_prompt(analysis_data, user_context)
+
+        # Get system prompt
+        system_prompt = self._get_analysis_system_prompt()
+
+        # Call AI (no tools - pure analysis)
         try:
-            # Get TAP tools
-            tools = self.get_tap_tools(ctx)
-
-            if ctx.ui and ctx.ui.text:
-                ctx.ui.text.info(f"📦 Loaded {len(tools)} TAP tools")
-
-            # Get TAP adapter (provider-agnostic)
-            provider = self.config['tap']['provider']
-            adapter_manager = AdapterManager.from_config("config/tap/adapters.yml")
-            adapter = adapter_manager.get(provider)
-
-            if ctx.ui and ctx.ui.text:
-                ctx.ui.text.info(f"🔌 Using provider: {provider}")
-
-            # Convert tools to provider format
-            provider_tools = adapter.convert_tools(tools)
-
-            # Get prompts
-            system_prompt = self.get_system_prompt()
-            user_prompt = self.get_user_prompt(user_context)
-
-            if ctx.ui and ctx.ui.text:
-                ctx.ui.text.line()
-                ctx.ui.text.info("🧠 AI analyzing changes...")
-
-            # AI decides which tools to use
-            response = ctx.ai.generate_with_tools(
-                prompt=user_prompt,
-                tools=provider_tools,
+            response = ctx.ai.generate(
+                prompt=prompt,
                 system_prompt=system_prompt
             )
 
-            if ctx.ui and ctx.ui.text:
-                ctx.ui.text.line()
-                ctx.ui.text.success("✅ Agent completed successfully")
-
             return Success(
-                "Agent execution completed",
+                response,
                 metadata={
-                    'agent': self.name,
-                    'provider': provider,
-                    'tools_used': len(tools),
-                    'response': response
+                    "mode": "analysis",
+                    "agent": self.name,
+                    "data_keys": list(analysis_data.keys())
                 }
             )
 
         except Exception as e:
-            if ctx.ui and ctx.ui.text:
-                ctx.ui.text.error(f"❌ Agent failed: {e}")
+            return Error(f"AI analysis failed: {e}", exception=e)
 
-            return Error(
-                f"Agent execution failed: {e}",
-                exception=e
-            )
+    def _extract_context_data(self, ctx: WorkflowContext) -> dict:
+        """
+        Extract relevant data from ctx.data for analysis.
 
+        Looks for common workflow data like git_status, git_diff, etc.
 
-# ================================================================
-# TAP TOOLS IMPLEMENTATIONS
-# ================================================================
+        Args:
+            ctx: Workflow context
 
-class GetGitStatusTool(TitanTool):
-    """TAP tool for getting Git status."""
+        Returns:
+            Dictionary with extracted data
+        """
+        data = {}
 
-    def __init__(self, git_client):
-        schema = ToolSchema(
-            name="get_git_status",
-            description="Gets the current status of the Git repository including modified files, branch, and staging area",
-            parameters={}
-        )
-        super().__init__(schema)
-        self.git_client = git_client
-
-    def execute(self) -> str:
-        """Execute tool and return formatted status."""
-        status = self.git_client.get_status()
-
-        result = []
-        result.append(f"Branch: {status.branch}")
-
-        if status.modified_files:
-            result.append(f"\nModified files ({len(status.modified_files)}):")
-            for file in status.modified_files:
-                result.append(f"  - {file}")
-
-        if status.staged_files:
-            result.append(f"\nStaged files ({len(status.staged_files)}):")
-            for file in status.staged_files:
-                result.append(f"  - {file}")
-
-        if status.untracked_files:
-            result.append(f"\nUntracked files ({len(status.untracked_files)}):")
-            for file in status.untracked_files[:5]:  # Limit to 5
-                result.append(f"  - {file}")
-            if len(status.untracked_files) > 5:
-                result.append(f"  ... and {len(status.untracked_files) - 5} more")
-
-        return "\n".join(result)
-
-
-class AnalyzeGitDiffTool(TitanTool):
-    """TAP tool for analyzing Git diff."""
-
-    def __init__(self, git_client):
-        schema = ToolSchema(
-            name="analyze_git_diff",
-            description="Analyzes the git diff to understand what changed in the code. Returns a summary of changes.",
-            parameters={
-                "file_path": {
-                    "type": "string",
-                    "description": "Optional: specific file to diff (if not provided, diffs all modified files)",
-                    "required": False
-                }
+        # Git status (from get_git_status_step)
+        if "git_status" in ctx.data:
+            status = ctx.data["git_status"]
+            data["git_status"] = {
+                "branch": getattr(status, 'branch', ''),
+                "modified": getattr(status, 'modified_files', []),
+                "untracked": getattr(status, 'untracked_files', []),
+                "is_clean": getattr(status, 'is_clean', False)
             }
-        )
-        super().__init__(schema)
-        self.git_client = git_client
 
-    def execute(self, file_path: Optional[str] = None) -> str:
-        """Execute tool and return diff analysis."""
-        if file_path:
-            diff = self.git_client.diff(file_path)
-            return f"Diff for {file_path}:\n{diff}"
+        # Git diff (if available)
+        if "git_diff" in ctx.data:
+            data["git_diff"] = ctx.data["git_diff"]
+
+        # Commit info
+        if "commit_message" in ctx.data:
+            data["commit_info"] = {
+                "message": ctx.data["commit_message"],
+                "hash": ctx.data.get("commit_hash")
+            }
+
+        # PR info
+        if "pr_number" in ctx.data:
+            data["pr_info"] = {
+                "number": ctx.data.get("pr_number"),
+                "title": ctx.data.get("pr_title"),
+                "body": ctx.data.get("pr_body"),
+                "url": ctx.data.get("pr_url")
+            }
+
+        # Files changed
+        if "files_changed" in ctx.data:
+            data["files_changed"] = ctx.data["files_changed"]
+
+        return data
+
+    def _build_analysis_prompt(self, data: dict, user_context: str) -> str:
+        """
+        Build analysis prompt from context data.
+
+        Args:
+            data: Extracted context data
+            user_context: User task description
+
+        Returns:
+            Formatted prompt string
+        """
+        parts = []
+
+        # Add user context first
+        if user_context:
+            parts.append(f"{user_context}\n\n")
         else:
-            diff = self.git_client.diff()
+            parts.append("Analyze the following data:\n\n")
 
-            # Truncate if too long
-            if len(diff) > 2000:
-                return f"Diff (truncated to 2000 chars):\n{diff[:2000]}\n\n... (truncated)"
+        # Git status section
+        if "git_status" in data:
+            status = data["git_status"]
+            parts.append("## Repository Status\n\n")
+            parts.append(f"- Branch: {status['branch']}\n")
+            parts.append(f"- Clean: {status['is_clean']}\n")
 
-            return f"Diff:\n{diff}"
+            if not status['is_clean']:
+                if status['modified']:
+                    parts.append(f"- Modified files: {len(status['modified'])}\n")
+                    for file in status['modified'][:15]:
+                        parts.append(f"  - {file}\n")
 
+                if status['untracked']:
+                    parts.append(f"- Untracked files: {len(status['untracked'])}\n")
 
-class CreateCommitTool(TitanTool):
-    """TAP tool for creating Git commits."""
+            parts.append("\n")
 
-    def __init__(self, git_client):
-        schema = ToolSchema(
-            name="create_commit",
-            description="Creates a Git commit with a conventional commit message. Files must be staged first.",
-            parameters={
-                "message": {
-                    "type": "string",
-                    "description": "Commit message in conventional commits format: type(scope): description",
-                    "required": True
-                },
-                "files": {
-                    "type": "array",
-                    "description": "List of file paths to stage and commit",
-                    "items": {"type": "string"},
-                    "required": True
-                }
-            }
+        # Git diff section
+        if "git_diff" in data:
+            diff = data["git_diff"]
+            # Limit diff size to avoid token overflow
+            max_diff_length = 3000
+            if len(diff) > max_diff_length:
+                diff = diff[:max_diff_length] + "\n... (truncated)"
+
+            parts.append("## Changes\n\n")
+            parts.append(f"```diff\n{diff}\n```\n\n")
+
+        # Commit info section
+        if "commit_info" in data:
+            commit = data["commit_info"]
+            parts.append("## Commit Info\n\n")
+            if commit.get("message"):
+                parts.append(f"- Message: {commit['message']}\n")
+            if commit.get("hash"):
+                parts.append(f"- Hash: {commit['hash']}\n")
+            parts.append("\n")
+
+        # PR info section
+        if "pr_info" in data:
+            pr = data["pr_info"]
+            parts.append("## Pull Request\n\n")
+            if pr.get("number"):
+                parts.append(f"- Number: #{pr['number']}\n")
+            if pr.get("title"):
+                parts.append(f"- Title: {pr['title']}\n")
+            if pr.get("url"):
+                parts.append(f"- URL: {pr['url']}\n")
+            parts.append("\n")
+
+        return "".join(parts)
+
+    def _get_analysis_system_prompt(self) -> str:
+        """
+        Get system prompt for analysis mode.
+
+        Checks TOML config for analysis-specific prompt,
+        falls back to regular system prompt.
+
+        Returns:
+            System prompt string
+        """
+        prompts = self.config.get("prompts", {})
+
+        # Try analysis-specific prompt
+        if "analysis_system" in prompts:
+            return prompts["analysis_system"]
+
+        # Fallback to regular system prompt
+        if "system" in prompts:
+            return prompts["system"]
+
+        # Default fallback
+        return """You are a Platform Engineering expert.
+Analyze the provided data and give concise, actionable insights."""
+
+    def get_system_prompt(self) -> str:
+        """Get standard system prompt from config."""
+        return self.config.get("prompts", {}).get(
+            "system",
+            "You are a Platform Engineering expert assistant."
         )
-        super().__init__(schema)
-        self.git_client = git_client
 
-    def execute(self, message: str, files: List[str]) -> str:
-        """Execute tool and create commit."""
-        # Stage files
-        for file in files:
-            self.git_client.add(file)
-
-        # Create commit
-        self.git_client.commit(message)
-
-        # Get commit hash
-        status = self.git_client.get_status()
-
-        return f"✅ Commit created: {message}\nFiles: {', '.join(files)}"
+    def get_user_prompt(self, context: str = "") -> str:
+        """Get user prompt from config with context substitution."""
+        template = self.config.get("prompts", {}).get(
+            "user_template",
+            "{context}"
+        )
+        return template.format(context=context)

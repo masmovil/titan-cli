@@ -21,17 +21,27 @@ class WorkflowExecutor:
     def __init__(self, plugin_registry: PluginRegistry):
         self._plugin_registry = plugin_registry
 
-    def execute(self, workflow: ParsedWorkflow, ctx: WorkflowContext) -> WorkflowResult:
+    def execute(self, workflow: ParsedWorkflow, ctx: WorkflowContext, params_override: Optional[Dict[str, Any]] = None) -> WorkflowResult:
         """
         Executes the given ParsedWorkflow.
-        
+
         Args:
             workflow: The ParsedWorkflow object to execute.
             ctx: The WorkflowContext for the execution.
-            
+            params_override: Optional dictionary to override workflow params.
+
         Returns:
             A WorkflowResult indicating the overall outcome.
         """
+        # Merge workflow params into ctx.data with optional overrides
+        effective_params = {**workflow.params}
+        if params_override:
+            effective_params.update(params_override)
+
+        # Load params into ctx.data so steps can access them
+        ctx.data.update(effective_params)
+
+
         ctx.ui.text.styled_text(("Starting workflow: ", "info"), (workflow.name, "info bold"))
         ctx.ui.text.body(workflow.description, style="dim")
         ctx.ui.spacer.small()

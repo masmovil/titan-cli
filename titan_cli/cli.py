@@ -258,6 +258,7 @@ def show_interactive_menu():
         menu_builder.add_top_level_item("Launch Claude Code", "Open an interactive session with Claude Code CLI.", "code")
         menu_builder.add_top_level_item("Project Management", "List, configure, or initialize projects.", "projects")
         menu_builder.add_top_level_item("Workflows", "Execute a predefined or custom workflow.", "run_workflow")
+        menu_builder.add_top_level_item("Create PR with AI", "Create a GitHub Pull Request using AI to generate description.", "create_pr_with_ai")
         menu_builder.add_top_level_item("AI Configuration", "Configure AI providers and test connections.", "ai_config")
         menu_builder.add_top_level_item("Exit", "Exit the application.", "exit")
 
@@ -359,6 +360,108 @@ def show_interactive_menu():
                     text.error(str(e))
                 except Exception as e:
                     text.error(f"An unexpected error occurred: {type(e).__name__} - {e}")
+
+            spacer.line()
+            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+
+        elif choice_action == "create_pr_with_ai":
+            text.title("Create Pull Request with AI")
+            spacer.line()
+
+            # Check if AI is configured
+            config.load()
+            if not config.config.ai:
+                text.error("AI is not configured. Please run 'Configure AI Provider' first.")
+                spacer.line()
+                prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+                continue
+
+            # Check if there are uncommitted changes
+            git_plugin = config.registry.get_plugin("git")
+            if git_plugin and git_plugin.is_available():
+                git_client = git_plugin.get_client()
+                git_status = git_client.get_status()
+
+                if not git_status.is_clean:
+                    text.warning("⚠️  You have uncommitted changes.")
+                    text.info("This workflow will:")
+                    text.info("  1. Prompt you for a commit message (or skip if you prefer)")
+                    text.info("  2. Create and push the commit")
+                    text.info("  3. Use AI to generate PR title and description automatically")
+                    spacer.small()
+
+                    proceed = prompts.ask_confirm("Continue?", default=True)
+                    if not proceed:
+                        spacer.line()
+                        prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+                        continue
+                    spacer.line()
+
+            # Discover workflows to find the create-pr-ai workflow
+            available_workflows = config.workflows.discover()
+            create_pr_ai_workflow = None
+            for wf_info in available_workflows:
+                if wf_info.name == "create-pr-ai":
+                    create_pr_ai_workflow = wf_info
+                    break
+
+            if not create_pr_ai_workflow:
+                text.error("'create-pr-ai' workflow not found. Make sure the GitHub plugin is installed.")
+                spacer.line()
+                prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+                continue
+
+            # Load the workflow
+            try:
+                parsed_workflow = config.workflows.get_workflow(create_pr_ai_workflow.name)
+                if not parsed_workflow:
+                    text.error("Failed to load 'Create Pull Request' workflow.")
+                    spacer.line()
+                    prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+                    continue
+
+                text.info("✨ Executing workflow with AI-powered PR description...")
+                spacer.small()
+
+                # Build execution context
+                secrets = SecretManager(project_path=config.project_root)
+
+                from titan_cli.engine.ui_container import UIComponents
+                from titan_cli.ui.components.panel import PanelRenderer
+                from titan_cli.ui.components.table import TableRenderer
+
+                ui = UIComponents(
+                    text=text,
+                    panel=PanelRenderer(),
+                    table=TableRenderer(),
+                    spacer=spacer
+                )
+
+                ctx_builder = WorkflowContextBuilder(
+                    plugin_registry=config.registry,
+                    secrets=secrets,
+                    ai_config=config.config.ai
+                )
+                ctx_builder.with_ui(ui=ui)
+
+                # Add registered plugins to context
+                for plugin_name in config.registry.list_installed():
+                    plugin = config.registry.get_plugin(plugin_name)
+                    if plugin:
+                        client = plugin.get_client()
+                        if hasattr(ctx_builder, f"with_{plugin_name}"):
+                            getattr(ctx_builder, f"with_{plugin_name}")(client)
+
+                execution_context = ctx_builder.build()
+                executor = WorkflowExecutor(config.registry)
+
+                # Execute AI workflow (use_ai is already true in create-pr-ai.yaml)
+                executor.execute(parsed_workflow, execution_context)
+
+            except (WorkflowNotFoundError, WorkflowExecutionError) as e:
+                text.error(str(e))
+            except Exception as e:
+                text.error(f"An unexpected error occurred: {type(e).__name__} - {e}")
 
             spacer.line()
             prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
