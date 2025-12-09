@@ -75,6 +75,35 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
         if len(branch_diff) > 8000:
             diff_preview += "\n\n... (diff truncated for brevity)"
 
+        # Calculate PR size metrics for dynamic char limit
+        diff_lines = len(branch_diff.split('\n'))
+
+        # Estimate files changed (count file headers in diff)
+        import re
+        file_pattern = r'^diff --git'
+        files_changed = len(re.findall(file_pattern, branch_diff, re.MULTILINE))
+
+        # Dynamic character limit based on PR size
+        if files_changed <= 3 and diff_lines < 100:
+            # Small PR: bug fix, doc update, small feature
+            max_chars = 500
+            pr_size = "small"
+        elif files_changed <= 10 and diff_lines < 500:
+            # Medium PR: feature, moderate refactor
+            max_chars = 1200
+            pr_size = "medium"
+        elif files_changed <= 30 and diff_lines < 2000:
+            # Large PR: architectural changes, new modules
+            max_chars = 2000
+            pr_size = "large"
+        else:
+            # Very large PR: major refactor, breaking changes
+            max_chars = 3000
+            pr_size = "very large"
+
+        if ctx.ui:
+            ctx.ui.text.info(f"📏 PR Size: {pr_size} ({files_changed} files, {diff_lines} lines) → Max description: {max_chars} chars")
+
         # Read PR template (REQUIRED - must follow template if exists)
         template_path = Path(".github/pull_request_template.md")
         template = ""
@@ -115,17 +144,21 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
 1. **Title**: Follow conventional commits (type(scope): description), max 72 chars
    - Examples: "feat(auth): add OAuth2 integration", "fix(api): resolve race condition in cache"
 
-2. **Description**: MUST follow the template structure above but keep it under 500 characters total
+2. **Description**: MUST follow the template structure above but keep it under {max_chars} characters total
    - Fill in the template sections (Summary, Type of Change, Changes Made, etc.)
    - Mark checkboxes appropriately with [x]
-   - Keep each section brief (1-2 lines max)
-   - Total description length MUST be ≤500 chars
+   - Adjust detail level based on PR size ({pr_size}):
+     * Small PRs: Brief, 1-2 lines per section
+     * Medium PRs: Moderate detail, 2-3 lines per section
+     * Large PRs: Comprehensive, 3-5 lines per section with examples
+     * Very Large PRs: Detailed architecture explanations, migration guides
+   - Total description length MUST be ≤{max_chars} chars
 
 Format your response EXACTLY like this:
 TITLE: <conventional commit title>
 
 DESCRIPTION:
-<template-based description - MAX 500 chars total>"""
+<template-based description - MAX {max_chars} chars total>"""
         else:
             # Fallback when no template exists
             prompt = f"""Analyze this branch and generate a professional pull request.
@@ -144,29 +177,35 @@ DESCRIPTION:
 ```
 
 ## Instructions (No template available - use standard format)
-Generate a concise Pull Request that:
+Generate a Pull Request appropriate for a {pr_size} PR:
 1. **Title**: Follow conventional commits (type(scope): description), max 72 chars
    - Examples: "feat(auth): add OAuth2 integration", "fix(api): resolve race condition in cache"
-2. **Description**: CRITICAL - Maximum 500 characters. Be concise and focus on:
-   - What changed (1-2 sentences)
-   - Why it changed (1 sentence)
-   - Key bullet points if needed (max 3)
+2. **Description**: CRITICAL - Maximum {max_chars} characters. Detail level based on PR size:
+   - Small ({pr_size}): Brief summary (1-2 sentences) + key changes (2-3 bullets)
+   - Medium: What changed (2-3 sentences) + why (1-2 sentences) + key changes (4-5 bullets)
+   - Large: Comprehensive overview + architecture changes + migration notes + testing strategy
+   - Very Large: Full context + breaking changes + upgrade guide + examples
 
 Format your response EXACTLY like this:
 TITLE: <conventional commit title>
 
 DESCRIPTION:
-<concise description - MAX 500 chars>"""
+<description matching PR size - MAX {max_chars} chars>"""
 
         # Show progress
         if ctx.ui:
             ctx.ui.text.info("🤖 Generating PR description with AI...")
 
-        # Call AI (max_tokens reduced since we only need title + 500 char description)
+        # Calculate max_tokens based on PR size (chars to tokens ratio ~0.75)
+        # Add buffer for formatting
+        estimated_tokens = int(max_chars * 0.75) + 200  # +200 for TITLE/DESCRIPTION labels and formatting
+        max_tokens = min(estimated_tokens, 4000)  # Cap at 4000 tokens
+
+        # Call AI with dynamic token limit
         from titan_cli.ai.models import AIMessage
 
         messages = [AIMessage(role="user", content=prompt)]
-        response = ctx.ai.generate(messages, max_tokens=800, temperature=0.7)
+        response = ctx.ai.generate(messages, max_tokens=max_tokens, temperature=0.7)
 
         ai_response = response.content
 
@@ -188,11 +227,11 @@ DESCRIPTION:
         if len(title) > 72:
             title = title[:69] + "..."
 
-        # Truncate description to 500 chars max
-        if len(description) > 500:
+        # Truncate description to max_chars if needed
+        if len(description) > max_chars:
             if ctx.ui:
-                ctx.ui.text.warning(f"⚠️  AI generated {len(description)} chars, truncating to 500")
-            description = description[:497] + "..."
+                ctx.ui.text.warning(f"⚠️  AI generated {len(description)} chars, truncating to {max_chars}")
+            description = description[:max_chars - 3] + "..."
 
         # Validate description has real content (not just whitespace)
         if not description or len(description.strip()) < 10:
