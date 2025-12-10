@@ -2,30 +2,45 @@
 import subprocess
 import re
 from typing import Tuple, Optional
+from .models import PRSizeEstimation
 
-def detect_github_repo() -> Tuple[Optional[str], Optional[str]]:
+def get_pr_size_estimation(branch_diff: str) -> PRSizeEstimation:
     """
-    Auto-detects GitHub repository owner and name from the git remote URL.
+    Analyzes a git diff to estimate PR size and suggest character limits.
+
+    Args:
+        branch_diff: The full text of the git diff.
 
     Returns:
-        A tuple containing (repo_owner, repo_name) if detected, otherwise (None, None).
+        A PRSizeEstimation object with size category and character limits.
     """
-    try:
-        result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        url = result.stdout.strip()
+    diff_lines = len(branch_diff.split('\n'))
 
-        # Parse: git@github.com:owner/repo.git
-        # or https://github.com/owner/repo.git
-        match = re.search(r'github\.com[:/]([^/]+)/([^/.]+)', url)
-        if match:
-            return match.group(1), match.group(2)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # git CLI not found or not a git repository
-        pass
+    # Estimate files changed (count file headers in diff)
+    file_pattern = r'^diff --git'
+    files_changed = len(re.findall(file_pattern, branch_diff, re.MULTILINE))
 
-    return None, None
+    # Dynamic character limit based on PR size
+    if files_changed <= 3 and diff_lines < 100:
+        # Small PR: bug fix, doc update, small feature
+        max_chars = 500
+        pr_size = "small"
+    elif files_changed <= 10 and diff_lines < 500:
+        # Medium PR: feature, moderate refactor
+        max_chars = 1200
+        pr_size = "medium"
+    elif files_changed <= 30 and diff_lines < 2000:
+        # Large PR: architectural changes, new modules
+        max_chars = 2000
+        pr_size = "large"
+    else:
+        # Very large PR: major refactor, breaking changes
+        max_chars = 3000
+        pr_size = "very large"
+
+    return PRSizeEstimation(
+        pr_size=pr_size,
+        max_chars=max_chars,
+        files_changed=files_changed,
+        diff_lines=diff_lines
+    )

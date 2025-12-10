@@ -57,7 +57,9 @@ class Messages:
         class Status:
             GIT_CLIENT_NOT_AVAILABLE: str = "Git client is not available in the workflow context."
             STATUS_RETRIEVED_SUCCESS: str = "Git status retrieved successfully."
+            STATUS_RETRIEVED_WITH_UNCOMMITTED: str = "Git status retrieved. Working directory is not clean."
             WORKING_DIRECTORY_NOT_CLEAN: str = " Working directory is not clean."
+            WORKING_DIRECTORY_IS_CLEAN: str = "Git status retrieved. Working directory is clean."
             FAILED_TO_GET_STATUS: str = "Failed to get git status: {e}"
 
         class Commit:
@@ -67,10 +69,40 @@ class Messages:
             CLIENT_ERROR_DURING_COMMIT: str = "Git client error during commit: {e}"
             COMMAND_FAILED_DURING_COMMIT: str = "Git command failed during commit: {e}"
             UNEXPECTED_ERROR_DURING_COMMIT: str = "An unexpected error occurred during commit: {e}"
+            WORKING_DIRECTORY_CLEAN: str = "Working directory is clean, skipping commit."
+            NO_COMMIT_MESSAGE: str = "No commit message provided, skipping commit."
 
         class Push:
             GIT_CLIENT_NOT_AVAILABLE: str = "Git client is not available in the workflow context."
             PUSH_FAILED: str = "Git push failed: {e}"
+
+        class Branch:
+            GET_CURRENT_BRANCH_SUCCESS: str = "Current branch is '{branch}'"
+            GET_CURRENT_BRANCH_FAILED: str = "Failed to get current branch: {e}"
+            GET_BASE_BRANCH_SUCCESS: str = "Base branch is '{branch}'"
+            GET_BASE_BRANCH_FAILED: str = "Failed to get base branch: {e}"
+
+        class Prompt:
+            WORKING_DIRECTORY_CLEAN: str = "Working directory is clean, no need for a commit message."
+            COMMIT_MESSAGE_CAPTURED: str = "Commit message captured"
+            USER_CANCELLED: str = "User cancelled."
+            PROMPT_FAILED: str = "Failed to prompt for commit message: {e}"
+
+        class AICommitMessage:
+            AI_NOT_CONFIGURED: str = "AI not configured. Run 'titan ai configure' to enable AI features."
+            NO_CHANGES_TO_COMMIT: str = "No changes to commit"
+            ANALYZING_CHANGES: str = "Analyzing uncommitted changes..."
+            NO_UNCOMMITTED_CHANGES: str = "No uncommitted changes to analyze"
+            DIFF_TRUNCATED: str = "... (diff truncated for brevity)"
+            GENERATING_MESSAGE: str = "Generating commit message with AI..."
+            GENERATED_MESSAGE_TITLE: str = "AI Generated Commit Message:"
+            MESSAGE_LENGTH_WARNING: str = "Message is {length} chars (recommended: ≤72)"
+            CONFIRM_USE_MESSAGE: str = "Use this commit message?"
+            USER_DECLINED: str = "User declined AI-generated commit message"
+            SUCCESS_MESSAGE: str = "AI generated commit message"
+            GENERATION_FAILED: str = "AI generation failed: {e}"
+            FALLBACK_TO_MANUAL: str = "Falling back to manual commit message..."
+            GIT_CLIENT_NOT_AVAILABLE: str = "Git client is not available in the workflow context."
 
     class Plugin:
         GIT_CLIENT_INIT_WARNING: str = "Warning: GitPlugin could not initialize GitClient: {e}"

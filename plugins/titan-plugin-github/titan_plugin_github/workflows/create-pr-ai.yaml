@@ -4,11 +4,6 @@ description: "AI-powered PR creation with smart commit messages and descriptions
 params:
   draft: false
 
-hooks:
-  - before_commit
-  - before_push
-  - after_pr
-
 steps:
   - id: git_status
     name: "Check Git Status"

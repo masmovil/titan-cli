@@ -18,8 +18,18 @@ def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the user cancels or the title is empty.
         Skip: If pr_title already exists.
     """
+    # Show step header
+    if ctx.views:
+        ctx.views.step_header("prompt_pr_title", ctx.current_step, ctx.total_steps)
+
     # Skip if title already exists (e.g., from AI generation)
     if ctx.get("pr_title"):
+        if ctx.ui:
+            ctx.ui.panel.print(
+                "PR title already provided, skipping manual prompt.",
+                panel_type="info"
+            )
+            ctx.ui.spacer.small()
         return Skip("PR title already provided, skipping manual prompt.")
 
     try:
@@ -48,8 +58,18 @@ def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the user cancels.
         Skip: If pr_body already exists.
     """
+    # Show step header
+    if ctx.views:
+        ctx.views.step_header("prompt_pr_body", ctx.current_step, ctx.total_steps)
+
     # Skip if body already exists (e.g., from AI generation)
     if ctx.get("pr_body"):
+        if ctx.ui:
+            ctx.ui.panel.print(
+                "PR body already provided, skipping manual prompt.",
+                panel_type="info"
+            )
+            ctx.ui.spacer.small()
         return Skip("PR body already provided, skipping manual prompt.")
 
     try:

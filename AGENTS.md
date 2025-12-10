@@ -1042,6 +1042,19 @@ workflow = config.workflows.get_workflow("create-pr")
 
 Executes a `ParsedWorkflow` by iterating through steps, resolving plugin calls, and handling errors.
 
+**Executor Responsibilities:**
+- Inject workflow metadata into context (`workflow_name`, `current_step`, `total_steps`)
+- Resolve plugin steps and execute them
+- Handle parameter substitution (`${variable}`)
+- Show error messages for failed steps
+- Merge step metadata into `ctx.data`
+- Show final workflow success/failure message
+
+**What the executor does NOT do:**
+- ❌ Does NOT show step headers (steps do this via `ctx.views.step_header()`)
+- ❌ Does NOT show success/skip messages (steps handle their own UI)
+- ❌ Does NOT show step-specific panels or UI
+
 ```python
 from titan_cli.engine.workflow_executor import WorkflowExecutor
 from titan_cli.engine.builder import WorkflowContextBuilder
@@ -1059,6 +1072,13 @@ ctx = WorkflowContextBuilder(
 # 3. Execute workflow
 executor = WorkflowExecutor(config.registry)
 result = executor.execute(workflow, ctx)
+
+# During execution, the executor:
+# - Sets ctx.workflow_name = "create-pr"
+# - Sets ctx.total_steps = 7 (number of non-hook steps)
+# - Before each step: Sets ctx.current_step = i (1-indexed)
+# - After each step: Merges metadata into ctx.data
+# - Only shows errors and final workflow status
 ```
 
 #### 3. WorkflowContext (`engine/context.py`)
@@ -1068,21 +1088,91 @@ Dependency injection container that holds everything a step needs:
 ```python
 @dataclass
 class WorkflowContext:
+    """
+    Context container for workflow execution.
+
+    Provides dependency injection, shared data storage, UI components,
+    and workflow metadata for steps.
+    """
     # Core dependencies
-    config: TitanConfig
     secrets: SecretManager
 
-    # Service clients (auto-loaded or injected)
-    ai: Optional[AIClient] = None
+    # Service clients (populated by WorkflowContextBuilder)
+    ai: Optional[Any] = None      # AIClient (from builder)
     git: Optional[Any] = None     # GitClient from git plugin
     github: Optional[Any] = None  # GitHubClient from github plugin
 
-    # UI components
-    ui: UIComponents              # text, panel, table, spacer
-    views: UIViews                # prompts, menu
+    # UI components (two-level architecture)
+    ui: Optional[UIComponents] = None
+    #   ui.text      - TextRenderer (titles, body, success, error, info)
+    #   ui.panel     - PanelRenderer (bordered panels with types)
+    #   ui.table     - TableRenderer (tabular data)
+    #   ui.spacer    - SpacerRenderer (vertical spacing)
 
-    # Shared data between steps
-    data: Dict[str, Any]          # Steps can read/write here
+    views: Optional[UIViews] = None
+    #   views.prompts     - PromptsRenderer (ask_text, ask_confirm, etc.)
+    #   views.menu        - MenuRenderer (interactive menus)
+    #   views.step_header - Standardized step header rendering
+
+    # Workflow metadata (injected by WorkflowExecutor)
+    workflow_name: Optional[str] = None     # Name of current workflow
+    current_step: Optional[int] = None      # Current step (1-indexed)
+    total_steps: Optional[int] = None       # Total steps in workflow
+
+    # Shared data storage between steps
+    data: Dict[str, Any] = field(default_factory=dict)
+
+    # Helper methods
+    def set(self, key: str, value: Any) -> None:
+        """Set shared data."""
+        self.data[key] = value
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get shared data."""
+        return self.data.get(key, default)
+
+    def has(self, key: str) -> bool:
+        """Check if key exists in shared data."""
+        return key in self.data
+```
+
+**UI Architecture:**
+
+The context provides two levels of UI components:
+
+1. **`ctx.ui` (UIComponents)** - Basic Rich wrappers (no composition)
+   - `text` - Typography rendering
+   - `panel` - Panel rendering
+   - `table` - Table rendering
+   - `spacer` - Spacing utilities
+
+2. **`ctx.views` (UIViews)** - Composite components (uses `ctx.ui`)
+   - `prompts` - Interactive prompts
+   - `menu` - Menu rendering
+   - `step_header(name, current, total)` - Standardized step headers
+
+**Workflow Metadata:**
+
+The `WorkflowExecutor` automatically injects metadata before running each step:
+
+```python
+# Before workflow starts:
+ctx.workflow_name = "create-pr"
+ctx.total_steps = 7
+
+# Before each step:
+ctx.current_step = 1  # Then 2, 3, 4, etc.
+```
+
+Steps use this metadata to show standardized headers:
+
+```python
+def my_step(ctx: WorkflowContext) -> WorkflowResult:
+    # Show header: [1/7] my_step
+    if ctx.views:
+        ctx.views.step_header("my_step", ctx.current_step, ctx.total_steps)
+
+    # ... rest of step
 ```
 
 #### 4. WorkflowResult Types (`engine/results.py`)
@@ -1115,24 +1205,27 @@ return Skip(
 
 All workflow steps are functions that accept a single `WorkflowContext` argument and return a `WorkflowResult` (`Success`, `Error`, or `Skip`). They should be defined in their own modules inside the `steps/` directory of a plugin.
 
-Plugins can provide workflow steps by implementing `get_steps()`:
+**IMPORTANT: Step UI Responsibility**
+
+Steps are **fully responsible** for their own UI rendering. The `WorkflowExecutor` only:
+- Injects metadata (`current_step`, `total_steps`, `workflow_name`) into context
+- Handles errors (shows error messages for failed steps)
+- Merges metadata from successful/skipped steps into `ctx.data`
+
+Steps should:
+1. Show their own header using `ctx.views.step_header()`
+2. Display their own panels, messages, and UI (success, warnings, info)
+3. Return `Success`, `Error`, or `Skip` with appropriate messages
+
+**Step Anatomy:**
 
 ```python
-# plugins/my-plugin/my_plugin/plugin.py
-class MyPlugin(TitanPlugin):
-    def get_steps(self) -> dict:
-        from .steps import my_step, another_step
-        return {
-            "my_step": my_step,
-            "another_step": another_step,
-        }
-
 # plugins/my-plugin/my_plugin/steps/my_step.py
-from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 
 def my_step(ctx: WorkflowContext) -> WorkflowResult:
     """
-    Example plugin step.
+    Example plugin step with proper UI handling.
 
     Requires:
         ctx.git: An initialized GitClient.
@@ -1146,24 +1239,60 @@ def my_step(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the step completes successfully.
         Error: If an error occurs.
+        Skip: If step is not applicable.
     """
-    # Get data from the context
+    # 1. Show step header (uses metadata injected by executor)
+    if ctx.views:
+        ctx.views.step_header("my_step", ctx.current_step, ctx.total_steps)
+
+    # 2. Validate inputs
     my_input = ctx.get("my_input_variable")
     if not my_input:
         return Error("Missing my_input_variable in context.")
 
-    ctx.ui.text.info(f"Running my step with: {my_input}")
+    # 3. Show UI as needed (panels, info messages, etc.)
+    if ctx.ui:
+        ctx.ui.text.info(f"Processing: {my_input}")
 
-    # Access other services, like the git client
-    if ctx.git:
-        status = ctx.git.get_status()
-        ctx.ui.text.info(f"Current branch is: {status.branch}")
+    # 4. Do the work
+    try:
+        if ctx.git:
+            status = ctx.git.get_status()
 
-    # Return a success result with metadata to be added to the context
+            # Show warning panel if needed
+            if not status.is_clean:
+                ctx.ui.panel.print(
+                    "Warning: Uncommitted changes detected",
+                    panel_type="warning"
+                )
+
+            # Show success panel when done
+            ctx.ui.panel.print(
+                f"Step completed successfully for branch: {status.branch}",
+                panel_type="success"
+            )
+
+    except Exception as e:
+        return Error(f"Step failed: {e}", exception=e)
+
+    # 5. Return success with metadata (auto-merged into ctx.data)
     return Success(
-        message="Step completed",
-        metadata={"my_output_variable": "some value"}
+        message="Step completed successfully",
+        metadata={"my_output_variable": "result_value"}
     )
+```
+
+**Registering Steps in Plugin:**
+
+```python
+# plugins/my-plugin/my_plugin/plugin.py
+class MyPlugin(TitanPlugin):
+    def get_steps(self) -> dict:
+        from .steps import my_step, another_step
+        return {
+            "my_step": my_step,
+            "another_step": another_step,
+        }
 ```
 
 ### Example: Full Workflow Usage
@@ -1211,32 +1340,217 @@ steps:
 titan workflow run deploy
 ```
 
+### Workflow Previews
+
+Workflows can be previewed with **mocked data** to test their UI and step flow without performing actual operations. Previews execute **real step functions** with **mocked clients** to ensure consistency between preview and actual execution.
+
+**Preview Structure:**
+
+```
+plugins/my-plugin/workflows/__previews__/
+├── my_workflow_preview.py      # Preview script for "my-workflow"
+└── another_workflow_preview.py
+```
+
+**Creating a Preview:**
+
+```python
+# plugins/my-plugin/workflows/__previews__/my_workflow_preview.py
+from titan_cli.ui.components.typography import TextRenderer
+from titan_cli.ui.components.spacer import SpacerRenderer
+from titan_cli.engine.mock_context import (
+    MockGitClient,
+    MockAIClient,
+    MockGitHubClient,
+    MockSecretManager,
+)
+from titan_cli.engine import WorkflowContext
+from titan_cli.engine.ui_container import UIComponents
+from titan_cli.engine.views_container import UIViews
+from titan_cli.engine.results import Success, Error, Skip
+
+
+def create_my_workflow_mock_context() -> WorkflowContext:
+    """
+    Create mock context specifically for this workflow.
+
+    Each preview should define its own mock context with
+    workflow-specific data and client configurations.
+    """
+    # Create UI components
+    ui = UIComponents.create()
+    views = UIViews.create(ui)
+
+    # Override prompts to auto-confirm (non-interactive preview)
+    views.prompts.ask_confirm = lambda question, default=True: True
+
+    # Create mock clients with workflow-specific data
+    git = MockGitClient()
+    git.current_branch = "feat/my-feature"
+    git.main_branch = "main"
+
+    ai = MockAIClient()
+
+    github = MockGitHubClient()
+    github.repo_owner = "myorg"
+    github.repo_name = "my-repo"
+
+    secrets = MockSecretManager()
+
+    # Build context
+    ctx = WorkflowContext(
+        secrets=secrets,
+        ui=ui,
+        views=views
+    )
+
+    # Inject mocked clients
+    ctx.git = git
+    ctx.ai = ai
+    ctx.github = github
+
+    return ctx
+
+
+def preview_workflow():
+    """
+    Preview my-workflow by executing real steps with mocked context.
+    """
+    text = TextRenderer()
+    spacer = SpacerRenderer()
+
+    # Header
+    text.title("My Workflow - PREVIEW")
+    text.subtitle("(Executing real steps with mocked data)")
+    spacer.line()
+
+    # Create workflow-specific mock context
+    ctx = create_my_workflow_mock_context()
+
+    # Import REAL step functions
+    from my_plugin.steps.step_one import step_one
+    from my_plugin.steps.step_two import step_two
+
+    # Define steps
+    steps = [
+        ("step_one", step_one),
+        ("step_two", step_two),
+    ]
+
+    text.info("Executing workflow...")
+    spacer.small()
+
+    # Inject workflow metadata (like real executor)
+    ctx.workflow_name = "my-workflow"
+    ctx.total_steps = len(steps)
+
+    for i, (step_name, step_fn) in enumerate(steps, 1):
+        # Inject current step number
+        ctx.current_step = i
+
+        # Execute REAL step with mocked data
+        result = step_fn(ctx)
+
+        # Only handle errors (steps handle their own success/skip UI)
+        if isinstance(result, Error):
+            text.error(f"Step '{step_name}' failed: {result.message}")
+            break
+
+    spacer.line()
+    text.info("(This was a preview - no actual operations performed)")
+
+if __name__ == "__main__":
+    preview_workflow()
+```
+
+**Running Previews:**
+
+```bash
+# Preview a workflow
+poetry run titan preview workflow my-workflow
+poetry run titan preview workflow create-pr-ai
+```
+
+**Mock Clients (`engine/mock_context.py`):**
+
+The `mock_context.py` module provides reusable mock client classes. Each preview creates its own context with customized mock data:
+
+```python
+from titan_cli.engine.mock_context import (
+    MockGitClient,       # Fake git operations (status, commit, push)
+    MockAIClient,        # Returns predefined AI responses
+    MockGitHubClient,    # Fake GitHub PR creation
+    MockSecretManager,   # Returns fake secrets
+)
+
+# Each preview customizes the mocks for its specific scenario
+git = MockGitClient()
+git.current_branch = "feat/my-feature"  # Customize per workflow
+git.main_branch = "main"
+
+ai = MockAIClient()  # Returns workflow-appropriate responses
+
+github = MockGitHubClient()
+github.repo_name = "my-repo"  # Customize repo details
+```
+
+**Why Preview Execution Matches Real Execution:**
+
+1. **Same step functions** - Previews run the actual step code
+2. **Mocked clients only** - Only external dependencies (git, ai, github) are mocked
+3. **Real UI rendering** - All panels, text, and formatting are identical
+4. **Same executor pattern** - Metadata injection and error handling match production
+
 ### UI Output
 
-When executing, workflows provide rich terminal output:
+When executing workflows, steps handle all their own UI rendering:
 
 ```
-Starting workflow: Create Pull Request
+ℹ️ Starting workflow: Create Pull Request
 Complete workflow for creating a PR with tests and linting
 
-Executing step: Check Git Status (git_status)
-✓ Step 'Check Git Status' completed: Working directory clean
+[1/7] git_status
 
-Executing step: Run Linter (lint)
-Running command: npm run lint
-✓ Step 'Run Linter' completed: Command executed successfully
+╭─ ⚠️ Warning ─────────────────────╮
+│                                 │
+│  You have uncommitted changes.  │
+│                                 │
+╰─────────────────────────────────╯
 
-Executing step: Create Commit (create_commit)
-✓ Step 'Create Commit' completed: Committed abc123
+╭─ ✅ Success ────────────────────────────────────────────╮
+│                                                         │
+│  Git status retrieved. Working directory is not clean.  │
+│                                                         │
+╰─────────────────────────────────────────────────────────╯
 
-Executing step: Push to Remote (push)
-✓ Step 'Push to Remote' completed: Pushed to origin/feature-branch
+[2/7] ai_commit_message
 
-Executing step: Create Pull Request (create_pr)
-✓ Step 'Create Pull Request' completed: PR #123 created
+ℹ️ Analyzing changes...
+ℹ️ Generating commit message...
 
-✓ Workflow 'Create Pull Request' completed successfully
+Generated Commit Message:
+  feat(workflows): add preview system for testing workflow UI
+
+[3/7] create_commit
+
+╭─ ✅ Success ─────────────────────────╮
+│                                      │
+│  Commit created: abc123              │
+│                                      │
+╰──────────────────────────────────────╯
+
+[4/7] push
+
+╭─ ✅ Success ─────────────────────────────────────────╮
+│                                                      │
+│  Pushed to origin/feat/workflow-preview              │
+│                                                      │
+╰──────────────────────────────────────────────────────╯
+
+✅ Workflow 'Create Pull Request' completed successfully
 ```
+
+**Note:** The executor only shows the final success message and error messages. All step-specific UI (headers, panels, info messages) is rendered by the steps themselves.
 
 ---
 
@@ -1378,5 +1692,134 @@ renderer.render(menu)
 
 ---
 
-**Last Updated**: 2025-12-04
+## 📋 Workflow Quick Reference
+
+### Step Anatomy Checklist
+
+When creating a workflow step, follow this pattern:
+
+```python
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
+
+def my_step(ctx: WorkflowContext) -> WorkflowResult:
+    """Step docstring with Requires, Inputs, Outputs, Returns."""
+
+    # ✅ 1. Show step header
+    if ctx.views:
+        ctx.views.step_header("my_step", ctx.current_step, ctx.total_steps)
+
+    # ✅ 2. Validate requirements
+    if not ctx.git:
+        return Error("GitClient not available")
+
+    # ✅ 3. Show UI as needed (panels, info messages)
+    if ctx.ui:
+        ctx.ui.panel.print("Warning message", panel_type="warning")
+
+    # ✅ 4. Do the work
+    try:
+        result = ctx.git.some_operation()
+    except Exception as e:
+        return Error(f"Operation failed: {e}", exception=e)
+
+    # ✅ 5. Show success UI
+    if ctx.ui:
+        ctx.ui.panel.print("Operation completed", panel_type="success")
+
+    # ✅ 6. Return result with metadata
+    return Success(
+        message="Step completed",
+        metadata={"output_key": result}
+    )
+```
+
+### UI Component Quick Reference
+
+**Components (no composition):**
+```python
+ctx.ui.text.title("Title")
+ctx.ui.text.success("Success message")
+ctx.ui.panel.print("Content", panel_type="success")
+ctx.ui.table.print_table(headers=["A", "B"], rows=[...])
+ctx.ui.spacer.small()
+```
+
+**Views (composition allowed):**
+```python
+ctx.views.step_header("step_name", ctx.current_step, ctx.total_steps)
+ctx.views.prompts.ask_confirm("Continue?", default=True)
+ctx.views.prompts.ask_text("Enter value:")
+```
+
+### Architecture Principles
+
+**✅ DO:**
+- Steps handle ALL their own UI (headers, panels, messages)
+- Use `ctx.views.step_header()` at the start of each step
+- Return `Success` with metadata for data sharing
+- Use `ctx.ui` for basic components
+- Use `ctx.views` for composed components and prompts
+- Check `if ctx.ui:` and `if ctx.views:` before using them
+
+**❌ DON'T:**
+- Don't expect the executor to show step success/skip messages
+- Don't use emojis in text (TextRenderer adds them automatically)
+- Don't compose other components inside `ui/components/` (use `ui/views/`)
+- Don't put `step_header()` in `UIComponents` (it belongs in `UIViews`)
+
+### Preview System
+
+**Create a workflow preview:**
+```python
+# plugins/my-plugin/workflows/__previews__/my_workflow_preview.py
+from titan_cli.engine.mock_context import MockGitClient, MockAIClient, MockSecretManager
+from titan_cli.engine import WorkflowContext
+from titan_cli.engine.ui_container import UIComponents
+from titan_cli.engine.views_container import UIViews
+from titan_cli.engine.results import Error
+
+def create_my_workflow_mock_context():
+    """Build workflow-specific mock context."""
+    ui = UIComponents.create()
+    views = UIViews.create(ui)
+    views.prompts.ask_confirm = lambda q, default=True: True
+
+    git = MockGitClient()
+    git.current_branch = "feat/my-feature"  # Customize per workflow
+
+    ctx = WorkflowContext(secrets=MockSecretManager(), ui=ui, views=views)
+    ctx.git = git
+    ctx.ai = MockAIClient()
+    return ctx
+
+def preview_workflow():
+    ctx = create_my_workflow_mock_context()
+
+    # Import REAL step functions
+    from my_plugin.steps import step_one, step_two
+
+    steps = [("step_one", step_one), ("step_two", step_two)]
+
+    # Inject metadata like real executor
+    ctx.workflow_name = "my-workflow"
+    ctx.total_steps = len(steps)
+
+    for i, (name, fn) in enumerate(steps, 1):
+        ctx.current_step = i
+        result = fn(ctx)
+        if isinstance(result, Error):
+            break
+
+if __name__ == "__main__":
+    preview_workflow()
+```
+
+**Run preview:**
+```bash
+poetry run titan preview workflow my-workflow
+```
+
+---
+
+**Last Updated**: 2025-12-09
 **Maintainers**: @finxeto, @raulpedrazaleon

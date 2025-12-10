@@ -43,6 +43,11 @@ class WorkflowContext:
     git: Optional[Any] = None
     github: Optional[Any] = None
 
+    # Workflow metadata (set by executor)
+    workflow_name: Optional[str] = None
+    current_step: Optional[int] = None
+    total_steps: Optional[int] = None
+
     # Shared data storage between steps
     data: Dict[str, Any] = field(default_factory=dict)
 

@@ -734,3 +734,22 @@ class GitClient:
             return []
         except GitCommandError:
             return []
+
+    def get_github_repo_info(self) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Extracts GitHub repository owner and name from the 'origin' remote URL.
+
+        Returns:
+            A tuple containing (repo_owner, repo_name) if detected, otherwise (None, None).
+        """
+        try:
+            url = self._run_command(["git", "remote", "get-url", "origin"])
+
+            # Parse: git@github.com:owner/repo.git or https://github.com/owner/repo.git
+            match = re.search(r'github\.com[:/]([^/]+)/([^/.]+)', url)
+            if match:
+                return match.group(1), match.group(2)
+        except GitCommandError:
+            # Command failed, likely no remote 'origin' or not a git repo
+            pass
+        return None, None
