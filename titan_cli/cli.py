@@ -354,96 +354,6 @@ def _show_workflow_info_panel(workflow, panel: PanelRenderer, spacer: SpacerRend
     return prompts.ask_confirm("Execute this workflow?", default=True)
 
 
-def _handle_create_pr_with_ai_action(config: TitanConfig, text: TextRenderer, spacer: SpacerRenderer, prompts: PromptsRenderer):
-    """Handle the 'create PR with AI' menu action."""
-    from titan_cli.ui.components.panel import PanelRenderer
-
-    text.title("Create Pull Request with AI")
-    spacer.line()
-
-    # Check if AI is configured
-    config.load()
-    if not config.config.ai:
-        text.error("AI is not configured. Please run 'Configure AI Provider' first.")
-        spacer.line()
-        prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-        return
-
-    # Discover workflows to find the create-pr-ai workflow
-    available_workflows = config.workflows.discover()
-    create_pr_ai_workflow = None
-    for wf_info in available_workflows:
-        if wf_info.name == "create-pr-ai":
-            create_pr_ai_workflow = wf_info
-            break
-
-    if not create_pr_ai_workflow:
-        text.error("'create-pr-ai' workflow not found. Make sure the GitHub plugin is installed.")
-        spacer.line()
-        prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-        return
-
-    # Load the workflow
-    try:
-        parsed_workflow = config.workflows.get_workflow(create_pr_ai_workflow.name)
-        if not parsed_workflow:
-            text.error("Failed to load 'Create Pull Request' workflow.")
-            spacer.line()
-            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-            return
-
-        # Show workflow info panel and ask for confirmation
-        panel = PanelRenderer()
-        if not _show_workflow_info_panel(parsed_workflow, panel, spacer, prompts):
-            spacer.line()
-            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-            return
-
-        spacer.line()
-        text.info("✨ Executing workflow...")
-        spacer.small()
-
-        # Build execution context
-        secrets = SecretManager(project_path=config.project_root)
-
-        ui = UIComponents(
-            text=text,
-            panel=panel,
-            table=TableRenderer(),
-            spacer=spacer
-        )
-
-        ctx_builder = WorkflowContextBuilder(
-            plugin_registry=config.registry,
-            secrets=secrets,
-            ai_config=config.config.ai
-        )
-        ctx_builder.with_ui(ui=ui)
-        ctx_builder.with_ai()  # Initialize AI client
-
-        # Add registered plugins to context
-        for plugin_name in config.registry.list_installed():
-            plugin = config.registry.get_plugin(plugin_name)
-            if plugin:
-                client = plugin.get_client()
-                if hasattr(ctx_builder, f"with_{plugin_name}"):
-                    getattr(ctx_builder, f"with_{plugin_name}")(client)
-
-        execution_context = ctx_builder.build()
-        executor = WorkflowExecutor(config.registry)
-
-        # Execute workflow (steps handle their own UI)
-        executor.execute(parsed_workflow, execution_context)
-
-    except (WorkflowNotFoundError, WorkflowExecutionError) as e:
-        text.error(str(e))
-    except Exception as e:
-        text.error(f"An unexpected error occurred: {type(e).__name__} - {e}")
-
-    spacer.line()
-    prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-
-
 def show_interactive_menu():
     """
     Displays the main interactive menu for the Titan CLI. 
@@ -481,7 +391,6 @@ def show_interactive_menu():
         menu_builder.add_top_level_item("Launch Claude Code", "Open an interactive session with Claude Code CLI.", "code")
         menu_builder.add_top_level_item("Project Management", "List, configure, or initialize projects.", "projects")
         menu_builder.add_top_level_item("Workflows", "Execute a predefined or custom workflow.", "run_workflow")
-        menu_builder.add_top_level_item("Create PR with AI", "Create a GitHub Pull Request using AI to generate description.", "create_pr_with_ai")
         menu_builder.add_top_level_item("AI Configuration", "Configure AI providers and test connections.", "ai_config")
         menu_builder.add_top_level_item("Exit", "Exit the application.", "exit")
 
@@ -508,9 +417,6 @@ def show_interactive_menu():
 
         elif choice_action == "run_workflow":
             _handle_run_workflow_action(config, text, spacer, prompts)
-
-        elif choice_action == "create_pr_with_ai":
-            _handle_create_pr_with_ai_action(config, text, spacer, prompts)
 
         elif choice_action == "ai_config":
             _show_ai_config_submenu(prompts, text, config)
