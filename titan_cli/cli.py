@@ -10,6 +10,7 @@ import typer
 import tomli
 import tomli_w
 import importlib.metadata
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -230,6 +231,286 @@ def _show_projects_submenu(prompts: PromptsRenderer, text: TextRenderer, config:
     )
 
 
+def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, config: TitanConfig):
+    """Shows the submenu for plugin management."""
+    from titan_cli.core.plugins.available import KNOWN_PLUGINS
+
+    def install_plugin_handler():
+        """Handles the interactive installation of plugins."""
+        while True:
+            config.registry.reset()
+            installed_plugin_names = set(config.registry.list_installed())
+            
+            available_to_install = [
+                p for p in KNOWN_PLUGINS if p["name"] not in installed_plugin_names
+            ]
+
+            if not available_to_install:
+                text.success("All known official plugins are already installed.")
+                break
+
+            menu_builder = DynamicMenu(title="Install a Plugin", emoji="📦")
+            plugin_cat = menu_builder.add_category("Available Plugins")
+            for plugin_data in available_to_install:
+                plugin_cat.add_item(
+                    plugin_data["name"],
+                    f"({plugin_data['package_name']}) {plugin_data['description']}",
+                    plugin_data["package_name"] # The action is the package name for pipx
+                )
+            
+            menu_builder.add_category("Back").add_item("Return to Previous Menu", "", "back")
+
+            choice = prompts.ask_menu(menu_builder.to_menu(), allow_quit=False)
+
+            if not choice or choice.action == "back":
+                break
+
+            plugin_to_install = choice.action
+            text.info(f"Installing {plugin_to_install}...")
+
+            try:
+                # Use subprocess.run to execute the command
+                result = subprocess.run(
+                    f"pipx inject titan-cli ./plugins/{plugin_to_install}",
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    check=False
+                )
+
+                if result.returncode == 0:
+                    text.success(f"Successfully installed {plugin_to_install}.")
+                    text.info("Registry will be updated on next action.")
+                else:
+                    text.error(f"Failed to install {plugin_to_install}.")
+                    if result.stderr:
+                        text.body(result.stderr, style="dim")
+            except Exception as e:
+                text.error(f"An error occurred while trying to install {plugin_to_install}: {e}")
+
+    def list_plugins_handler():
+        """Lists all installed and failed plugins."""
+        config.registry.reset()
+        installed = config.registry.list_installed()
+        failed = config.registry.list_failed()
+
+        text.subtitle("Installed & Enabled Plugins")
+        if not installed:
+            text.body("  No plugins are currently installed and enabled.")
+        else:
+            for plugin_name in installed:
+                text.body(f"  - {plugin_name}")
+        
+        text.line()
+
+        if failed:
+            text.subtitle("Failed Plugins")
+            table = TableRenderer()
+            table.print_table(
+                headers=["Plugin", "Error"],
+                rows=[[name, str(err)] for name, err in failed.items()],
+            )
+        else:
+            text.success("All discovered plugins loaded successfully.")
+
+    def toggle_plugins_handler():
+        """Handles enabling/disabling plugins for the current project."""
+        if not config.get_active_project() or not config.project_config_path:
+            text.error("No active project selected. Please use 'Switch Project' first.")
+            return
+
+        while True:
+            # Reload config on each loop to get the latest status
+            config.load()
+            installed_plugins = config.registry.list_installed()
+
+            if not installed_plugins:
+                text.info("No plugins are installed.")
+                break
+
+            menu_builder = DynamicMenu(title="Enable/Disable Plugins", emoji="🔄")
+            plugin_cat = menu_builder.add_category("Installed Plugins")
+
+            for plugin_name in installed_plugins:
+                is_enabled = config.is_plugin_enabled(plugin_name)
+                status_icon = "✅" if is_enabled else "❌"
+                status_text = "enabled" if is_enabled else "disabled"
+                plugin_cat.add_item(
+                    f"{status_icon} {plugin_name}",
+                    f"Currently {status_text}. Select to toggle.",
+                    plugin_name
+                )
+            
+            menu_builder.add_category("Back").add_item("Return to Previous Menu", "", "back")
+            choice = prompts.ask_menu(menu_builder.to_menu(), allow_quit=False)
+
+            if not choice or choice.action == "back":
+                break
+
+            plugin_to_toggle = choice.action
+            current_status = config.is_plugin_enabled(plugin_to_toggle)
+            new_status = not current_status
+
+            try:
+                # Read the existing project config file
+                project_cfg_path = config.project_config_path
+                project_cfg_dict = {}
+                if project_cfg_path.exists():
+                    with open(project_cfg_path, "rb") as f:
+                        project_cfg_dict = tomli.load(f)
+
+                # Ensure tables exist and set the new status
+                plugins_table = project_cfg_dict.setdefault("plugins", {})
+                plugin_specific_table = plugins_table.setdefault(plugin_to_toggle, {})
+                plugin_specific_table["enabled"] = new_status
+
+                # Write the updated config back
+                with open(project_cfg_path, "wb") as f:
+                    tomli_w.dump(project_cfg_dict, f)
+
+                text.success(f"Plugin '{plugin_to_toggle}' has been {'enabled' if new_status else 'disabled'}.")
+            
+            except (tomli.TOMLDecodeError, OSError) as e:
+                text.error(f"Error updating config file: {e}")
+            except Exception as e:
+                text.error(f"An unexpected error occurred: {e}")
+
+    def configure_plugin_handler():
+        """Handles configuring settings for an enabled plugin."""
+        if not config.get_active_project() or not config.project_config_path:
+            text.error("No active project selected. Please use 'Switch Project' first.")
+            return
+
+        config.load()
+        installed_plugins = config.registry.list_installed()
+        enabled_plugins = [p for p in installed_plugins if config.is_plugin_enabled(p)]
+
+        if not enabled_plugins:
+            text.info("No enabled plugins to configure for this project.")
+            return
+
+        # --- Menu to select which plugin to configure ---
+        menu_builder = DynamicMenu(title="Configure a Plugin", emoji="🔧")
+        plugin_cat = menu_builder.add_category("Enabled Plugins")
+        for plugin_name in enabled_plugins:
+            plugin_cat.add_item(f"Configure '{plugin_name}'", f"Edit settings for the {plugin_name} plugin.", plugin_name)
+        menu_builder.add_category("Back").add_item("Return to Previous Menu", "", "back")
+        
+        choice = prompts.ask_menu(menu_builder.to_menu(), allow_quit=False)
+
+        if not choice or choice.action == "back":
+            return
+
+        plugin_name = choice.action
+        plugin = config.registry.get_plugin(plugin_name)
+
+        if not plugin or not hasattr(plugin, "get_config_schema"):
+            text.error(f"Plugin '{plugin_name}' does not support interactive configuration.")
+            return
+
+        schema = plugin.get_config_schema()
+        properties = schema.get("properties", {})
+        if not properties:
+            text.info(f"Plugin '{plugin_name}' has no configurable properties.")
+            return
+
+        text.subtitle(f"Configuring Plugin: {plugin_name}")
+
+        # --- Get current config values ---
+        current_plugin_config = (config.config.plugins.get(plugin_name) or {}).config or {}
+        new_config_values = {}
+
+        # --- Iterate over schema and ask for new values ---
+        for field_name, field_schema in properties.items():
+            field_type = field_schema.get("type")
+            description = field_schema.get("description", "")
+            current_value = current_plugin_config.get(field_name, field_schema.get("default"))
+
+            prompt_text = f"{field_name} ({description})"
+            
+            # Simple type handling
+            if field_type == "boolean":
+                new_value = prompts.ask_confirm(prompt_text, default=bool(current_value))
+            elif field_type == "integer":
+                new_value = prompts.ask_int(prompt_text, default=int(current_value) if current_value is not None else None)
+            elif field_type == "array" and field_schema.get("items", {}).get("type") == "string":
+                current_list = current_value or []
+                text.body(prompt_text)
+                text.body(f"Current values: {', '.join(current_list) if current_list else 'None'}", style="dim")
+                new_value_str = prompts.ask_text("Enter new comma-separated values (or leave blank to keep current):")
+                if new_value_str.strip():
+                    new_value = [item.strip() for item in new_value_str.split(",")]
+                else:
+                    new_value = current_list # Keep current if blank
+            else: # Default to string
+                new_value = prompts.ask_text(prompt_text, default=str(current_value) if current_value is not None else "")
+            
+            new_config_values[field_name] = new_value
+
+        # --- Save the new configuration ---
+        try:
+            project_cfg_path = config.project_config_path
+            project_cfg_dict = {}
+            if project_cfg_path.exists():
+                with open(project_cfg_path, "rb") as f:
+                    project_cfg_dict = tomli.load(f)
+
+            plugins_table = project_cfg_dict.setdefault("plugins", {})
+            plugin_specific_table = plugins_table.setdefault(plugin_name, {})
+            plugin_config_table = plugin_specific_table.setdefault("config", {})
+            
+            # Update the config with the new values
+            plugin_config_table.update(new_config_values)
+
+            with open(project_cfg_path, "wb") as f:
+                tomli_w.dump(project_cfg_dict, f)
+
+            text.success(f"Configuration for '{plugin_name}' has been updated.")
+            config.load() # Reload to reflect changes immediately
+        
+        except (tomli.TOMLDecodeError, OSError) as e:
+            text.error(f"Error updating config file: {e}")
+        except Exception as e:
+            text.error(f"An unexpected error occurred: {e}")
+
+    # --- Action Loop ---
+    while True:
+        # We rebuild the menu inside the loop to refresh the active project name
+        submenu_builder = DynamicMenu(title="Plugin Management", emoji="🔌")
+        
+        # Global Actions
+        global_cat = submenu_builder.add_category("Global")
+        global_cat.add_item("Install a new Plugin", "Install a new plugin from a known list.", "install")
+        global_cat.add_item("List Installed Plugins", "List all globally installed plugins.", "list")
+
+        # Project-specific Actions
+        active_project_name = config.get_active_project() or 'None'
+        project_cat = submenu_builder.add_category(f"Current Project ({active_project_name})")
+        project_cat.add_item("Enable/Disable Plugins", "Enable or disable plugins for the current project.", "toggle")
+        project_cat.add_item("Configure Plugin Settings", "Configure settings for an enabled plugin.", "configure")
+
+        submenu_builder.add_category("Back").add_item("Return to Main Menu", "", "back")
+
+        choice_item = prompts.ask_menu(submenu_builder.to_menu(), allow_quit=False)
+        if not choice_item or choice_item.action == "back":
+            break
+
+        action_map = {
+            "install": install_plugin_handler,
+            "list": list_plugins_handler,
+            "toggle": toggle_plugins_handler,
+            "configure": configure_plugin_handler
+        }
+        
+        handler = action_map.get(choice_item.action)
+        if handler:
+            handler()
+
+        # Pause and wait for user to return, unless it was the list action
+        if choice_item and choice_item.action:
+             prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+
+
 def _show_ai_config_submenu(prompts: PromptsRenderer, text: TextRenderer, config: TitanConfig):
     """Shows the submenu for AI configuration."""
     from titan_cli.commands.ai import configure_ai_interactive, _test_ai_connection
@@ -446,6 +727,7 @@ def show_interactive_menu():
         menu_builder.add_top_level_item("Launch Claude Code", "Open an interactive session with Claude Code CLI.", "code")
         menu_builder.add_top_level_item("Project Management", "List, configure, or initialize projects.", "projects")
         menu_builder.add_top_level_item("Workflows", "Execute a predefined or custom workflow.", "run_workflow")
+        menu_builder.add_top_level_item("Plugin Management", "Install, configure, and manage plugins.", "plugin_management")
         menu_builder.add_top_level_item("AI Configuration", "Configure AI providers and test connections.", "ai_config")
         menu_builder.add_top_level_item("Switch Project", "Change the currently active project.", "switch_project")
         menu_builder.add_top_level_item("Exit", "Exit the application.", "exit")
@@ -474,6 +756,9 @@ def show_interactive_menu():
         elif choice_action == "run_workflow":
             _handle_run_workflow_action(config, text, spacer, prompts)
 
+        elif choice_action == "plugin_management":
+            _show_plugin_management_menu(prompts, text, config)
+            
         elif choice_action == "ai_config":
             _show_ai_config_submenu(prompts, text, config)
             
