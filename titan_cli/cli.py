@@ -331,12 +331,18 @@ def _show_workflow_info_panel(workflow, panel: PanelRenderer, spacer: SpacerRend
         bool: True if user wants to execute, False to cancel
     """
     # Build list of steps
-    steps_list = "\n".join([
-        f"  {i+1}. {step.get('id', 'unnamed')}"
-        for i, step in enumerate(workflow.steps)
-    ])
+    steps_list_parts = []
+    for i, step in enumerate(workflow.steps):
+        step_name = step.get("name") or step.get("id")
+        if not step_name:
+            step_name = f"Hook: {step.get('hook')}" if step.get('hook') else "unnamed"
+        steps_list_parts.append(f"  {i+1}. {step_name}")
+    steps_list = "\n".join(steps_list_parts)
 
-    content = f"{workflow.description}\n\nSteps:\n{steps_list}"
+    # Use only the first line of the description
+    description = workflow.description.split('\n')[0] if workflow.description else ""
+
+    content = f"{description}\n\nSteps:\n{steps_list}"
 
     panel.print(
         content,
