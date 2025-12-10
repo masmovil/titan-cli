@@ -104,37 +104,48 @@ def preview_workflow(name: str):
     Args:
         name: Name of the workflow to preview (e.g., 'create-pr-ai')
     """
+    import glob
     from pathlib import Path
-    import sys
 
-    normalized_name = name.replace('-', '_')
-    preview_filename = f"{normalized_name}_preview.py"
-
-    # Try multiple locations for the preview file
-    search_paths = [
-        # 1. System workflows
-        Path(__file__).parent / "workflows" / "__previews__" / preview_filename,
-        # 2. GitHub plugin workflows (relative to this file)
-        Path(__file__).parent.parent / "plugins" / "titan-plugin-github" / "titan_plugin_github" / "workflows" / "__previews__" / preview_filename,
-        # 3. Git plugin workflows
-        Path(__file__).parent.parent / "plugins" / "titan-plugin-git" / "titan_plugin_git" / "workflows" / "__previews__" / preview_filename,
+    project_root = Path(__file__).parent.parent
+    
+    search_patterns = [
+        str(project_root / "plugins" / "titan-plugin-*" / "titan_plugin_*" / "workflows" / "__previews__" / "*_preview.py"),
+        str(project_root / "titan_cli" / "workflows" / "__previews__" / "*_preview.py")
     ]
 
-    for preview_path in search_paths:
-        if preview_path.exists():
-            try:
-                # Execute the file directly
-                with open(preview_path, 'r') as f:
-                    code = compile(f.read(), preview_path, 'exec')
-                    exec(code, {'__name__': '__main__'})
-                return  # Success!
-            except Exception as e:
-                typer.secho(f"Error executing preview: {e}", fg=typer.colors.RED)
-                raise typer.Exit(1)
+    preview_files = []
+    for pattern in search_patterns:
+        preview_files.extend(glob.glob(pattern))
 
-    # If we get here, preview was not found in any location
-    typer.secho(f"Error: Preview for workflow '{name}' not found.", fg=typer.colors.RED)
-    typer.secho(f"Searched in:", fg=typer.colors.YELLOW)
-    for path in search_paths:
-        typer.secho(f"  - {path}", fg=typer.colors.YELLOW)
-    raise typer.Exit(1)
+    previews = {}
+    for file_path_str in preview_files:
+        p = Path(file_path_str)
+        try:
+            relative_p = p.relative_to(project_root)
+            preview_name = p.name.replace("_preview.py", "").replace("_", "-")
+            module_path = str(relative_p.with_suffix('')).replace('/', '.')
+            previews[preview_name] = module_path
+        except ValueError:
+            # This can happen if the file is not within the project root, which is unexpected
+            # for previews. We'll just ignore such files.
+            pass
+
+    if name in previews:
+        try:
+            runpy.run_module(previews[name], run_name="__main__")
+        except ModuleNotFoundError:
+            typer.secho(f"Error: Preview script for workflow '{name}' could not be loaded as a module.", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        except Exception as e:
+            typer.secho(f"Error executing preview for workflow '{name}': {e}", fg=typer.colors.RED)
+            raise typer.Exit(1)
+    else:
+        typer.secho(f"Error: Preview for workflow '{name}' not found.", fg=typer.colors.RED)
+        if previews:
+            typer.secho("Available previews:", fg=typer.colors.YELLOW)
+            for key in sorted(previews.keys()):
+                typer.secho(f"  - {key}", fg=typer.colors.YELLOW)
+        else:
+            typer.secho("No workflow previews found in expected plugin paths.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
