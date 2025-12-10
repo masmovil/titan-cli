@@ -23,6 +23,9 @@ def create_git_push_step(ctx: WorkflowContext) -> WorkflowResult:
         Success: If the push was successful.
         Error: If the push operation fails.
     """
+    # Show step header
+    if ctx.views:
+        ctx.views.step_header("push", ctx.current_step, ctx.total_steps)
 
     if not ctx.git:
         return Error(msg.Steps.Push.GIT_CLIENT_NOT_AVAILABLE)
@@ -42,7 +45,15 @@ def create_git_push_step(ctx: WorkflowContext) -> WorkflowResult:
             set_upstream = True
 
         ctx.git.push(remote=remote_to_use, branch=branch_to_use, set_upstream=set_upstream)
-        
+
+        # Show success panel
+        if ctx.ui:
+            ctx.ui.panel.print(
+                f"Pushed to {remote_to_use}/{branch_to_use}",
+                panel_type="success"
+            )
+            ctx.ui.spacer.small()
+
         return Success(
             message=msg.Git.PUSH_SUCCESS.format(remote=remote_to_use, branch=branch_to_use),
             metadata={"pr_head_branch": branch_to_use}

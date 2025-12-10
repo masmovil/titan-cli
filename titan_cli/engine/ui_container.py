@@ -17,9 +17,9 @@ from titan_cli.ui.console import get_console
 class UIComponents:
     """
     Container for basic UI components (Rich wrappers).
-    
+
     All components share the same console instance for consistency.
-    
+
     Attributes:
         text: Text rendering (titles, body, success, error, etc.)
         panel: Panel rendering with borders
@@ -35,10 +35,10 @@ class UIComponents:
     def create(cls, console: Optional[Console] = None) -> "UIComponents":
         """
         Create UI components with shared console.
-        
+
         Args:
             console: Optional console (uses theme-aware default if None)
-        
+
         Returns:
             UIComponents instance
         """

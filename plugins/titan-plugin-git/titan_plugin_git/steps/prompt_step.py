@@ -24,7 +24,7 @@ def prompt_for_commit_message_step(ctx: WorkflowContext) -> WorkflowResult:
     # Skip if there's nothing to commit
     git_status = ctx.data.get("git_status")
     if git_status and git_status.is_clean:
-        return Skip("Working directory is clean, no need for a commit message.")
+        return Skip(msg.Steps.Prompt.WORKING_DIRECTORY_CLEAN)
 
     try:
         # Using a generic prompt message, can be customized if needed
@@ -32,10 +32,10 @@ def prompt_for_commit_message_step(ctx: WorkflowContext) -> WorkflowResult:
         if not message:
             return Error(msg.Steps.Commit.COMMIT_MESSAGE_REQUIRED)
         return Success(
-            message="Commit message captured",
+            message=msg.Steps.Prompt.COMMIT_MESSAGE_CAPTURED,
             metadata={"commit_message": message}
         )
     except (KeyboardInterrupt, EOFError):
-        return Error("User cancelled.")
+        return Error(msg.Steps.Prompt.USER_CANCELLED)
     except Exception as e:
-        return Error(f"Failed to prompt for commit message: {e}", exception=e)
+        return Error(msg.Steps.Prompt.PROMPT_FAILED.format(e=e), exception=e)

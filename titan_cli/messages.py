@@ -112,6 +112,15 @@ class Messages:
         STEP_SKIPPED = "  {symbol} {message}"
         STEP_ERROR = "  {symbol} {message}"
 
+        # Pre-flight checks
+        UNCOMMITTED_CHANGES_WARNING: str = "You have uncommitted changes."
+        UNCOMMITTED_CHANGES_PROMPT_TITLE: str = "Uncommitted Changes Detected"
+        WORKFLOW_STEPS_INFO: str = """This workflow will:
+  1. Prompt you for a commit message (or skip if you prefer)
+  2. Create and push the commit
+  3. Use AI to generate PR title and description automatically"""
+        CONTINUE_PROMPT: str = "Continue?"
+
     # ═══════════════════════════════════════════════════════════════
     # Jira Integration
     # ═══════════════════════════════════════════════════════════════

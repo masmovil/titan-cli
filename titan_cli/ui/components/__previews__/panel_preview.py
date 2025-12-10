@@ -124,7 +124,7 @@ def preview_all():
     # 10. Using Messages
     text.title("10. Using Centralized Messages")
     renderer.print(
-        msg.Workflow.COMPLETED,
+        msg.Workflow.COMPLETED_SUCCESS.format(name="Example Workflow"),
         panel_type="success",
         title="Workflow Status"
     )

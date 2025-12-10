@@ -22,11 +22,11 @@ def get_current_branch_step(ctx: WorkflowContext) -> WorkflowResult:
     try:
         current_branch = ctx.git.get_current_branch()
         return Success(
-            f"Current branch is '{current_branch}'",
+            msg.Steps.Branch.GET_CURRENT_BRANCH_SUCCESS.format(branch=current_branch),
             metadata={"pr_head_branch": current_branch}
         )
     except Exception as e:
-        return Error(f"Failed to get current branch: {e}", exception=e)
+        return Error(msg.Steps.Branch.GET_CURRENT_BRANCH_FAILED.format(e=e), exception=e)
 
 def get_base_branch_step(ctx: WorkflowContext) -> WorkflowResult:
     """
@@ -48,8 +48,8 @@ def get_base_branch_step(ctx: WorkflowContext) -> WorkflowResult:
     try:
         base_branch = ctx.git.main_branch
         return Success(
-            f"Base branch is '{base_branch}'",
+            msg.Steps.Branch.GET_BASE_BRANCH_SUCCESS.format(branch=base_branch),
             metadata={"pr_base_branch": base_branch}
         )
     except Exception as e:
-        return Error(f"Failed to get base branch: {e}", exception=e)
+        return Error(msg.Steps.Branch.GET_BASE_BRANCH_FAILED.format(e=e), exception=e)

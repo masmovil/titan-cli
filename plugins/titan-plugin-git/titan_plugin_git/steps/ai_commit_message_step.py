@@ -26,29 +26,45 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the operation fails.
         Skip: If no changes, AI not configured, or user declined.
     """
+    # Show step header
+    if ctx.views:
+        ctx.views.step_header("ai_commit_message", ctx.current_step, ctx.total_steps)
+
     # Check if AI is configured
     if not ctx.ai or not ctx.ai.is_available():
-        return Skip("AI not configured. Run 'titan ai configure' to enable AI features.")
+        if ctx.ui:
+            ctx.ui.panel.print(
+                msg.Steps.AICommitMessage.AI_NOT_CONFIGURED,
+                panel_type="info"
+            )
+            ctx.ui.spacer.small()
+        return Skip(msg.Steps.AICommitMessage.AI_NOT_CONFIGURED)
 
     # Get git client
     if not ctx.git:
-        return Error(msg.Steps.CommitMessage.GIT_CLIENT_NOT_AVAILABLE)
+        return Error(msg.Steps.AICommitMessage.GIT_CLIENT_NOT_AVAILABLE)
 
     # Get git status
     git_status = ctx.get('git_status')
     if not git_status or git_status.is_clean:
-        return Skip("No changes to commit")
+        if ctx.ui:
+            ctx.ui.panel.print(
+                msg.Steps.AICommitMessage.NO_CHANGES_TO_COMMIT,
+                panel_type="info"
+            )
+            ctx.ui.spacer.small()
+        return Skip(msg.Steps.AICommitMessage.NO_CHANGES_TO_COMMIT)
 
     try:
         # Get diff of uncommitted changes
         if ctx.ui:
-            ctx.ui.text.info("📊 Analyzing uncommitted changes...")
+            ctx.ui.text.info(msg.Steps.AICommitMessage.ANALYZING_CHANGES)
 
         # Get diff of all uncommitted changes
         diff_text = ctx.git.get_uncommitted_diff()
 
         if not diff_text or diff_text.strip() == "":
-            return Skip("No uncommitted changes to analyze")
+            return Skip(msg.Steps.AICommitMessage.NO_UNCOMMITTED_CHANGES)
 
         # Build AI prompt
         # Get list of modified files for the summary
@@ -58,7 +74,7 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
         # Limit diff size to avoid token overflow (keep first 4000 chars)
         diff_preview = diff_text[:4000] if len(diff_text) > 4000 else diff_text
         if len(diff_text) > 4000:
-            diff_preview += "\n\n... (diff truncated for brevity)"
+            diff_preview += f"\n\n{msg.Steps.AICommitMessage.DIFF_TRUNCATED}"
 
         prompt = f"""Analyze these code changes and generate a conventional commit message.
 
@@ -85,7 +101,7 @@ Examples:
 Return ONLY the commit message, nothing else."""
 
         if ctx.ui:
-            ctx.ui.text.info("🤖 Generating commit message with AI...")
+            ctx.ui.text.info(msg.Steps.AICommitMessage.GENERATING_MESSAGE)
 
         # Call AI
         from titan_cli.ai.models import AIMessage
@@ -101,36 +117,44 @@ Return ONLY the commit message, nothing else."""
         # Show preview to user
         if ctx.ui:
             ctx.ui.spacer.small()
-            ctx.ui.text.subtitle("📝 AI Generated Commit Message:")
+            ctx.ui.text.subtitle(msg.Steps.AICommitMessage.GENERATED_MESSAGE_TITLE)
             ctx.ui.text.body(f"  {commit_message}", style="bold cyan")
 
             # Warn if message is too long
             if len(commit_message) > 72:
-                ctx.ui.text.warning(f"  ⚠️  Message is {len(commit_message)} chars (recommended: ≤72)")
+                ctx.ui.text.warning(msg.Steps.AICommitMessage.MESSAGE_LENGTH_WARNING.format(length=len(commit_message)))
 
             ctx.ui.spacer.small()
 
             # Ask user if they want to use it
             use_ai = ctx.views.prompts.ask_confirm(
-                "Use this commit message?",
+                msg.Steps.AICommitMessage.CONFIRM_USE_MESSAGE,
                 default=True
             )
 
             if not use_ai:
-                return Skip("User declined AI-generated commit message")
+                return Skip(msg.Steps.AICommitMessage.USER_DECLINED)
+
+        # Show success panel
+        if ctx.ui:
+            ctx.ui.panel.print(
+                "AI commit message generated successfully",
+                panel_type="success"
+            )
+            ctx.ui.spacer.small()
 
         # Success - save to context
         return Success(
-            "AI generated commit message",
+            msg.Steps.AICommitMessage.SUCCESS_MESSAGE,
             metadata={"commit_message": commit_message}
         )
 
     except Exception as e:
         if ctx.ui:
-            ctx.ui.text.warning(f"AI generation failed: {e}")
-            ctx.ui.text.info("Falling back to manual commit message...")
+            ctx.ui.text.warning(msg.Steps.AICommitMessage.GENERATION_FAILED.format(e=e))
+            ctx.ui.text.info(msg.Steps.AICommitMessage.FALLBACK_TO_MANUAL)
 
-        return Skip(f"AI generation failed: {e}")
+        return Skip(msg.Steps.AICommitMessage.GENERATION_FAILED.format(e=e))
 
 
 # Export for plugin registration
