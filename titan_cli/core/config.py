@@ -146,20 +146,32 @@ class TitanConfig:
 
         # Project config overrides global
         for key, value in project_cfg.items():
-            if key == "plugins" and isinstance(value, dict) and isinstance(merged.get("plugins"), dict):
-                # Deep merge plugins
-                for plugin_name, plugin_cfg in value.items():
-                    if plugin_name in merged["plugins"]:
-                        # Merge individual plugin config
-                        merged["plugins"][plugin_name] = {**merged["plugins"][plugin_name], **plugin_cfg}
-                        # Deep merge nested 'config' dict if present
-                        if "config" in merged["plugins"][plugin_name] and "config" in plugin_cfg:
-                            merged["plugins"][plugin_name]["config"] = {
-                                **merged["plugins"][plugin_name].get("config", {}),
-                                **plugin_cfg.get("config", {})
-                            }
-                    else:
-                        merged["plugins"][plugin_name] = plugin_cfg
+            if key == "plugins" and isinstance(value, dict):
+                merged_plugins = merged.setdefault("plugins", {})
+                
+                for plugin_name, plugin_data_project in value.items():
+                    plugin_data_global = merged_plugins.get(plugin_name, {})
+                    
+                    # Start with a copy of the global plugin config for this specific plugin
+                    # This ensures all global settings (like 'enabled') are carried over
+                    # unless explicitly overridden.
+                    final_plugin_data = {**plugin_data_global}
+                    
+                    # Merge top-level keys from project config, excluding 'config'
+                    for pk, pv in plugin_data_project.items():
+                        if pk != "config":
+                            final_plugin_data[pk] = pv
+                    
+                    # Handle the nested 'config' dictionary separately (deep merge)
+                    config_section_global = plugin_data_global.get("config", {})
+                    config_section_project = plugin_data_project.get("config", {})
+                    
+                    if config_section_global or config_section_project:
+                        final_plugin_data["config"] = {**config_section_global, **config_section_project}
+                    elif "config" in final_plugin_data: # If global had a config, and project didn't touch it
+                         pass # Keep the global config
+                    
+                    merged_plugins[plugin_name] = final_plugin_data
             else:
                 merged[key] = value
 

@@ -236,6 +236,7 @@ def _show_projects_submenu(prompts: PromptsRenderer, text: TextRenderer, config:
 def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, config: TitanConfig):
     """Shows the submenu for plugin management."""
     from titan_cli.core.plugins.available import KNOWN_PLUGINS
+    spacer = SpacerRenderer()
 
     def install_plugin_handler():
         """Handles the interactive installation of plugins."""
@@ -343,6 +344,132 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
         else:
             text.success("All discovered plugins loaded successfully.")
 
+    def _configure_plugin_interactive(plugin_name: str) -> bool:
+        """
+        Prompts user for plugin configuration interactively.
+
+        Returns:
+            True if configuration succeeded, False otherwise
+        """
+        # Get the plugin instance (could be initialized or not)
+        # Try from active plugins first, then from all discovered plugins
+        plugin = config.registry.get_plugin(plugin_name)
+
+        # If not in active plugins, it might be in _plugins (discovered but not initialized)
+        if not plugin:
+            plugin = config.registry._plugins.get(plugin_name)
+
+        # If still not found, try to reload it from entry points
+        if not plugin:
+            from importlib.metadata import entry_points
+            discovered = entry_points(group='titan.plugins')
+            for ep in discovered:
+                if ep.name == plugin_name:
+                    try:
+                        plugin_class = ep.load()
+                        plugin = plugin_class()
+                        break
+                    except Exception as e:
+                        text.error(f"Failed to load plugin '{plugin_name}': {e}")
+                        return False
+
+        if not plugin:
+            text.warning(f"Cannot find plugin '{plugin_name}'.")
+            return False
+
+        # Check if plugin supports configuration
+        if not hasattr(plugin, "get_config_schema"):
+            text.info(f"Plugin '{plugin_name}' does not require configuration.")
+            return True  # Allow enabling even without config schema
+
+        try:
+            schema = plugin.get_config_schema()
+        except Exception as e:
+            text.warning(f"Cannot get configuration schema: {e}")
+            return False
+
+        properties = schema.get("properties", {})
+        if not properties:
+            text.info(f"Plugin '{plugin_name}' has no required configuration.")
+            return True  # No config needed, allow enabling
+
+        text.subtitle(f"Configuring Plugin: {plugin_name}")
+        spacer.small()
+
+        # Get current config values if any
+        current_plugin_config = {}
+        if config.config.plugins and plugin_name in config.config.plugins:
+            plugin_entry = config.config.plugins[plugin_name]
+            if hasattr(plugin_entry, 'config'):
+                current_plugin_config = plugin_entry.config or {}
+
+        new_config_values = {}
+
+        # Iterate over schema and ask for values
+        for field_name, field_schema in properties.items():
+            field_type = field_schema.get("type")
+            description = field_schema.get("description", "")
+            current_value = current_plugin_config.get(field_name, field_schema.get("default"))
+            is_required = field_name in schema.get("required", [])
+
+            prompt_text = f"{field_name}"
+            if description:
+                prompt_text += f" ({description})"
+            if is_required:
+                prompt_text += " [required]"
+
+            # Simple type handling
+            if field_type == "boolean":
+                new_value = prompts.ask_confirm(prompt_text, default=bool(current_value) if current_value is not None else False)
+            elif field_type == "integer":
+                new_value = prompts.ask_int(prompt_text, default=int(current_value) if current_value is not None else None)
+            elif field_type == "array" and field_schema.get("items", {}).get("type") == "string":
+                current_list = current_value or []
+                text.body(prompt_text)
+                if current_list:
+                    text.body(f"Current: {', '.join(current_list)}", style="dim")
+                new_value_str = prompts.ask_text("Enter comma-separated values" + (" (leave blank to keep current)" if current_list else "") + ":")
+                if new_value_str and new_value_str.strip():
+                    new_value = [item.strip() for item in new_value_str.split(",")]
+                else:
+                    new_value = current_list
+            else:  # Default to string
+                default_val = str(current_value) if current_value is not None else ""
+                new_value = prompts.ask_text(prompt_text, default=default_val)
+                if new_value is None or (not new_value and is_required):
+                    if is_required:
+                        text.error(f"Field '{field_name}' is required.")
+                        return False
+                    new_value = ""
+
+            new_config_values[field_name] = new_value
+
+        # Save the configuration
+        try:
+            project_cfg_path = config.project_config_path
+            project_cfg_dict = {}
+            if project_cfg_path.exists():
+                with open(project_cfg_path, "rb") as f:
+                    project_cfg_dict = tomli.load(f)
+
+            plugins_table = project_cfg_dict.setdefault("plugins", {})
+            plugin_specific_table = plugins_table.setdefault(plugin_name, {})
+            plugin_config_table = plugin_specific_table.setdefault("config", {})
+
+            # Update the config with the new values
+            plugin_config_table.update(new_config_values)
+
+            with open(project_cfg_path, "wb") as f:
+                tomli_w.dump(project_cfg_dict, f)
+
+            spacer.small()
+            text.success(f"Configuration for '{plugin_name}' saved successfully.")
+            return True
+
+        except Exception as e:
+            text.error(f"Failed to save configuration: {e}")
+            return False
+
     def toggle_plugins_handler():
         """Handles enabling/disabling plugins for the current project."""
         if not config.get_active_project() or not config.project_config_path:
@@ -371,7 +498,7 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
                     f"Currently {status_text}. Select to toggle.",
                     plugin_name
                 )
-            
+
             menu_builder.add_category("Back").add_item("Return to Previous Menu", "", "back")
             choice = prompts.ask_menu(menu_builder.to_menu(), allow_quit=False)
 
@@ -381,6 +508,17 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
             plugin_to_toggle = choice.action
             current_status = config.is_plugin_enabled(plugin_to_toggle)
             new_status = not current_status
+
+            # If enabling, ask for configuration first
+            if new_status:
+                spacer.line()
+                text.info(f"Enabling plugin '{plugin_to_toggle}'...")
+                spacer.small()
+
+                if not _configure_plugin_interactive(plugin_to_toggle):
+                    text.warning(f"Plugin '{plugin_to_toggle}' was not enabled due to configuration errors.")
+                    spacer.line()
+                    continue
 
             try:
                 # Read the existing project config file
@@ -399,112 +537,35 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
                 with open(project_cfg_path, "wb") as f:
                     tomli_w.dump(project_cfg_dict, f)
 
+                spacer.small()
                 text.success(f"Plugin '{plugin_to_toggle}' has been {'enabled' if new_status else 'disabled'}.")
-            
+
+                # Reload config to reinitialize plugins
+                if new_status:
+                    text.info("Reloading configuration...")
+                    config.load()
+
+                    # Check if plugin initialized successfully
+                    failed = config.registry.list_failed()
+                    if plugin_to_toggle in failed:
+                        text.error(f"Plugin '{plugin_to_toggle}' failed to initialize:")
+                        text.body(str(failed[plugin_to_toggle]), style="red")
+
+                        # Revert to disabled
+                        plugin_specific_table["enabled"] = False
+                        with open(project_cfg_path, "wb") as f:
+                            tomli_w.dump(project_cfg_dict, f)
+                        config.load()
+                        text.warning(f"Plugin '{plugin_to_toggle}' has been disabled due to initialization failure.")
+
+                spacer.line()
+
             except (tomli.TOMLDecodeError, OSError) as e:
                 text.error(f"Error updating config file: {e}")
+                spacer.line()
             except Exception as e:
                 text.error(f"An unexpected error occurred: {e}")
-
-    def configure_plugin_handler():
-        """Handles configuring settings for an enabled plugin."""
-        if not config.get_active_project() or not config.project_config_path:
-            text.error("No active project selected. Please use 'Switch Project' first.")
-            return
-
-        config.load()
-        installed_plugins = config.registry.list_installed()
-        enabled_plugins = [p for p in installed_plugins if config.is_plugin_enabled(p)]
-
-        if not enabled_plugins:
-            text.info("No enabled plugins to configure for this project.")
-            return
-
-        # --- Menu to select which plugin to configure ---
-        menu_builder = DynamicMenu(title="Configure a Plugin", emoji="🔧")
-        plugin_cat = menu_builder.add_category("Enabled Plugins")
-        for plugin_name in enabled_plugins:
-            plugin_cat.add_item(f"Configure '{plugin_name}'", f"Edit settings for the {plugin_name} plugin.", plugin_name)
-        menu_builder.add_category("Back").add_item("Return to Previous Menu", "", "back")
-        
-        choice = prompts.ask_menu(menu_builder.to_menu(), allow_quit=False)
-
-        if not choice or choice.action == "back":
-            return
-
-        plugin_name = choice.action
-        plugin = config.registry.get_plugin(plugin_name)
-
-        if not plugin or not hasattr(plugin, "get_config_schema"):
-            text.error(f"Plugin '{plugin_name}' does not support interactive configuration.")
-            return
-
-        schema = plugin.get_config_schema()
-        properties = schema.get("properties", {})
-        if not properties:
-            text.info(f"Plugin '{plugin_name}' has no configurable properties.")
-            return
-
-        text.subtitle(f"Configuring Plugin: {plugin_name}")
-
-        # --- Get current config values ---
-        current_plugin_config = (config.config.plugins.get(plugin_name) or {}).config or {}
-        new_config_values = {}
-
-        # --- Iterate over schema and ask for new values ---
-        for field_name, field_schema in properties.items():
-            field_type = field_schema.get("type")
-            description = field_schema.get("description", "")
-            current_value = current_plugin_config.get(field_name, field_schema.get("default"))
-
-            prompt_text = f"{field_name} ({description})"
-            
-            # Simple type handling
-            if field_type == "boolean":
-                new_value = prompts.ask_confirm(prompt_text, default=bool(current_value))
-            elif field_type == "integer":
-                new_value = prompts.ask_int(prompt_text, default=int(current_value) if current_value is not None else None)
-            elif field_type == "array" and field_schema.get("items", {}).get("type") == "string":
-                current_list = current_value or []
-                text.body(prompt_text)
-                text.body(f"Current values: {', '.join(current_list) if current_list else 'None'}", style="dim")
-                new_value_str = prompts.ask_text("Enter new comma-separated values (or leave blank to keep current):")
-                if new_value_str and new_value_str.strip():
-                    new_value = [item.strip() for item in new_value_str.split(",")]
-                else:
-                    new_value = current_list # Keep current if blank
-            else: # Default to string
-                new_value = prompts.ask_text(prompt_text, default=str(current_value) if current_value is not None else "")
-                if new_value is None:
-                    new_value = "" # Coerce None from cancelled prompt to empty string
-            
-            new_config_values[field_name] = new_value
-
-        # --- Save the new configuration ---
-        try:
-            project_cfg_path = config.project_config_path
-            project_cfg_dict = {}
-            if project_cfg_path.exists():
-                with open(project_cfg_path, "rb") as f:
-                    project_cfg_dict = tomli.load(f)
-
-            plugins_table = project_cfg_dict.setdefault("plugins", {})
-            plugin_specific_table = plugins_table.setdefault(plugin_name, {})
-            plugin_config_table = plugin_specific_table.setdefault("config", {})
-            
-            # Update the config with the new values
-            plugin_config_table.update(new_config_values)
-
-            with open(project_cfg_path, "wb") as f:
-                tomli_w.dump(project_cfg_dict, f)
-
-            text.success(f"Configuration for '{plugin_name}' has been updated.")
-            config.load() # Reload to reflect changes immediately
-        
-        except (tomli.TOMLDecodeError, OSError) as e:
-            text.error(f"Error updating config file: {e}")
-        except Exception as e:
-            text.error(f"An unexpected error occurred: {e}")
+                spacer.line()
 
     # --- Action Loop ---
     while True:
@@ -516,11 +577,11 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
         global_cat.add_item("Install a new Plugin", "Install a new plugin from a known list.", "install")
         global_cat.add_item("List Installed Plugins", "List all globally installed plugins.", "list")
 
-        # Project-specific Actions
-        active_project_name = config.get_active_project() or 'None'
-        project_cat = submenu_builder.add_category(f"Current Project ({active_project_name})")
-        project_cat.add_item("Enable/Disable Plugins", "Enable or disable plugins for the current project.", "toggle")
-        project_cat.add_item("Configure Plugin Settings", "Configure settings for an enabled plugin.", "configure")
+        # Project-specific Actions (only if there's an active project)
+        active_project_name = config.get_active_project()
+        if active_project_name:
+            project_cat = submenu_builder.add_category(f"Current Project ({active_project_name})")
+            project_cat.add_item("Enable/Disable Plugins", "Enable or disable plugins for the current project.", "toggle")
 
         submenu_builder.add_category("Back").add_item("Return to Main Menu", "", "back")
 
@@ -531,8 +592,7 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
         action_map = {
             "install": install_plugin_handler,
             "list": list_plugins_handler,
-            "toggle": toggle_plugins_handler,
-            "configure": configure_plugin_handler
+            "toggle": toggle_plugins_handler
         }
         
         handler = action_map.get(choice_item.action)

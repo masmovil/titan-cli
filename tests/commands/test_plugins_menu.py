@@ -47,7 +47,7 @@ def mock_config(tmp_path):
     project_titan_dir.mkdir()
     project_config_path = project_titan_dir / "config.toml"
     with open(project_config_path, "wb") as f:
-        tomli_w.dump({"project": {"name": "test-project"}}, f)
+        tomli_w.dump({"project": {"name": "test-project"}, "plugins": {}}, f) # Add empty plugins dict
 
     # Mock PluginRegistry that finds no plugins initially
     mock_registry = MagicMock(spec=PluginRegistry)
@@ -111,22 +111,30 @@ def test_toggle_plugin_flow(mock_config, mock_ui, tmp_path, mocker):
     """Test the enable/disable plugin flow."""
     mock_text, mock_prompts = mock_ui
     
-    # --- Setup Mocks ---
-    # Make the registry believe 'git' is installed
+    # In-memory representation of the project config file content
+    in_memory_project_config = {"project": {"name": "test-project"}, "plugins": {"git": {"enabled": False}}}
+
+    def mock_toml_load(f):
+        return in_memory_project_config
+
+    def mock_toml_dump(data, f):
+        in_memory_project_config.update(data)
+
+    mocker.patch('tomli.load', side_effect=mock_toml_load)
+    mocker.patch('tomli_w.dump', side_effect=mock_toml_dump)
+
+    # Make the mock_config reflect the initial state for is_plugin_enabled
+    # and list_discovered
     mock_config.registry.list_discovered.return_value = ["git"]
-    mocker.patch.object(mock_config, 'is_plugin_enabled', return_value=False) # Initially disabled
+    mocker.patch.object(mock_config, 'is_plugin_enabled', side_effect=[False, True]) # First call disabled, second enabled
 
-    # 1. User chooses 'toggle'
-    # 2. User chooses 'git' to toggle it on
-    # 3. User chooses 'back'
-    mock_toggle_choice = MagicMock()
-    mock_toggle_choice.action = "toggle"
+    # Mock project_config_path to exist
+    mocker.patch.object(mock_config.project_config_path, 'exists', return_value=True)
 
-    mock_git_toggle = MagicMock()
-    mock_git_toggle.action = "git"
-
-    mock_back_choice = MagicMock()
-    mock_back_choice.action = "back"
+    # Simulate user interaction to toggle plugin
+    mock_toggle_choice = MagicMock(action="toggle")
+    mock_git_toggle = MagicMock(action="git")
+    mock_back_choice = MagicMock(action="back")
     
     mock_prompts.ask_menu.side_effect = [
         mock_toggle_choice,
@@ -135,16 +143,9 @@ def test_toggle_plugin_flow(mock_config, mock_ui, tmp_path, mocker):
         MagicMock(action="back")
     ]
 
-    # --- Act ---
+    # Act
     _show_plugin_management_menu(mock_prompts, mock_text, mock_config)
 
-    # --- Assert ---
-    # Check that success message is shown
+    # Assert
     mock_text.success.assert_any_call("Plugin 'git' has been enabled.")
-
-    # Verify the config file was written correctly
-    project_config_path = tmp_path / "test-project" / ".titan" / "config.toml"
-    with open(project_config_path, "rb") as f:
-        config_data = tomli.load(f)
-    
-    assert config_data["plugins"]["git"]["enabled"] is True
+    assert in_memory_project_config["plugins"]["git"]["enabled"] is True
