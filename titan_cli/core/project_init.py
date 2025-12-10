@@ -5,9 +5,10 @@ import tomli_w
 from ..ui.components.typography import TextRenderer
 from ..ui.views.prompts import PromptsRenderer
 from ..core.errors import ConfigWriteError
+from ..core.plugins.plugin_registry import PluginRegistry
 from ..messages import msg
 
-def initialize_project(project_path: Path) -> bool:
+def initialize_project(project_path: Path, registry: PluginRegistry) -> bool:
     """
     Interactively initializes a new Titan project in the specified directory.
 
@@ -16,6 +17,7 @@ def initialize_project(project_path: Path) -> bool:
 
     Args:
         project_path: The absolute path to the project directory.
+        registry: An instance of PluginRegistry to discover plugins.
 
     Returns:
         True if initialization was successful, False otherwise.
@@ -45,11 +47,18 @@ def initialize_project(project_path: Path) -> bool:
         if project_type == "other":
             project_type = prompts.ask_text(msg.Prompts.ENTER_CUSTOM_PROJECT_TYPE)
 
+        # Discover plugins to set them as disabled by default
+        discovered_plugins = registry.list_discovered()
+
         # Prepare config structure
         config_data = {
             "project": {
                 "name": project_name,
                 "type": project_type
+            },
+            "plugins": {
+                plugin_name: {"enabled": False}
+                for plugin_name in discovered_plugins
             }
         }
 

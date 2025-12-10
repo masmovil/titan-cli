@@ -211,7 +211,7 @@ def _show_projects_submenu(prompts: PromptsRenderer, text: TextRenderer, config:
             chosen_project_item = prompts.ask_menu(project_menu, allow_quit=False)
 
             if chosen_project_item and chosen_project_item.action != "cancel":
-                initialize_project(Path(chosen_project_item.action))
+                initialize_project(Path(chosen_project_item.action), config.registry)
 
     _show_submenu(
         prompts,
@@ -332,7 +332,8 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
         while True:
             # Reload config on each loop to get the latest status
             config.load()
-            installed_plugins = config.registry.list_installed()
+            # We need all discovered plugins to show their enabled/disabled status
+            installed_plugins = config.registry.list_discovered()
 
             if not installed_plugins:
                 text.info("No plugins are installed.")
