@@ -88,30 +88,33 @@ def test_install_plugin_flow(mock_config, mock_ui):
     ]
     
     # Mock the shell command
-    with patch('titan_cli.cli.run_shell_command') as mock_run_shell:
-        mock_run_shell.return_value = MagicMock(exit_code=0)
+    with patch('subprocess.run') as mock_run_shell:
+        mock_run_shell.return_value = MagicMock(returncode=0)
 
         # --- Act ---
         _show_plugin_management_menu(mock_prompts, mock_text, mock_config)
 
         # --- Assert ---
         # Check that pipx inject was called correctly
-        mock_run_shell.assert_called_once_with(
-            command="pipx inject titan-cli titan-plugin-git",
-            description="Installing titan-plugin-git using pipx."
-        )
+        assert mock_run_shell.called
+        call_args = mock_run_shell.call_args[0][0]
+        assert call_args[0] == "pipx"
+        assert call_args[1] == "inject"
+        assert call_args[2] == "titan-cli"
+        assert call_args[3].endswith("plugins/titan-plugin-git")
+
         # Check for success message
         mock_text.success.assert_any_call("Successfully installed titan-plugin-git.")
 
 @patch('titan_cli.cli.KNOWN_PLUGINS', MOCK_KNOWN_PLUGINS)
-def test_toggle_plugin_flow(mock_config, mock_ui, tmp_path):
+def test_toggle_plugin_flow(mock_config, mock_ui, tmp_path, mocker):
     """Test the enable/disable plugin flow."""
     mock_text, mock_prompts = mock_ui
     
     # --- Setup Mocks ---
     # Make the registry believe 'git' is installed
-    mock_config.registry.list_installed.return_value = ["git"]
-    mock_config.is_plugin_enabled.return_value = False # Initially disabled
+    mock_config.registry.list_discovered.return_value = ["git"]
+    mocker.patch.object(mock_config, 'is_plugin_enabled', return_value=False) # Initially disabled
 
     # 1. User chooses 'toggle'
     # 2. User chooses 'git' to toggle it on

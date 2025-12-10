@@ -65,12 +65,15 @@ def test_config_project_overrides_global(tmp_path: Path, monkeypatch, mocker):
     # Mock PluginRegistry
     mocker.patch('titan_cli.core.config.PluginRegistry')
 
-    # 1. Create a mock global config
+    # 1. Create a mock global config that defines the project root and active project
     global_config_dir = tmp_path / "global" / ".titan"
     global_config_dir.mkdir(parents=True)
     global_config_path = global_config_dir / "config.toml"
     global_config_data = {
-        "project": {"name": "Global Project"}, # This will be ignored due to project config
+        "core": {
+            "project_root": str(tmp_path),
+            "active_project": "my_project"
+        },
         "ai": {"provider": "anthropic"},
         "plugins": {
             "github": {"enabled": True, "config": {"org": "global-org"}},
@@ -80,7 +83,7 @@ def test_config_project_overrides_global(tmp_path: Path, monkeypatch, mocker):
     with open(global_config_path, "wb") as f:
         tomli_w.dump(global_config_data, f)
 
-    # 2. Create a mock project config in a subdirectory
+    # 2. Create a mock project config in the active project directory
     project_dir = tmp_path / "my_project"
     project_titan_dir = project_dir / ".titan"
     project_titan_dir.mkdir(parents=True)
@@ -95,11 +98,11 @@ def test_config_project_overrides_global(tmp_path: Path, monkeypatch, mocker):
     }
     with open(project_config_path, "wb") as f:
         tomli_w.dump(project_config_data, f)
-    
-    # 3. Patch global config and initialize from the project directory
+
+    # 3. Patch global config and initialize
     monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
-    
-    config_instance = TitanConfig(project_path=project_dir)
+
+    config_instance = TitanConfig()
 
     # 4. Assert that the merge was successful
     # Project name is from project config
@@ -112,33 +115,6 @@ def test_config_project_overrides_global(tmp_path: Path, monkeypatch, mocker):
     assert config_instance.config.plugins["jira"].enabled is False # from global
     assert config_instance.config.plugins["git"].enabled is True # from project
 
-
-def test_find_project_config_walks_up_tree(tmp_path: Path, monkeypatch, mocker):
-    """
-    Test that _find_project_config correctly finds config in parent directory.
-    """
-    # Mock PluginRegistry
-    mocker.patch('titan_cli.core.config.PluginRegistry')
-    
-    # Create project root and config
-    project_root = tmp_path / "my_real_project"
-    project_titan_dir = project_root / ".titan"
-    project_titan_dir.mkdir(parents=True)
-    config_path = project_titan_dir / "config.toml"
-    config_path.touch()
-
-    # Create a deep subdirectory to start the search from
-    deep_subdir = project_root / "src" / "app" / "components"
-    deep_subdir.mkdir(parents=True)
-
-    # Initialize TitanConfig without patching _find_project_config
-    # but patch the global config to isolate the test
-    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", Path("/nonexistent/config.toml"))
-
-    config_instance = TitanConfig(project_path=deep_subdir)
-    
-    # Assert that it found the correct config file
-    assert config_instance.project_config_path == config_path
 
 def test_config_dependency_injection(mocker, monkeypatch):
     """

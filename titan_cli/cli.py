@@ -759,7 +759,13 @@ def show_interactive_menu():
         menu_builder = DynamicMenu(title=msg.Interactive.MAIN_MENU_TITLE, emoji="🚀")
         menu_builder.add_top_level_item("Launch Claude Code", "Open an interactive session with Claude Code CLI.", "code")
         menu_builder.add_top_level_item("Project Management", "List, configure, or initialize projects.", "projects")
-        menu_builder.add_top_level_item("Workflows", "Execute a predefined or custom workflow.", "run_workflow")
+
+        # Only show Workflows if there are enabled plugins
+        installed_plugins = config.registry.list_installed()
+        enabled_plugins = [p for p in installed_plugins if config.is_plugin_enabled(p)]
+        if enabled_plugins:
+            menu_builder.add_top_level_item("Workflows", "Execute a predefined or custom workflow.", "run_workflow")
+
         menu_builder.add_top_level_item("Plugin Management", "Install, configure, and manage plugins.", "plugin_management")
         menu_builder.add_top_level_item("AI Configuration", "Configure AI providers and test connections.", "ai_config")
         menu_builder.add_top_level_item("Switch Project", "Change the currently active project.", "switch_project")
