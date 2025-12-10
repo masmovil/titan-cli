@@ -34,6 +34,7 @@ from titan_cli.ui.views.prompts import PromptsRenderer
 from titan_cli.core.project_init import initialize_project
 from titan_cli.ui.views.menu_components.dynamic_menu import DynamicMenu
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
+from titan_cli.core.plugins.available import KNOWN_PLUGINS
 
 # New Workflow-related imports
 from titan_cli.engine.workflow_executor import WorkflowExecutor
@@ -267,6 +268,26 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
                 break
 
             plugin_to_install = choice.action
+
+            # Find the plugin definition to check dependencies
+            selected_plugin = next((p for p in KNOWN_PLUGINS if p["package_name"] == plugin_to_install), None)
+
+            if not selected_plugin:
+                text.error(f"Plugin '{plugin_to_install}' not found in known plugins.")
+                continue
+
+            # Check if dependencies are met
+            if selected_plugin.get("dependencies"):
+                installed_plugin_names = config.registry.list_installed()
+                missing_deps = [dep for dep in selected_plugin["dependencies"] if dep not in installed_plugin_names]
+
+                if missing_deps:
+                    text.error(f"Cannot install '{selected_plugin['name']}': missing required dependencies.")
+                    text.body(f"Required plugins: {', '.join(missing_deps)}", style="yellow")
+                    text.info("Please install the required plugins first.")
+                    spacer.line()
+                    continue
+
             text.info(f"Installing {plugin_to_install}...")
 
             try:
