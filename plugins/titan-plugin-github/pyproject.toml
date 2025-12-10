@@ -3,6 +3,7 @@ name = "titan-plugin-github"
 version = "0.1.0"
 description = "Titan CLI plugin for GitHub integration."
 authors = ["finxo <finxeto@gmail.com>", "r-pedraza <raulpedrazaleon@gmail.com>"]
+packages = [{include = "titan_plugin_github"}]
 
 [tool.poetry.dependencies]
 python = ">=3.10"
@@ -11,14 +12,6 @@ python = ">=3.10"
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[project]
-name = "titan-plugin-github"
-version = "0.1.0"
-description = "Titan CLI plugin for GitHub integration."
-authors = [
-    {name = "finxo", email = "finxeto@gmail.com"},
-    {name = "r-pedraza", email = "raulpedrazaleon@gmail.com"}
-]
-
-[project.entry-points."titan.plugins"]
+[tool.poetry.plugins."titan.plugins"]
 github = "titan_plugin_github.plugin:GitHubPlugin"
+

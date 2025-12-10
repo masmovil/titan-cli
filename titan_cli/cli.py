@@ -11,6 +11,7 @@ import tomli
 import tomli_w
 import importlib.metadata
 import subprocess
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -269,9 +270,18 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
             text.info(f"Installing {plugin_to_install}...")
 
             try:
-                # Use subprocess.run to execute the command
+                # Build a robust path to the plugin directory, independent of CWD
+                cli_file_path = Path(__file__).resolve()
+                project_root = cli_file_path.parent.parent
+                plugin_path = project_root / "plugins" / plugin_to_install
+
+                if not plugin_path.exists():
+                    text.error(f"Plugin source directory not found at: {plugin_path}")
+                    continue
+
+                # Use subprocess.run to execute the command with the absolute path
                 result = subprocess.run(
-                    f"pipx inject titan-cli ./plugins/{plugin_to_install}",
+                    f"pipx inject titan-cli '{plugin_path}'",
                     shell=True,
                     capture_output=True,
                     text=True,
@@ -438,12 +448,14 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
                 text.body(prompt_text)
                 text.body(f"Current values: {', '.join(current_list) if current_list else 'None'}", style="dim")
                 new_value_str = prompts.ask_text("Enter new comma-separated values (or leave blank to keep current):")
-                if new_value_str.strip():
+                if new_value_str and new_value_str.strip():
                     new_value = [item.strip() for item in new_value_str.split(",")]
                 else:
                     new_value = current_list # Keep current if blank
             else: # Default to string
                 new_value = prompts.ask_text(prompt_text, default=str(current_value) if current_value is not None else "")
+                if new_value is None:
+                    new_value = "" # Coerce None from cancelled prompt to empty string
             
             new_config_values[field_name] = new_value
 
