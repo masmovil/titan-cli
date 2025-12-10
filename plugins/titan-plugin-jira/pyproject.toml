@@ -1,0 +1,36 @@
+[project]
+name = "titan-plugin-jira"
+version = "1.0.0"
+description = "JIRA integration plugin for Titan CLI with AI-powered issue management"
+authors = [
+    { name = "Titan CLI Team" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-cov>=4.0.0",  # Code coverage
+    "responses>=0.23.0",  # For mocking HTTP requests
+    "pyyaml>=6.0.0",  # For workflow YAML validation
+]
+
+[project.entry-points."titan.plugins"]
+jira = "titan_plugin_jira.plugin:JiraPlugin"
+
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["titan_plugin_jira*"]
+
+[tool.setuptools.package-data]
+titan_plugin_jira = ["workflows/*.yaml"]
