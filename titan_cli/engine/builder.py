@@ -53,6 +53,7 @@ class WorkflowContextBuilder:
         self._ai = None
         self._git = None
         self._github = None
+        self._jira = None
 
     def with_ui(
         self,
@@ -143,14 +144,37 @@ class WorkflowContextBuilder:
                 self._github = None
         return self
 
+    def with_jira(self, jira_client: Optional[Any] = None) -> "WorkflowContextBuilder":
+        """
+        Add JIRA client.
+
+        Args:
+            jira_client: Optional JiraClient instance (auto-loaded if None)
+        """
+        if jira_client:
+            self._jira = jira_client
+        else:
+            # Auto-create from plugin registry
+            jira_plugin = self._plugin_registry.get_plugin("jira")
+            if jira_plugin and jira_plugin.is_available():
+                try:
+                    self._jira = jira_plugin.get_client()
+                except Exception: # Catch any exception during client retrieval
+                    self._jira = None # Fail silently
+            else:
+                self._jira = None
+        return self
+
 
     def build(self) -> WorkflowContext:
         """Build the WorkflowContext."""
         return WorkflowContext(
             secrets=self._secrets,
+            plugin_manager=self._plugin_registry,
             ui=self._ui,
             views=self._views,
             ai=self._ai,
             git=self._git,
             github=self._github,
+            jira=self._jira,
         )
