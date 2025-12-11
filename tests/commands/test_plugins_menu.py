@@ -100,8 +100,9 @@ def test_install_plugin_flow(mock_config, mock_ui):
         call_args = mock_run_shell.call_args[0][0]
         assert call_args[0] == "pipx"
         assert call_args[1] == "inject"
-        assert call_args[2] == "titan-cli"
-        assert call_args[3].endswith("plugins/titan-plugin-git")
+        assert call_args[2] == "--editable" # Check for editable flag
+        assert call_args[3] == "titan-cli"
+        assert call_args[4].endswith("plugins/titan-plugin-git")
 
         # Check for success message
         mock_text.success.assert_any_call("Successfully installed titan-plugin-git.")

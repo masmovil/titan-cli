@@ -299,10 +299,10 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
 
                 # Check if local plugin directory exists (development mode)
                 if plugin_path.exists():
-                    # Development mode: install from local path
-                    text.body(f"Installing from local path: {plugin_path}", style="dim")
+                    # Development mode: install from local path in editable mode
+                    text.body(f"Installing from local path (editable): {plugin_path}", style="dim")
                     result = subprocess.run(
-                        ["pipx", "inject", "titan-cli", str(plugin_path)],
+                        ["pipx", "inject", "--editable", "titan-cli", str(plugin_path)],
                         capture_output=True,
                         text=True,
                         check=False
