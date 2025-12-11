@@ -57,11 +57,8 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
 
     try:
         # Get diff of uncommitted changes
-        if ctx.ui:
-            ctx.ui.text.info(msg.Steps.AICommitMessage.ANALYZING_CHANGES)
-
-        # Get diff of all uncommitted changes
-        diff_text = ctx.git.get_uncommitted_diff()
+        with ctx.ui.loader.spin(msg.Steps.AICommitMessage.ANALYZING_CHANGES):
+            diff_text = ctx.git.get_uncommitted_diff()
 
         if not diff_text or diff_text.strip() == "":
             return Skip(msg.Steps.AICommitMessage.NO_UNCOMMITTED_CHANGES)
