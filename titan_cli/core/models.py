@@ -1,5 +1,5 @@
 # core/models.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, root_validator, ValidationError
 from typing import Optional, Dict
 from .plugins.models import PluginConfig
 
@@ -29,6 +29,18 @@ class AIConfig(BaseModel):
     default: str = Field("default", description="ID del provider por defecto")
     providers: Dict[str, AIProviderConfig] = Field(default_factory=dict)
 
+    @root_validator(pre=True)
+    def validate_default_provider(cls, values):
+        default_provider = values.get('default')
+        providers = values.get('providers')
+
+        if default_provider and providers:
+            if default_provider not in providers:
+                raise ValueError(f"Default provider '{default_provider}' not found in configured providers.")
+        elif default_provider and not providers:
+            raise ValueError("Cannot set a default provider when no providers are configured.")
+        return values
+
 class CoreConfig(BaseModel):
     """
     Represents core Titan CLI settings, typically defined in the global config.
@@ -44,3 +56,4 @@ class TitanConfigModel(BaseModel):
     core: Optional[CoreConfig] = Field(None, description="Core Titan CLI settings.")
     ai: Optional[AIConfig] = Field(None, description="AI provider configuration.")
     plugins: Dict[str, PluginConfig] = Field(default_factory=dict, description="Dictionary of plugin configurations.")
+
