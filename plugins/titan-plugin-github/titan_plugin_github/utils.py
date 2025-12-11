@@ -56,19 +56,19 @@ def calculate_pr_size(diff: str) -> PRSizeEstimation:
     # Dynamic character limit based on PR size
     if files_changed <= 3 and diff_lines < 100:
         # Small PR: bug fix, doc update, small feature
-        max_chars = 500
+        max_chars = 800
         pr_size = "small"
     elif files_changed <= 10 and diff_lines < 500:
         # Medium PR: feature, moderate refactor
-        max_chars = 1200
+        max_chars = 1800
         pr_size = "medium"
     elif files_changed <= 30 and diff_lines < 2000:
         # Large PR: architectural changes, new modules
-        max_chars = 2000
+        max_chars = 3000
         pr_size = "large"
     else:
         # Very large PR: major refactor, breaking changes
-        max_chars = 3000
+        max_chars = 4500
         pr_size = "very large"
 
     return PRSizeEstimation(

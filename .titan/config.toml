@@ -1,6 +1,22 @@
+[project]
+name = "titan-cli"
+type = "generic"
+
+[plugins.git]
+enabled = true
+
 [plugins.git.config]
 main_branch = "master"
+default_remote = "origin"
+protected_branches = []
+
+[plugins.github]
+enabled = true
 
 [plugins.github.config]
 repo_owner = "masmovil"
 repo_name = "titan-cli"
+default_branch = "master"
+default_reviewers = []
+pr_template_path = ""
+auto_assign_prs = false
