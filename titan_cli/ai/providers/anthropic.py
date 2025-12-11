@@ -28,8 +28,10 @@ class AnthropicProvider(AIProvider):
         try:
             from anthropic import Anthropic
             # Support custom base_url for enterprise endpoints
-            if base_url:
-                self.client = Anthropic(api_key=api_key, base_url=base_url)
+            # Normalize base_url by removing trailing slash
+            normalized_base_url = base_url.rstrip('/') if base_url else None
+            if normalized_base_url:
+                self.client = Anthropic(api_key=api_key, base_url=normalized_base_url)
             else:
                 self.client = Anthropic(api_key=api_key)
         except ImportError:

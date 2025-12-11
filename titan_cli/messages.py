@@ -185,10 +185,10 @@ class Messages:
         CUSTOM_ENDPOINT_INFO_TITLE = "Custom endpoints are used for:"
         CUSTOM_ENDPOINT_INFO_PROXY = "  • Corporate/enterprise proxies"
         CUSTOM_ENDPOINT_INFO_BEDROCK = "  • AWS Bedrock"
-        CUSTOM_ENDPOINT_INFO_AZURE = "  • Azure OpenAI"
+
         CUSTOM_ENDPOINT_INFO_SELF_HOSTED = "  • Self-hosted deployments"
         CUSTOM_ENDPOINT_EXAMPLE_ANTHROPIC = "Example: https://bedrock-runtime.us-east-1.amazonaws.com"
-        CUSTOM_ENDPOINT_EXAMPLE_OPENAI = "Example: https://your-instance.openai.azure.com"
+
         CUSTOM_ENDPOINT_URL_PROMPT = "Enter custom API endpoint URL"
         CUSTOM_ENDPOINT_SUCCESS = "Will use custom endpoint: {base_url}"
         CUSTOM_ENDPOINT_USING_STANDARD = "Using standard endpoint"
@@ -208,14 +208,6 @@ class Messages:
         MAX_TOKENS_PROMPT = "Enter default max tokens (e.g., 4096, max output length)"
         
 
-        # Provider Labels and Descriptions
-        ANTHROPIC_LABEL = "Anthropic (Claude)"
-        OPENAI_LABEL = "OpenAI (GPT-4)"
-        GEMINI_LABEL = "Google (Gemini)"
-        ANTHROPIC_DESCRIPTION_MODEL = "Model: {model}"
-        OPENAI_DESCRIPTION_MODEL = "Model: {model}"
-        GEMINI_DESCRIPTION_MODEL = "Model: {model}"
-
         # Model Selection
         MODEL_SELECTION_TITLE = "Model Selection for {provider}"
         MODEL_SELECTION_TIP = "Tip: You can enter any model name, including custom/enterprise models"
@@ -228,11 +220,7 @@ class Messages:
         POPULAR_CLAUDE_HAIKU = "  • claude-3-haiku-20240307 - Fastest, cost-effective"
         POPULAR_CLAUDE_HAIKU_3_5 = "  • claude-3-5-haiku-20241022 - New fast model"
 
-        # Popular Models - OpenAI
-        POPULAR_OPENAI_MODELS_TITLE = "Popular OpenAI models:"
-        POPULAR_OPENAI_GPT4_TURBO = "  • gpt-4-turbo - Latest GPT-4, best performance"
-        POPULAR_OPENAI_GPT4 = "  • gpt-4 - Stable GPT-4"
-        POPULAR_OPENAI_GPT3_5_TURBO = "  • gpt-3.5-turbo - Fast and cost-effective"
+
 
         # Popular Models - Gemini
         POPULAR_GEMINI_MODELS_TITLE = "Popular Gemini models:"
@@ -250,6 +238,53 @@ class Messages:
         CONNECTION_TEST_FAILED_PROMPT = "Connection test failed. You may want to reconfigure."
         MODEL_NOT_AVAILABLE = "Model not available: {model}"
         RATE_LIMIT = "Rate limit reached. Please try again later."
+        
+        # New AI Configuration Messages
+        AI_CONFIG_PROVIDER_TITLE = "Configure AI Provider"
+        AI_CONFIG_TYPE_TITLE = "Configuration Type"
+        AI_CONFIG_TYPE_SELECT = "Select the type"
+        AI_CONFIG_TYPE_CORPORATE_LABEL = "Corporate"
+        AI_CONFIG_TYPE_CORPORATE_DESCRIPTION = "Internal endpoint (same base_url for all providers)"
+        AI_CONFIG_TYPE_INDIVIDUAL_LABEL = "Individual"
+        AI_CONFIG_TYPE_INDIVIDUAL_DESCRIPTION = "Personal API key (official endpoint)"
+        AI_CONFIG_CANCELLED = "Configuration cancelled"
+        AI_CONFIG_CORPORATE_INFO = "Corporate Configuration"
+        AI_CONFIG_CORPORATE_BASE_URL_INFO = "All providers will use the same corporate base_url"
+        AI_CONFIG_CORPORATE_BASE_URL_EXAMPLE = "Example: https://api.your-company.com/llm"
+
+        AI_CONFIG_CORPORATE_BASE_URL_PROMPT = "Corporate Base URL:"
+
+        AI_PROVIDER_SELECT_TITLE = "Select Provider"
+        AI_PROVIDER_SELECT_CATEGORY = "Available Providers"
+        AI_ANTHROPIC_LABEL = "Anthropic (Claude)"
+        AI_ANTHROPIC_DESCRIPTION = "claude-3-5-sonnet, opus, etc."
+
+        AI_GEMINI_LABEL = "Google Gemini"
+        AI_GEMINI_DESCRIPTION = "gemini-1.5-pro, gemini-flash, etc."
+
+        AI_API_KEY_INFO = "Configure API Key for {provider_name}"
+        AI_API_KEY_PROMPT = "API Key for {provider_name}:"
+
+        AI_PROVIDER_NAME_PROMPT = "Name for this provider:"
+        AI_PROVIDER_MARK_DEFAULT_PROMPT = "Mark as default provider?"
+        PROVIDER_ID_EXISTS = "Provider ID '{provider_id}' already exists. Please choose a different name."
+
+        AI_PROVIDER_CONFIGURED_SUCCESS = "Provider configured successfully"
+        AI_PROVIDER_NAME = "Name: {name}"
+        AI_PROVIDER_ID = "ID: {id}"
+        AI_PROVIDER_TYPE = "Type: {type}"
+        AI_PROVIDER_NAME_MODEL = "Provider: {provider_name} ({model})"
+        AI_PROVIDER_ENDPOINT = "Endpoint: {base_url}"
+
+        AI_PROVIDER_NOT_FOUND_FOR_GENERATION = "AI provider '{provider_id}' not found for generation."
+        AI_NO_AI_CONFIG_FOUND_TO_TEST = "No AI configuration found to test provider '{provider_id}'."
+        AI_DETAILS = "Details: {error}"
+
+        AI_NO_DEFAULT_PROVIDER = "No default AI provider configured. Please specify a provider ID to test."
+        AI_TESTING_DEFAULT_PROVIDER = "Testing default AI provider: '{provider_id}'"
+        AI_PROVIDER_NOT_FOUND_IN_CONFIG = "AI provider '{provider_id}' not found in configuration."
+        AI_SEE_AVAILABLE_PROVIDERS = "Run 'titan ai configure' or 'titan ai list' to see available providers."
+
 
     class Code:
         """Claude Code CLI integration messages"""

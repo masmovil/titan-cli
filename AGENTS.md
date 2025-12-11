@@ -437,7 +437,8 @@ from titan_cli.core.config import TitanConfig
 
 config = TitanConfig()  # Loads and merges global + project
 print(config.config.project.name)
-print(config.config.ai.provider)
+print(config.config.ai.default)  # Default provider ID
+print(config.config.ai.providers)  # Dict of all configured providers
 
 # Check enabled plugins
 if config.is_plugin_enabled("github"):
@@ -565,7 +566,7 @@ class MyCoolPlugin(TitanPlugin):
 
 ## 🤖 AI Integration
 
-Titan CLI includes a modular AI integration layer that allows for interaction with multiple AI providers (Anthropic, OpenAI, Gemini).
+Titan CLI includes a modular AI integration layer that allows for interaction with multiple AI providers (Anthropic, Gemini).
 
 ### File Structure (`ai/`)
 
@@ -584,33 +585,61 @@ titan_cli/ai/
     ├── base.py             # AIProvider abstract base class
     ├── anthropic.py
     ├── gemini.py
-    └── openai.py           # Stub for future implementation
 ```
 
 ### Core Components
 
--   **`AIClient` (`ai/client.py`):** This is the main entry point for using AI functionality. It acts as a facade that reads the user's configuration, retrieves the necessary secrets via `SecretManager`, and instantiates the correct provider.
+-   **`AIClient` (`ai/client.py`):** This is the main entry point for using AI functionality. It acts as a facade that reads the user's configuration, retrieves the necessary secrets via `SecretManager`, and instantiates the correct provider. Supports multiple providers with a `provider_id` parameter to select which one to use.
 -   **`AIProvider` (`ai/providers/base.py`):** This is an abstract base class that defines the interface for all AI providers. Each provider implements the `generate()` method to interact with its specific API.
 
 ### Configuration
 
-AI configuration is handled via the interactive `titan ai configure` command or by selecting "Configure AI Provider" from the main menu. This command allows the user to:
-1.  Select a default provider (Anthropic, OpenAI, or Gemini).
-2.  Provide authentication credentials (API Key or OAuth for Gemini), which are stored securely using the `SecretManager`.
-3.  Select a default model for the chosen provider, with suggestions for popular models.
-4.  Optionally set a custom API endpoint for enterprise use.
-5.  Test the connection to ensure everything is set up correctly.
+AI configuration supports **multiple providers** simultaneously. Users can configure both corporate and personal providers, each with different models and endpoints.
 
-Configuration is stored in the global `~/.titan/config.toml` file:
+AI providers are configured via:
+- Interactive command: `titan ai configure`
+- Main menu option: "AI Configuration" → "Configure AI Provider"
+
+The configuration workflow:
+1.  Select configuration type (Corporate or Individual)
+2.  Enter base URL (for corporate endpoints only)
+3.  Select provider (Anthropic, OpenAI, or Gemini)
+4.  Provide API key (stored securely via `SecretManager`)
+5.  Select model with suggestions for popular models
+6.  Assign a friendly name to the provider
+7.  Optionally configure advanced settings (temperature, max_tokens)
+8.  Optionally mark as default provider
+9.  Test the connection
+
+Configuration is stored in the global `~/.titan/config.toml` file with support for multiple providers:
 
 ```toml
 [ai]
+default = "corporate-gemini"  # Default provider ID
+
+[ai.providers.corporate-gemini]
+name = "Corporate Gemini"
+type = "corporate"
+provider = "gemini"
+model = "gemini-2.0-flash-exp"
+base_url = "https://llm.company.com"
+temperature = 0.7
+max_tokens = 4096
+
+[ai.providers.personal-claude]
+name = "Personal Claude"
+type = "individual"
 provider = "anthropic"
 model = "claude-3-5-sonnet-20241022"
-base_url = "https://custom.endpoint.com" # Optional
-temperature = 0.8
-max_tokens = 8192
+temperature = 0.7
+max_tokens = 4096
 ```
+
+**Available commands:**
+- `titan ai configure` - Configure a new AI provider
+- `titan ai list` - List all configured providers
+- `titan ai set-default [provider-id]` - Change default provider
+- `titan ai test` - Test connection to default provider
 
 ### Usage
 
@@ -627,23 +656,25 @@ from titan_cli.ai.exceptions import AIConfigurationError
 config = TitanConfig()
 secrets = SecretManager()
 
-# 2. Create the AI client
-if not config.config.ai:
-    print("AI not configured")
+# 2. Check if AI is configured
+if not config.config.ai or not config.config.ai.providers:
+    print("No AI providers configured. Run: titan ai configure")
     return
 
+# 3. Create the AI client (uses default provider)
 try:
     ai_client = AIClient(config.config.ai, secrets)
+    # Or specify a specific provider:
+    # ai_client = AIClient(config.config.ai, secrets, provider_id="corporate-gemini")
 except AIConfigurationError as e:
-    # Handle cases where AI is not configured correctly
     print(f"AI not available: {e}")
     return
 
-# 3. Make a request
+# 4. Make a request
 if ai_client.is_available():
     messages = [AIMessage(role="user", content="Explain the meaning of life.")]
 
-    # Simple request
+    # Simple request (uses provider's configured settings)
     response = ai_client.generate(messages)
     print(response.content)
 
@@ -654,6 +685,14 @@ if ai_client.is_available():
         max_tokens=1024
     )
     print(creative_response.content)
+
+# 5. Using a specific provider
+corporate_client = AIClient(config.config.ai, secrets, provider_id="corporate-gemini")
+personal_client = AIClient(config.config.ai, secrets, provider_id="personal-claude")
+
+# Each client uses its own provider configuration
+corp_response = corporate_client.generate(messages)
+personal_response = personal_client.generate(messages)
 ```
 
 ---
