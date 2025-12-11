@@ -86,8 +86,18 @@ class WorkflowExecutor:
                 if on_error == "fail":
                     ctx.ui.text.error(f"Workflow '{workflow.name}' stopped due to step failure.")
                     return Error(f"Workflow failed at step '{step_name}'", step_result.exception)
+            elif is_skip(step_result):
+                # Show info panel when step is skipped (unless silent=True)
+                if not step_result.silent:
+                    ctx.ui.panel.print(
+                        step_result.message,
+                        panel_type="info"
+                    )
+                # Merge step metadata into workflow context data
+                if step_result.metadata:
+                    ctx.data.update(step_result.metadata)
             else:
-                # Merge step metadata into workflow context data (for Success and Skip)
+                # Success case - merge step metadata into workflow context data
                 if step_result.metadata:
                     ctx.data.update(step_result.metadata)
 

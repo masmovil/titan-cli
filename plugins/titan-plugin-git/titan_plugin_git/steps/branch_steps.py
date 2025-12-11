@@ -17,16 +17,22 @@ def get_current_branch_step(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the GitClient is not available or the git command fails.
     """
     if not ctx.git:
-        return Error(msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE)
-    
+        error_msg = msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE
+        ctx.ui.panel.print(error_msg, panel_type="error")
+        return Error(error_msg)
+
     try:
         current_branch = ctx.git.get_current_branch()
+        success_msg = msg.Steps.Branch.GET_CURRENT_BRANCH_SUCCESS.format(branch=current_branch)
+        ctx.ui.panel.print(success_msg, panel_type="success")
         return Success(
-            msg.Steps.Branch.GET_CURRENT_BRANCH_SUCCESS.format(branch=current_branch),
+            success_msg,
             metadata={"pr_head_branch": current_branch}
         )
     except Exception as e:
-        return Error(msg.Steps.Branch.GET_CURRENT_BRANCH_FAILED.format(e=e), exception=e)
+        error_msg = msg.Steps.Branch.GET_CURRENT_BRANCH_FAILED.format(e=e)
+        ctx.ui.panel.print(error_msg, panel_type="error")
+        return Error(error_msg, exception=e)
 
 def get_base_branch_step(ctx: WorkflowContext) -> WorkflowResult:
     """
@@ -43,13 +49,19 @@ def get_base_branch_step(ctx: WorkflowContext) -> WorkflowResult:
         Error: If the GitClient is not available or the git command fails.
     """
     if not ctx.git:
-        return Error(msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE)
+        error_msg = msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE
+        ctx.ui.panel.print(error_msg, panel_type="error")
+        return Error(error_msg)
 
     try:
         base_branch = ctx.git.main_branch
+        success_msg = msg.Steps.Branch.GET_BASE_BRANCH_SUCCESS.format(branch=base_branch)
+        ctx.ui.panel.print(success_msg, panel_type="success")
         return Success(
-            msg.Steps.Branch.GET_BASE_BRANCH_SUCCESS.format(branch=base_branch),
+            success_msg,
             metadata={"pr_base_branch": base_branch}
         )
     except Exception as e:
-        return Error(msg.Steps.Branch.GET_BASE_BRANCH_FAILED.format(e=e), exception=e)
+        error_msg = msg.Steps.Branch.GET_BASE_BRANCH_FAILED.format(e=e)
+        ctx.ui.panel.print(error_msg, panel_type="error")
+        return Error(error_msg, exception=e)
