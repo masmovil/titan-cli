@@ -401,6 +401,10 @@ class Messages:
         SETTING_INVALID = "Invalid setting: {key}"
         PROJECT_ROOT_SETUP_CANCELLED = "Project root setup cancelled. Titan CLI may not function fully."
 
+        # Saving
+        SAVE_GLOBAL_CONFIG_ERROR = "Error saving global config: {e}"
+        TOMLI_W_NOT_INSTALLED = "Warning: tomli_w is not installed. Cannot save global config."
+
         # Project Root Setup
         PROJECT_ROOT_WELCOME_TITLE = "Welcome to Titan CLI! Let's get you set up."
         PROJECT_ROOT_INFO_MSG = "To get started, Titan needs to know where you store your projects."

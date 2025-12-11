@@ -237,6 +237,10 @@ class TitanConfig:
 
     def _save_global_config(self):
         """Saves the current state of the global config to disk."""
+        from ..ui.components.typography import TextRenderer
+        from ..messages import msg
+        text = TextRenderer()
+
         if not self.GLOBAL_CONFIG.parent.exists():
             self.GLOBAL_CONFIG.parent.mkdir(parents=True)
 
@@ -256,10 +260,10 @@ class TitanConfig:
             # Handle case where tomli_w is not installed
             # For now, we can print a warning or log it.
             # In a real scenario, this should be a proper dependency.
-            print("Warning: tomli_w is not installed. Cannot save global config.")
+            text.warning(msg.Config.TOMLI_W_NOT_INSTALLED)
         except Exception as e:
             # Handle other potential errors during file write
-            print(f"Error saving global config: {e}")
+            text.error(msg.Config.SAVE_GLOBAL_CONFIG_ERROR.format(e=e))
 
     def is_plugin_enabled(self, plugin_name: str) -> bool:
         """Check if plugin is enabled"""

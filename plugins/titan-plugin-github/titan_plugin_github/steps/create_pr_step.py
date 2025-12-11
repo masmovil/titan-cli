@@ -3,6 +3,7 @@ from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from ..exceptions import GitHubAPIError
 from ..messages import msg
 
+
 def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Creates a GitHub pull request using data from the workflow context.
@@ -34,34 +35,33 @@ def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
     # 2. Get required data from context and client config
     title = ctx.get("pr_title")
     body = ctx.get("pr_body")
-    base = ctx.git.main_branch # Get base branch from git client config
+    base = ctx.git.main_branch  # Get base branch from git client config
     head = ctx.get("pr_head_branch")
-    is_draft = ctx.get("pr_is_draft", False) # Default to not a draft
+    is_draft = ctx.get("pr_is_draft", False)  # Default to not a draft
 
     if not all([title, base, head]):
-        return Error("Missing required context for creating a pull request: pr_title, pr_head_branch.")
+        return Error(
+            "Missing required context for creating a pull request: pr_title, pr_head_branch."
+        )
 
     # 3. Call the client method
     try:
-        ctx.ui.text.info(f"Creating pull request: '{title}'")
         pr = ctx.github.create_pull_request(
-            title=title,
-            body=body,
-            base=base,
-            head=head,
-            draft=is_draft
+            title=title, body=body, base=base, head=head, draft=is_draft
         )
-        ctx.ui.panel.print(msg.GitHub.PR_CREATED.format(number=pr['number'], url=pr['url']), panel_type="success")
+        ctx.ui.panel.print(
+            msg.GitHub.PR_CREATED.format(number=pr["number"], url=pr["url"]),
+            panel_type="success",
+        )
 
         # 4. Return Success with PR info
         return Success(
             "Pull request created successfully.",
-            metadata={
-                "pr_number": pr["number"],
-                "pr_url": pr["url"]
-            }
+            metadata={"pr_number": pr["number"], "pr_url": pr["url"]},
         )
     except GitHubAPIError as e:
         return Error(f"Failed to create pull request: {e}")
     except Exception as e:
-        return Error(f"An unexpected error occurred while creating the pull request: {e}")
+        return Error(
+            f"An unexpected error occurred while creating the pull request: {e}"
+        )

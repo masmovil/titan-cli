@@ -2,7 +2,7 @@
 name = "titan-plugin-github"
 version = "0.1.0"
 description = "Titan CLI plugin for GitHub integration."
-authors = ["finxo <finxeto@gmail.com>", "r-pedraza <raulpedrazaleon@gmail.com>"]
+authors = ["Team Titan CLI"]
 packages = [{include = "titan_plugin_github"}]
 
 [tool.poetry.dependencies]
