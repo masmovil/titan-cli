@@ -10,12 +10,14 @@ class PluginRegistry:
     def __init__(self, discover_on_init: bool = True):
         self._plugins: Dict[str, TitanPlugin] = {}
         self._failed_plugins: Dict[str, Exception] = {}
+        self._discovered_plugin_names: List[str] = []
         if discover_on_init:
             self.discover()
 
     def discover(self):
         """Discover all installed Titan plugins."""
         discovered = entry_points(group='titan.plugins')
+        self._discovered_plugin_names = [ep.name for ep in discovered]
         for ep in discovered:
             try:
                 plugin_class = ep.load()
@@ -100,6 +102,10 @@ class PluginRegistry:
         """List successfully loaded plugins."""
         return list(self._plugins.keys())
 
+    def list_discovered(self) -> List[str]:
+        """List all discovered plugins by name, regardless of load status."""
+        return self._discovered_plugin_names
+
     def list_failed(self) -> Dict[str, Exception]:
         """
         List plugins that failed to load or initialize.
@@ -112,3 +118,9 @@ class PluginRegistry:
     def get_plugin(self, name: str) -> Optional[TitanPlugin]:
         """Get plugin instance by name."""
         return self._plugins.get(name)
+
+    def reset(self):
+        """Resets the registry, clearing all loaded plugins and re-discovering."""
+        self._plugins.clear()
+        self._failed_plugins.clear()
+        self.discover()

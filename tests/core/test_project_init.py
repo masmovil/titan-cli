@@ -5,6 +5,8 @@ from pathlib import Path
 
 from titan_cli.core.project_init import initialize_project
 from titan_cli.messages import msg
+from titan_cli.core.plugins.plugin_registry import PluginRegistry
+
 
 @pytest.fixture
 def mock_ui_components():
@@ -17,7 +19,20 @@ def mock_ui_components():
         
         yield mock_text.return_value, mock_prompts_instance
 
-def test_initialize_project_success(mock_ui_components):
+
+@pytest.fixture
+def mock_registry():
+    """Fixture to mock PluginRegistry."""
+    # We patch the class to avoid actual discovery
+    with patch('titan_cli.core.project_init.PluginRegistry') as mock_registry_class:
+        mock_registry_instance = MagicMock(spec=PluginRegistry)
+        mock_registry_instance.list_discovered.return_value = ['git', 'github']
+        # The class constructor returns our instance
+        mock_registry_class.return_value = mock_registry_instance
+        yield mock_registry_instance
+
+
+def test_initialize_project_success(mock_ui_components, mock_registry):
     """
     Test successful project initialization.
     """
@@ -34,7 +49,8 @@ def test_initialize_project_success(mock_ui_components):
          patch('builtins.open', mock_open()) as mock_file, \
          patch('tomli_w.dump') as mock_tomli_dump:
         
-        result = initialize_project(project_path)
+        # We need to mock the registry passed to the function now
+        result = initialize_project(project_path, mock_registry)
         
         # Assertions
         assert result is True
@@ -48,11 +64,15 @@ def test_initialize_project_success(mock_ui_components):
         mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
         mock_file.assert_called_once_with(project_path / ".titan" / "config.toml", "wb")
         
-        # Check config content
+        # Check config content for the new plugins table
         expected_config = {
             "project": {
                 "name": "test-project",
                 "type": "fullstack"
+            },
+            "plugins": {
+                "git": {"enabled": False},
+                "github": {"enabled": False}
             }
         }
         mock_tomli_dump.assert_called_once_with(expected_config, mock_file())
@@ -60,7 +80,8 @@ def test_initialize_project_success(mock_ui_components):
         # Check success message
         mock_text.success.assert_called_once_with(msg.Projects.INIT_SUCCESS.format(project_name="test-project", config_path=project_path / ".titan" / "config.toml"))
 
-def test_initialize_project_other_type(mock_ui_components):
+
+def test_initialize_project_other_type(mock_ui_components, mock_registry):
     """
     Test successful project initialization with a custom 'other' type.
     """
@@ -77,7 +98,7 @@ def test_initialize_project_other_type(mock_ui_components):
          patch('builtins.open', mock_open()) as mock_file, \
          patch('tomli_w.dump') as mock_tomli_dump:
         
-        result = initialize_project(project_path)
+        result = initialize_project(project_path, mock_registry)
 
         assert result is True
         
@@ -91,11 +112,16 @@ def test_initialize_project_other_type(mock_ui_components):
             "project": {
                 "name": "my-custom-project",
                 "type": "super-custom-type"
+            },
+            "plugins": {
+                "git": {"enabled": False},
+                "github": {"enabled": False}
             }
         }
         mock_tomli_dump.assert_called_once_with(expected_config, mock_file())
 
-def test_initialize_project_cancelled(mock_ui_components):
+
+def test_initialize_project_cancelled(mock_ui_components, mock_registry):
     """
     Test project initialization when the user cancels.
     """
@@ -106,7 +132,7 @@ def test_initialize_project_cancelled(mock_ui_components):
     
     project_path = Path("/fake/dir/cancellable")
     
-    result = initialize_project(project_path)
+    result = initialize_project(project_path, mock_registry)
     
     assert result is False
     mock_text.warning.assert_called_with(msg.Projects.INIT_CANCELLED)

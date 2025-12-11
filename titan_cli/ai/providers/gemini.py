@@ -49,7 +49,7 @@ class GeminiProvider(AIProvider):
         # Normalize base_url by removing trailing slash
         self.base_url = base_url.rstrip('/') if base_url else None
         self.use_custom_endpoint = bool(base_url)
-
+        
         # Check if using OAuth or API key
         self.use_oauth = (api_key == "GCLOUD_OAUTH")
 

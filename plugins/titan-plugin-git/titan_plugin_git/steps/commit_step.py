@@ -8,7 +8,7 @@ from titan_plugin_git.messages import msg
 def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Creates a git commit.
-    Skips if the working directory is clean.
+    Skips if the working directory is clean or if a commit was already created.
 
     Requires:
         ctx.git: An initialized GitClient.
@@ -17,6 +17,7 @@ def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
         git_status (GitStatus): The git status object, used to check if the working directory is clean.
         commit_message (str): The message for the commit.
         all_files (bool, optional): Whether to commit all modified and new files. Defaults to True.
+        commit_hash (str, optional): If present, indicates a commit was already created.
 
     Outputs (saved to ctx.data):
         commit_hash (str): The hash of the created commit.
@@ -24,7 +25,7 @@ def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the commit was created successfully.
         Error: If the GitClient is not available, or the commit operation fails.
-        Skip: If there are no changes to commit.
+        Skip: If there are no changes to commit or a commit was already created.
     """
     # Show step header
     if ctx.views:

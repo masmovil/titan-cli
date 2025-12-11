@@ -46,6 +46,7 @@ class CoreConfig(BaseModel):
     Represents core Titan CLI settings, typically defined in the global config.
     """
     project_root: Optional[str] = Field(None, description="Absolute path to the root directory containing all user projects.")
+    active_project: Optional[str] = Field(None, description="Name of the currently active project.")
 
 class TitanConfigModel(BaseModel):
     """
