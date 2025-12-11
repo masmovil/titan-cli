@@ -250,6 +250,53 @@ class Messages:
         CONNECTION_TEST_FAILED_PROMPT = "Connection test failed. You may want to reconfigure."
         MODEL_NOT_AVAILABLE = "Model not available: {model}"
         RATE_LIMIT = "Rate limit reached. Please try again later."
+        
+        # New AI Configuration Messages
+        AI_CONFIG_PROVIDER_TITLE = "Configure AI Provider"
+        AI_CONFIG_TYPE_TITLE = "Configuration Type"
+        AI_CONFIG_TYPE_SELECT = "Select the type"
+        AI_CONFIG_TYPE_CORPORATE_LABEL = "Corporate"
+        AI_CONFIG_TYPE_CORPORATE_DESCRIPTION = "Internal endpoint (same base_url for all providers)"
+        AI_CONFIG_TYPE_INDIVIDUAL_LABEL = "Individual"
+        AI_CONFIG_TYPE_INDIVIDUAL_DESCRIPTION = "Personal API key (official endpoint)"
+        AI_CONFIG_CANCELLED = "Configuration cancelled"
+        AI_CONFIG_CORPORATE_INFO = "Corporate Configuration"
+        AI_CONFIG_CORPORATE_BASE_URL_INFO = "All providers will use the same corporate base_url"
+        AI_CONFIG_CORPORATE_BASE_URL_EXAMPLE = "Example: https://api.your-company.com/llm"
+
+        AI_CONFIG_CORPORATE_BASE_URL_PROMPT = "Corporate Base URL:"
+
+        AI_PROVIDER_SELECT_TITLE = "Select Provider"
+        AI_PROVIDER_SELECT_CATEGORY = "Available Providers"
+        AI_ANTHROPIC_LABEL = "Anthropic (Claude)"
+        AI_ANTHROPIC_DESCRIPTION = "claude-3-5-sonnet, opus, etc."
+        AI_OPENAI_LABEL = "OpenAI (GPT)"
+        AI_OPENAI_DESCRIPTION = "gpt-4, gpt-3.5-turbo, etc."
+        AI_GEMINI_LABEL = "Google Gemini"
+        AI_GEMINI_DESCRIPTION = "gemini-1.5-pro, gemini-flash, etc."
+
+        AI_API_KEY_INFO = "Configure API Key for {provider_name}"
+        AI_API_KEY_PROMPT = "API Key for {provider_name}:"
+
+        AI_PROVIDER_NAME_PROMPT = "Name for this provider:"
+        AI_PROVIDER_MARK_DEFAULT_PROMPT = "Mark as default provider?"
+
+        AI_PROVIDER_CONFIGURED_SUCCESS = "Provider configured successfully"
+        AI_PROVIDER_NAME = "Name: {name}"
+        AI_PROVIDER_ID = "ID: {id}"
+        AI_PROVIDER_TYPE = "Type: {type}"
+        AI_PROVIDER_NAME_MODEL = "Provider: {provider_name} ({model})"
+        AI_PROVIDER_ENDPOINT = "Endpoint: {base_url}"
+
+        AI_PROVIDER_NOT_FOUND_FOR_GENERATION = "AI provider '{provider_id}' not found for generation."
+        AI_NO_AI_CONFIG_FOUND_TO_TEST = "No AI configuration found to test provider '{provider_id}'."
+        AI_DETAILS = "Details: {error}"
+
+        AI_NO_DEFAULT_PROVIDER = "No default AI provider configured. Please specify a provider ID to test."
+        AI_TESTING_DEFAULT_PROVIDER = "Testing default AI provider: '{provider_id}'"
+        AI_PROVIDER_NOT_FOUND_IN_CONFIG = "AI provider '{provider_id}' not found in configuration."
+        AI_SEE_AVAILABLE_PROVIDERS = "Run 'titan ai configure' or 'titan ai list' to see available providers."
+
 
     class Code:
         """Claude Code CLI integration messages"""

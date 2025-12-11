@@ -11,16 +11,23 @@ class ProjectConfig(BaseModel):
     name: str = Field(..., description="Name of the project.")
     type: Optional[str] = Field("generic", description="Type of the project (e.g., 'fullstack', 'backend', 'frontend').")
 
+class AIProviderConfig(BaseModel):
+    """Configuración de un provider específico"""
+    name: str = Field(..., description="Nombre del provider (ej: 'Corporate Gemini')")
+    type: str = Field(..., description="'corporate' o 'individual'")
+    provider: str = Field(..., description="'anthropic', 'gemini', 'openai'")
+    model: Optional[str] = Field(None, description="Modelo a usar")
+    base_url: Optional[str] = Field(None, description="URL custom (solo corporate)")
+    max_tokens: int = Field(4096)
+    temperature: float = Field(0.7)
+
 class AIConfig(BaseModel):
     """
     Represents the configuration for AI provider integration.
     Can be defined globally or per project.
     """
-    provider: str = Field("anthropic", description="AI provider to use (e.g., 'anthropic', 'openai', 'gemini').")
-    model: Optional[str] = Field(None, description="Specific AI model to use (e.g., 'claude-3-haiku-20240307').")
-    base_url: Optional[str] = Field(None, description="Optional base URL for custom AI endpoints.")
-    max_tokens: int = Field(4096, description="Maximum number of tokens to generate.")
-    temperature: float = Field(0.7, description="Controls randomness. 0.0 for deterministic, 2.0 for very creative.")
+    default: str = Field("default", description="ID del provider por defecto")
+    providers: Dict[str, AIProviderConfig] = Field(default_factory=dict)
 
 class CoreConfig(BaseModel):
     """
