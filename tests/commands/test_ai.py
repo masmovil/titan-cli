@@ -119,17 +119,21 @@ def test_test_ai_connection_by_id(mock_ai_client, mock_titan_config, capsys):
     assert "Model:" in captured.out
     assert "Response:" in captured.out
 
+@patch('titan_cli.commands.ai.TextRenderer')
+@patch('titan_cli.commands.ai.SecretManager')
 @patch('builtins.open', create=True)
 @patch('tomli_w.dump')
 @patch('tomli.load')
 @patch('titan_cli.commands.ai.PromptsRenderer')
-@patch('titan_cli.commands.ai.SecretManager')
-def test_configure_ai_interactive_duplicate_provider(mock_secret_manager, mock_prompts_class, mock_load, mock_dump, mock_open, capsys):
+def test_configure_ai_interactive_duplicate_provider(mock_prompts_class, mock_load, mock_dump, mock_open, mock_secrets, mock_text_class, capsys):
     """Test configure_ai_interactive with a duplicate provider name."""
 
     # Setup mocks
     mock_prompts = MagicMock()
     mock_prompts_class.return_value = mock_prompts
+
+    mock_text = MagicMock()
+    mock_text_class.return_value = mock_text
 
     # Mock existing config with a provider
     mock_load.return_value = {
@@ -154,16 +158,17 @@ def test_configure_ai_interactive_duplicate_provider(mock_secret_manager, mock_p
 
     mock_prompts.ask_text.side_effect = [
         "test-api-key",      # Step 4: API Key
-        "claude-3.5-sonnet", # Step 5: Model (inside _select_model)
+        "claude-3-5-sonnet", # Step 5: Model (inside _select_model)
         "Personal Claude",   # Step 6: Provider name (will generate 'personal-claude' - duplicate!)
     ]
 
     # WHEN running the interactive configuration
     configure_ai_interactive()
 
-    # THEN a warning about the duplicate ID should be printed
-    captured = capsys.readouterr()
-    assert "already exists" in captured.out
+    # THEN an error about the duplicate ID should be shown via TextRenderer
+    # Check that text.error was called with a message containing the provider ID
+    error_calls = [str(call) for call in mock_text.error.call_args_list]
+    assert any("personal-claude" in str(call) and "exists" in str(call) for call in error_calls)
 
     # AND no configuration should be saved (dump should not be called)
     mock_dump.assert_not_called()
