@@ -122,8 +122,8 @@ def test_test_ai_connection_by_id(mock_ai_client, mock_titan_config, capsys):
 @patch('titan_cli.commands.ai.TextRenderer')
 @patch('titan_cli.commands.ai.SecretManager')
 @patch('builtins.open', create=True)
-@patch('tomli_w.dump')
-@patch('tomli.load')
+@patch('titan_cli.commands.ai.tomli_w.dump')
+@patch('titan_cli.commands.ai.tomli.load')
 @patch('titan_cli.commands.ai.PromptsRenderer')
 @patch('titan_cli.core.config.TitanConfig')
 def test_configure_ai_interactive_duplicate_provider(mock_config_class, mock_prompts_class, mock_load, mock_dump, mock_open, mock_secrets, mock_text_class, capsys):
@@ -167,6 +167,9 @@ def test_configure_ai_interactive_duplicate_provider(mock_config_class, mock_pro
         "claude-3-5-sonnet", # Step 5: Model (inside _select_model)
         "Personal Claude",   # Step 6: Provider name (will generate 'personal-claude' - duplicate!)
     ]
+
+    # Prevent test connection from running
+    mock_prompts.ask_confirm.return_value = False
 
     # WHEN running the interactive configuration
     configure_ai_interactive()
