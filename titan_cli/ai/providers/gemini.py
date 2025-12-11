@@ -150,10 +150,16 @@ class GeminiProvider(AIProvider):
 
             data = response.json()
 
-            # Extract response content
+            # Extract response content (Anthropic format)
             content = ""
             if "content" in data and len(data["content"]) > 0:
                 content = data["content"][0].get("text", "")
+
+            # Handle empty content (e.g., max_tokens reached)
+            if not content and data.get("stop_reason") == "max_tokens":
+                raise AIProviderAPIError(
+                    "Response truncated due to max_tokens limit. Increase max_tokens in request."
+                )
 
             # Extract usage
             usage_data = {}

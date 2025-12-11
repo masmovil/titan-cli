@@ -137,7 +137,7 @@ def _test_ai_connection(provider: str, secrets: SecretManager, model: str = None
         # Generate a simple test response
         test_request = AIRequest(
             messages=[AIMessage(role="user", content="Say 'Hello!' if you can hear me")],
-            max_tokens=50
+            max_tokens=200  # Increased from 50 to avoid truncation
         )
         response = provider_instance.generate(test_request)
 
