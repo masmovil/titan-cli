@@ -3,7 +3,11 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Protocol, List, Any
+from typing import Optional, Protocol, List, TYPE_CHECKING
+
+# Use TYPE_CHECKING for forward references only (not for runtime)
+if TYPE_CHECKING:
+    from titan_cli.ai.models import AIMessage, AIResponse
 
 
 @dataclass
@@ -36,20 +40,20 @@ class AIGenerator(Protocol):
 
     def generate(
         self,
-        messages: List[Any],
+        messages: "List[AIMessage]",
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None
-    ) -> Any:
+    ) -> "AIResponse":
         """
         Generate AI response from messages.
 
         Args:
-            messages: List of conversation messages
+            messages: List of AIMessage objects
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
 
         Returns:
-            AI response object with content and metadata
+            AIResponse object with content and metadata
         """
         ...
 
