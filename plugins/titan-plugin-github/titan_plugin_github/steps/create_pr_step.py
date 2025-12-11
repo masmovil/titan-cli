@@ -1,6 +1,7 @@
 # plugins/titan-plugin-github/titan_plugin_github/steps/create_pr_step.py
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from ..exceptions import GitHubAPIError
+from ..messages import msg
 
 def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
     """
@@ -50,11 +51,11 @@ def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
             head=head,
             draft=is_draft
         )
-        ctx.ui.text.success(f"Successfully created PR #{pr['number']}: {pr['url']}")
+        ctx.ui.panel.print(msg.GitHub.PR_CREATED.format(number=pr['number'], url=pr['url']), panel_type="success")
 
         # 4. Return Success with PR info
         return Success(
-            f"Pull request #{pr['number']} created.",
+            "Pull request created successfully.",
             metadata={
                 "pr_number": pr["number"],
                 "pr_url": pr["url"]

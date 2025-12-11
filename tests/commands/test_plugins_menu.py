@@ -110,31 +110,15 @@ def test_install_plugin_flow(mock_config, mock_ui):
 def test_toggle_plugin_flow(mock_config, mock_ui, tmp_path, mocker):
     """Test the enable/disable plugin flow."""
     mock_text, mock_prompts = mock_ui
-    
-    # In-memory representation of the project config file content
-    in_memory_project_config = {"project": {"name": "test-project"}, "plugins": {"git": {"enabled": False}}}
 
-    def mock_toml_load(f):
-        return in_memory_project_config
-
-    def mock_toml_dump(data, f):
-        in_memory_project_config.update(data)
-
-    mocker.patch('tomli.load', side_effect=mock_toml_load)
-    mocker.patch('tomli_w.dump', side_effect=mock_toml_dump)
+    # GIVEN a project config with the 'git' plugin disabled
+    mock_config.project_config = {"project": {"name": "test-project"}, "plugins": {"git": {"enabled": False}}}
+    mock_config.load()
 
     # Make the mock_config reflect the initial state for is_plugin_enabled
     # and list_discovered
     mock_config.registry.list_discovered.return_value = ["git"]
-    mocker.patch.object(mock_config, 'is_plugin_enabled', side_effect=[False, False, True]) # Updated side_effect
-
-    # Create a MagicMock for project_config_path
-    mock_path_obj = MagicMock(spec=Path)
-    type(mock_path_obj).exists = PropertyMock(return_value=True) # Patch the property on the mock
-    mock_config.project_config_path = mock_path_obj # Assign the mock to the config instance
-    mock_config.project_config_path.__str__.return_value = str(tmp_path / "test-project" / ".titan" / "config.toml")
-    
-
+    mocker.patch.object(mock_config, 'is_plugin_enabled', side_effect=[False, False, True])
 
     # Simulate user interaction to toggle plugin
     mock_toggle_choice = MagicMock(action="toggle")
@@ -149,8 +133,12 @@ def test_toggle_plugin_flow(mock_config, mock_ui, tmp_path, mocker):
     ]
 
     # Act
-    _show_plugin_management_menu(mock_prompts, mock_text, mock_config)
+    with patch('tomli_w.dump') as mock_dump:
+        _show_plugin_management_menu(mock_prompts, mock_text, mock_config)
 
-    # Assert
-    mock_text.success.assert_any_call("Plugin 'git' has been enabled.")
-    assert in_memory_project_config["plugins"]["git"]["enabled"] is True
+        # Assert
+        mock_text.success.assert_any_call("Plugin 'git' has been enabled.")
+        
+        # Check what was written to the config file
+        saved_config = mock_dump.call_args[0][0]
+        assert saved_config["plugins"]["git"]["enabled"] is True

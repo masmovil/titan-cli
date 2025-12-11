@@ -46,6 +46,7 @@ def test_show_interactive_menu_configure_flow(mock_dependencies):
     prompts_mock = mock_dependencies["prompts_instance"]
     discover_mock = mock_dependencies["discover"]
     init_project_mock = mock_dependencies["init_project"]
+    config_instance = mock_dependencies["config_instance"]
 
     # --- Simulation Setup ---
     projects_menu_choice = MagicMock(action="projects")
@@ -55,13 +56,13 @@ def test_show_interactive_menu_configure_flow(mock_dependencies):
     project_menu_choice = MagicMock(action=str(unconfigured_path.resolve()))
     exit_choice = MagicMock(action="exit")
     back_choice = MagicMock(action="back")
-    
+
     # Sequence of user choices: Projects -> Configure -> Select Project -> Back to main -> Exit
     prompts_mock.ask_menu.side_effect = [
-        projects_menu_choice, 
-        main_menu_choice, 
-        project_menu_choice, 
-        back_choice, 
+        projects_menu_choice,
+        main_menu_choice,
+        project_menu_choice,
+        back_choice,
         exit_choice
     ]
     prompts_mock.ask_confirm.return_value = True # For the "Return to main menu?" pause
@@ -72,7 +73,8 @@ def test_show_interactive_menu_configure_flow(mock_dependencies):
     # --- Assertions ---
     discover_mock.assert_called_once_with("/fake/projects")
     assert prompts_mock.ask_menu.call_count == 5
-    init_project_mock.assert_called_once_with(unconfigured_path.resolve())
+    # initialize_project is called with both the path and the registry
+    init_project_mock.assert_called_once_with(unconfigured_path.resolve(), config_instance.registry)
     assert prompts_mock.ask_confirm.call_count == 1
 
 

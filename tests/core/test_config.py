@@ -71,6 +71,7 @@ def test_config_project_overrides_global(tmp_path: Path, monkeypatch, mocker):
     global_config_dir.mkdir(parents=True)
     global_config_path = global_config_dir / "config.toml"
     global_config_data = {
+        "core": {"project_root": str(tmp_path), "active_project": "my_project"},
         "project": {"name": "Global Project"},
         "ai": {"default": "anthropic", "providers": {"anthropic": {"provider": "anthropic", "model": "claude-3-5-sonnet", "name": "Global Claude", "type": "individual"}}},
         "plugins": {
@@ -167,10 +168,21 @@ def test_config_deep_merges_plugins(tmp_path: Path, monkeypatch, mocker):
     """
     # Mock PluginRegistry
     mocker.patch('titan_cli.core.config.PluginRegistry')
-    
-    # 1. Global config defines a plugin with 'enabled' and a nested 'config' key
+
+    # 1. Create project directory structure
+    project_name = "test_project"
+    project_dir = tmp_path / project_name
+    project_titan_dir = project_dir / ".titan"
+    project_titan_dir.mkdir(parents=True)
+
+    # 2. Global config defines a plugin with 'enabled' and a nested 'config' key
+    #    and sets the active_project to point to our test project
     global_config_path = tmp_path / "global_config.toml"
     global_config_data = {
+        "core": {
+            "project_root": str(tmp_path),
+            "active_project": project_name
+        },
         "plugins": {
             "github": {"enabled": True, "config": {"user": "global-user"}}
         }
@@ -178,8 +190,8 @@ def test_config_deep_merges_plugins(tmp_path: Path, monkeypatch, mocker):
     with open(global_config_path, "wb") as f:
         tomli_w.dump(global_config_data, f)
 
-    # 2. Project config overrides only the nested 'user' key
-    project_config_path = tmp_path / "project_config.toml"
+    # 3. Project config overrides only the nested 'user' key
+    project_config_path = project_titan_dir / "config.toml"
     project_config_data = {
         "project": {"name": "Test Project"},
         "plugins": {
@@ -188,15 +200,13 @@ def test_config_deep_merges_plugins(tmp_path: Path, monkeypatch, mocker):
     }
     with open(project_config_path, "wb") as f:
         tomli_w.dump(project_config_data, f)
-    
-    # 3. Patch config paths and initialize
+
+    # 4. Patch config paths and initialize
     monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
-    # Mock _find_project_config to return our specific project config
-    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: project_config_path)
-    
+
     config_instance = TitanConfig()
 
-    # 4. Assert that the 'enabled' key from global is preserved
+    # 5. Assert that the 'enabled' key from global is preserved
     #    and the nested 'user' key is overridden.
     github_plugin_config = config_instance.config.plugins.get("github")
     assert github_plugin_config is not None
