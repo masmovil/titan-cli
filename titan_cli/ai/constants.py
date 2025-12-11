@@ -11,7 +11,6 @@ from typing import Dict
 # Default models (can be overridden by user)
 PROVIDER_DEFAULTS: Dict[str, str] = {
     "anthropic": "claude-3-5-sonnet-20241022",
-    "openai": "gpt-4-turbo",
     "gemini": "gemini-1.5-pro",
 }
 
@@ -22,11 +21,6 @@ PROVIDER_INFO: Dict[str, Dict[str, str]] = {
         "name": "Claude (Anthropic)",
         "api_key_url": "https://console.anthropic.com/",
         "api_key_prefix": "sk-ant-",
-    },
-    "openai": {
-        "name": "OpenAI",
-        "api_key_url": "https://platform.openai.com/api-keys",
-        "api_key_prefix": "sk-",
     },
     "gemini": {
         "name": "Gemini (Google)",

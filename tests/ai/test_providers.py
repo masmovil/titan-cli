@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 # Import the classes to be tested
-from titan_cli.ai.providers import AnthropicProvider, GeminiProvider, OpenAIProvider
+from titan_cli.ai.providers import AnthropicProvider, GeminiProvider
 from titan_cli.ai.models import AIRequest, AIMessage
 from titan_cli.ai.exceptions import AIProviderAPIError
 
@@ -96,14 +96,4 @@ def test_gemini_provider_generate_success(mock_google_auth, mock_genai):
     assert response.usage["input_tokens"] == 15
     assert response.usage["output_tokens"] == 25
 
-# --- Tests for OpenAIProvider (Stub) ---
 
-def test_openai_provider_is_stub():
-    """
-    Test that the OpenAIProvider is a stub and raises an error.
-    """
-    provider = OpenAIProvider(api_key="test_key")
-    request = AIRequest(messages=[AIMessage(role="user", content="Hello")])
-    
-    with pytest.raises(AIProviderAPIError, match="OpenAI provider is not implemented yet"):
-        provider.generate(request)

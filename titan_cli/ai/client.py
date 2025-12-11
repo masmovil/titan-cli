@@ -7,14 +7,13 @@ from typing import Optional, List
 from titan_cli.core.models import AIConfig
 from titan_cli.core.secrets import SecretManager
 from .models import AIMessage, AIRequest, AIResponse
-from .providers import AIProvider, AnthropicProvider, GeminiProvider, OpenAIProvider
+from .providers import AIProvider, AnthropicProvider, GeminiProvider
 from .exceptions import AIConfigurationError
 
 # A mapping from provider names to classes
 PROVIDER_CLASSES = {
     "anthropic": AnthropicProvider,
     "gemini": GeminiProvider,
-    "openai": OpenAIProvider,
 }
 
 class AIClient:
@@ -28,16 +27,30 @@ class AIClient:
     - Providing a simple `generate()` and `chat()` interface.
     """
 
-    def __init__(self, ai_config: AIConfig, secrets: SecretManager):
+    def __init__(self, ai_config: AIConfig, secrets: SecretManager, provider_id: Optional[str] = None):
         """
         Initialize AI client.
 
         Args:
             ai_config: The AI configuration.
             secrets: The SecretManager for handling API keys.
+            provider_id: The specific provider ID to use. If None, uses the default.
         """
         self.ai_config = ai_config
         self.secrets = secrets
+
+        # Determine provider_id with fallback
+        requested_id = provider_id or ai_config.default
+
+        # Validate that the provider exists, fallback to first available if default is invalid
+        if requested_id and requested_id in ai_config.providers:
+            self.provider_id = requested_id
+        elif ai_config.providers:
+            # Fallback to first available provider
+            self.provider_id = list(ai_config.providers.keys())[0]
+        else:
+            raise AIConfigurationError("No AI providers configured.")
+
         self._provider: Optional[AIProvider] = None
 
     @property
@@ -54,26 +67,26 @@ class AIClient:
         if self._provider:
             return self._provider
 
-        provider_name = self.ai_config.provider
+        provider_config = self.ai_config.providers.get(self.provider_id)
+        if not provider_config:
+            raise AIConfigurationError(f"AI provider '{self.provider_id}' not found in configuration.")
+
+        provider_name = provider_config.provider
         provider_class = PROVIDER_CLASSES.get(provider_name)
 
         if not provider_class:
-            raise AIConfigurationError(f"Unknown AI provider: {provider_name}")
+            raise AIConfigurationError(f"Unknown AI provider type: {provider_name}")
 
         # Get API key
-        api_key = self.secrets.get(f"{provider_name}_api_key")
-
-        # Special case for Gemini OAuth
-        if provider_name == "gemini" and self.secrets.get("gemini_oauth_enabled"):
-            api_key = "GCLOUD_OAUTH"
+        api_key_name = f"{self.provider_id}_api_key"
+        api_key = self.secrets.get(api_key_name)
 
         if not api_key:
-            raise AIConfigurationError(f"API key for {provider_name} not found.")
+            raise AIConfigurationError(f"API key for provider '{self.provider_id}' ({provider_name}) not found.")
 
-        # Get base_url from config if exists (for custom endpoints)
-        kwargs = {"api_key": api_key, "model": self.ai_config.model}
-        if self.ai_config.base_url:
-            kwargs["base_url"] = self.ai_config.base_url
+        kwargs = {"api_key": api_key, "model": provider_config.model}
+        if provider_config.base_url:
+            kwargs["base_url"] = provider_config.base_url
 
         self._provider = provider_class(**kwargs)
         return self._provider
@@ -95,10 +108,14 @@ class AIClient:
         Returns:
             AI response with generated content.
         """
+        provider_cfg = self.ai_config.providers.get(self.provider_id)
+        if not provider_cfg:
+            raise AIConfigurationError(f"AI provider '{self.provider_id}' not found for generation.")
+
         request = AIRequest(
             messages=messages,
-            max_tokens=max_tokens if max_tokens is not None else self.ai_config.max_tokens,
-            temperature=temperature if temperature is not None else self.ai_config.temperature,
+            max_tokens=max_tokens if max_tokens is not None else provider_cfg.max_tokens,
+            temperature=temperature if temperature is not None else provider_cfg.temperature,
         )
         return self.provider.generate(request)
 
@@ -138,8 +155,16 @@ class AIClient:
         Returns:
             True if AI can be used.
         """
+        if not self.ai_config or not self.ai_config.providers:
+            return False
+        
+        provider_cfg = self.ai_config.providers.get(self.provider_id)
+        if not provider_cfg:
+            return False
+
         try:
             # This will attempt to instantiate the provider, which includes key checks.
+            # Make sure to call self.provider to trigger the instantiation and checks
             return self.provider is not None
         except AIConfigurationError:
             return False
