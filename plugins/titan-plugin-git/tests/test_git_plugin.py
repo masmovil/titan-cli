@@ -118,7 +118,7 @@ def test_create_git_commit_step_skip_if_clean():
     # 3. Assert
     assert isinstance(result, Skip)
     assert "Working directory is clean, skipping commit." in result.message
-    assert result.silent is True  # Should be a silent skip
+    assert result.silent is False  # Shows info panel (not silent)
     # Ensure git client's commit method was not called
     mock_context.git.commit.assert_not_called()
 
@@ -156,7 +156,7 @@ def test_create_git_commit_step_missing_message():
     # 3. Assert
     assert is_skip(result)  # Changed from is_error to is_skip
     assert "No commit message provided" in result.message  # Updated message
-    assert result.silent is True  # Should be a silent skip
+    assert result.silent is False  # Shows info panel (not silent)
     mock_git_client.commit.assert_not_called()
 
 
