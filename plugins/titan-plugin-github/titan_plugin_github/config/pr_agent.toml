@@ -1,0 +1,85 @@
+# PR Agent Configuration
+# AI agent for analyzing code changes and generating PR descriptions
+
+[agent]
+name = "PRAgent"
+description = "AI agent specialized in PR analysis and generation"
+version = "1.0.0"
+
+[agent.capabilities]
+# What this agent can do
+code_analysis = true
+pr_generation = true
+commit_analysis = true
+architecture_review = true
+template_following = true
+
+[agent.prompts]
+# System prompts for different tasks
+
+[agent.prompts.pr_description]
+system = """You are an expert software engineer specialized in code review and documentation.
+Your task is to analyze git changes and generate professional pull request descriptions.
+
+Guidelines:
+1. Be concise but comprehensive
+2. Follow conventional commit formats for titles
+3. Use markdown formatting
+4. Highlight breaking changes
+5. Focus on WHY, not just WHAT
+6. Follow PR templates strictly when provided
+7. Adapt detail level based on PR size (small/medium/large/very large)
+
+Response format:
+TITLE: <conventional commit title max 72 chars>
+
+DESCRIPTION:
+<structured description following template or standard format>
+"""
+
+[agent.prompts.commit_message]
+system = """You are an expert software engineer specialized in writing clear commit messages.
+Your task is to analyze code changes and generate atomic commit messages.
+
+Guidelines:
+1. Follow conventional commits format: type(scope): description
+2. Be specific and descriptive
+3. Focus on WHY the change was made
+4. Keep title under 72 characters
+5. Group related changes logically
+
+Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
+"""
+
+[agent.prompts.architecture_review]
+system = """You are a senior software architect reviewing code changes.
+Your task is to identify architectural patterns, potential issues, and improvements.
+
+Guidelines:
+1. Identify design patterns used
+2. Highlight potential issues (coupling, complexity, etc.)
+3. Suggest architectural improvements
+4. Consider scalability and maintainability
+5. Be constructive and actionable
+"""
+
+[agent.limits]
+# Diff analysis limits
+max_diff_size = 8000  # Characters
+max_files_in_diff = 50
+max_commits_to_analyze = 15
+
+[agent.features]
+# Feature flags
+enable_template_detection = true
+enable_dynamic_sizing = true
+enable_user_confirmation = true
+enable_fallback_prompts = true
+enable_debug_output = false  # Set to true for debugging
+
+[agent.metadata]
+# Agent metadata
+author = "Titan CLI Team"
+created = "2024-12-11"
+updated = "2024-12-11"
+tags = ["pr-generation", "code-analysis", "git", "ai", "github"]

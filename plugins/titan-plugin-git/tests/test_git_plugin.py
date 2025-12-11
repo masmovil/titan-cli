@@ -101,7 +101,7 @@ def test_create_git_commit_step_success():
 
 def test_create_git_commit_step_skip_if_clean():
     """
-    Test that create_git_commit_step skips if the working directory is clean.
+    Test that create_git_commit_step skips silently if the working directory is clean.
     """
     # 1. Arrange
     mock_context = MagicMock(spec=WorkflowContext)
@@ -140,7 +140,7 @@ def test_create_git_commit_step_no_client():
 
 def test_create_git_commit_step_missing_message():
     """
-    Test that create_git_commit_step returns a Skip if commit message is missing.
+    Test that create_git_commit_step returns a silent Skip if commit message is missing.
     """
     # 1. Arrange
     mock_git_client = MagicMock(spec=GitClient)

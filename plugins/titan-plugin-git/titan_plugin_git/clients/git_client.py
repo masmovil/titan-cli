@@ -678,6 +678,32 @@ class GitClient:
         except GitCommandError:
             return ""
 
+    def get_staged_diff(self) -> str:
+        """
+        Get diff of staged changes only (index vs HEAD).
+
+        Returns:
+            Diff output as string
+        """
+        try:
+            # git diff --cached shows only staged changes
+            return self._run_command(["git", "diff", "--cached"], check=False)
+        except GitCommandError:
+            return ""
+
+    def get_unstaged_diff(self) -> str:
+        """
+        Get diff of unstaged changes only (working directory vs index).
+
+        Returns:
+            Diff output as string
+        """
+        try:
+            # git diff shows only unstaged changes
+            return self._run_command(["git", "diff"], check=False)
+        except GitCommandError:
+            return ""
+
     def get_file_diff(self, file_path: str) -> str:
         """
         Get diff for a specific file.
