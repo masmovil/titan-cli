@@ -1,5 +1,5 @@
-# titan_cli/ai/agents/config.py
-"""Configuration loader for AI Agents."""
+# plugins/titan-plugin-github/titan_plugin_github/agents/config_loader.py
+"""Configuration loader for PR Agent."""
 
 import tomli
 from pathlib import Path
@@ -13,10 +13,17 @@ except ImportError:
     # Python 3.7-3.8 fallback
     from importlib_resources import files
 
+# Import default limits from plugin utils
+from ..utils import (
+    DEFAULT_MAX_DIFF_SIZE,
+    DEFAULT_MAX_FILES_IN_DIFF,
+    DEFAULT_MAX_COMMITS_TO_ANALYZE
+)
+
 
 @dataclass
-class AgentConfig:
-    """Agent configuration loaded from TOML."""
+class PRAgentConfig:
+    """PR Agent configuration loaded from TOML."""
 
     name: str
     description: str
@@ -27,16 +34,7 @@ class AgentConfig:
     commit_system_prompt: str
     architecture_system_prompt: str
 
-    # Limits
-    small_pr_max_chars: int
-    small_pr_max_tokens: int
-    medium_pr_max_chars: int
-    medium_pr_max_tokens: int
-    large_pr_max_chars: int
-    large_pr_max_tokens: int
-    very_large_pr_max_chars: int
-    very_large_pr_max_tokens: int
-
+    # Diff analysis limits
     max_diff_size: int
     max_files_in_diff: int
     max_commits_to_analyze: int
@@ -53,18 +51,18 @@ class AgentConfig:
 
 
 def load_agent_config(
-    agent_name: str = "platform_agent",
+    agent_name: str = "pr_agent",
     config_dir: Optional[Path] = None
-) -> AgentConfig:
+) -> PRAgentConfig:
     """
     Load agent configuration from TOML file.
 
     Args:
-        agent_name: Name of the agent (e.g., "platform_agent")
+        agent_name: Name of the agent (e.g., "pr_agent")
         config_dir: Optional custom config directory
 
     Returns:
-        AgentConfig instance
+        PRAgentConfig instance
 
     Raises:
         FileNotFoundError: If config file doesn't exist
@@ -76,7 +74,7 @@ def load_agent_config(
     else:
         # Use importlib.resources for robust path resolution
         # Works with both development and installed (pip/pipx) environments
-        config_files = files("titan_cli.config.agents")
+        config_files = files("titan_plugin_github.config")
         config_file = config_files.joinpath(f"{agent_name}.toml")
 
         # Convert Traversable to Path
@@ -100,8 +98,8 @@ def load_agent_config(
     limits = data.get("agent", {}).get("limits", {})
     features = data.get("agent", {}).get("features", {})
 
-    # Build AgentConfig
-    return AgentConfig(
+    # Build PRAgentConfig
+    return PRAgentConfig(
         name=agent_meta.get("name", agent_name),
         description=agent_meta.get("description", ""),
         version=agent_meta.get("version", "1.0.0"),
@@ -109,18 +107,10 @@ def load_agent_config(
         pr_system_prompt=prompts.get("pr_description", {}).get("system", ""),
         commit_system_prompt=prompts.get("commit_message", {}).get("system", ""),
         architecture_system_prompt=prompts.get("architecture_review", {}).get("system", ""),
-        # Limits
-        small_pr_max_chars=limits.get("small_pr_max_chars", 500),
-        small_pr_max_tokens=limits.get("small_pr_max_tokens", 575),
-        medium_pr_max_chars=limits.get("medium_pr_max_chars", 1200),
-        medium_pr_max_tokens=limits.get("medium_pr_max_tokens", 1100),
-        large_pr_max_chars=limits.get("large_pr_max_chars", 2000),
-        large_pr_max_tokens=limits.get("large_pr_max_tokens", 1700),
-        very_large_pr_max_chars=limits.get("very_large_pr_max_chars", 3000),
-        very_large_pr_max_tokens=limits.get("very_large_pr_max_tokens", 2450),
-        max_diff_size=limits.get("max_diff_size", 8000),
-        max_files_in_diff=limits.get("max_files_in_diff", 50),
-        max_commits_to_analyze=limits.get("max_commits_to_analyze", 15),
+        # Limits (use defaults from utils)
+        max_diff_size=limits.get("max_diff_size", DEFAULT_MAX_DIFF_SIZE),
+        max_files_in_diff=limits.get("max_files_in_diff", DEFAULT_MAX_FILES_IN_DIFF),
+        max_commits_to_analyze=limits.get("max_commits_to_analyze", DEFAULT_MAX_COMMITS_TO_ANALYZE),
         # Features
         enable_template_detection=features.get("enable_template_detection", True),
         enable_dynamic_sizing=features.get("enable_dynamic_sizing", True),
@@ -133,10 +123,10 @@ def load_agent_config(
 
 
 # Singleton cache to avoid reloading config
-_config_cache: Dict[str, AgentConfig] = {}
+_config_cache: Dict[str, PRAgentConfig] = {}
 
 
-def get_agent_config(agent_name: str = "platform_agent") -> AgentConfig:
+def get_agent_config(agent_name: str = "pr_agent") -> PRAgentConfig:
     """
     Get agent configuration (cached).
 
@@ -144,7 +134,7 @@ def get_agent_config(agent_name: str = "platform_agent") -> AgentConfig:
         agent_name: Name of the agent
 
     Returns:
-        AgentConfig instance (cached)
+        PRAgentConfig instance (cached)
     """
     if agent_name not in _config_cache:
         _config_cache[agent_name] = load_agent_config(agent_name)

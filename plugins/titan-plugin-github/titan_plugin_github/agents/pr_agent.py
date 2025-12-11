@@ -1,6 +1,6 @@
-# titan_cli/ai/agents/platform_agent.py
+# plugins/titan-plugin-github/titan_plugin_github/agents/pr_agent.py
 """
-PlatformAgent - Intelligent orchestrator for git workflows.
+PRAgent - Intelligent orchestrator for git workflows.
 
 This agent analyzes the complete context of a branch and automatically:
 1. Determines if changes need to be committed
@@ -14,16 +14,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .base import BaseAIAgent, AgentRequest
-from .config import get_agent_config
+from titan_cli.ai.agents.base import BaseAIAgent, AgentRequest
+from .config_loader import get_agent_config
+from ..utils import calculate_pr_size
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class PlatformAnalysis:
-    """Complete analysis result from PlatformAgent."""
+class PRAnalysis:
+    """Complete analysis result from PRAgent."""
 
     # Commit analysis
     needs_commit: bool
@@ -42,7 +43,7 @@ class PlatformAnalysis:
     lines_changed: int = 0
 
 
-class PlatformAgent(BaseAIAgent):
+class PRAgent(BaseAIAgent):
     """
     Platform-level agent for intelligent git workflow automation.
 
@@ -55,9 +56,9 @@ class PlatformAgent(BaseAIAgent):
     Example:
         ```python
         # In a workflow step
-        platform_agent = PlatformAgent(ctx.ai, ctx.git, ctx.github)
+        pr_agent = PRAgent(ctx.ai, ctx.git, ctx.github)
 
-        analysis = platform_agent.analyze_and_plan(
+        analysis = pr_agent.analyze_and_plan(
             head_branch="feat/new-feature",
             base_branch="main"
         )
@@ -77,7 +78,7 @@ class PlatformAgent(BaseAIAgent):
         github_client=None
     ):
         """
-        Initialize PlatformAgent.
+        Initialize PRAgent.
 
         Args:
             ai_client: The AIClient instance (provides AI capabilities)
@@ -89,12 +90,12 @@ class PlatformAgent(BaseAIAgent):
         self.github = github_client
 
         # Load configuration from TOML
-        self.config = get_agent_config("platform_agent")
+        self.config_loader = get_agent_config("pr_agent")
 
     def get_system_prompt(self) -> str:
         """System prompt for platform-level orchestration (from config)."""
         # Default to commit system prompt for platform-level operations
-        return self.config.commit_system_prompt or """You are a platform automation expert. You analyze git repositories
+        return self.config_loader.commit_system_prompt or """You are a platform automation expert. You analyze git repositories
 and provide intelligent suggestions for commits and pull requests. You understand
 conventional commits, best practices, and can make decisions about repository state."""
 
@@ -103,7 +104,7 @@ conventional commits, best practices, and can make decisions about repository st
         head_branch: str,
         base_branch: Optional[str] = None,
         auto_stage: bool = False
-    ) -> PlatformAnalysis:
+    ) -> PRAnalysis:
         """
         Analyze the complete branch context and create an execution plan.
 
@@ -120,7 +121,7 @@ conventional commits, best practices, and can make decisions about repository st
             auto_stage: Whether to analyze unstaged changes
 
         Returns:
-            PlatformAnalysis with complete plan (gracefully handles errors)
+            PRAnalysis with complete plan (gracefully handles errors)
         """
         base_branch = base_branch or self.git.main_branch
         total_tokens = 0
@@ -205,7 +206,7 @@ conventional commits, best practices, and can make decisions about repository st
             logger.error(f"Failed to analyze branch for PR: {e}")
             # Return analysis without PR data
 
-        return PlatformAnalysis(
+        return PRAnalysis(
             needs_commit=needs_commit,
             commit_message=commit_message,
             staged_files=staged_files,
@@ -236,7 +237,7 @@ conventional commits, best practices, and can make decisions about repository st
             raise ValueError("Cannot generate commit message from empty diff")
 
         # Truncate diff if too large (from config)
-        max_diff = self.config.max_diff_size
+        max_diff = self.config_loader.max_diff_size
         diff_preview = diff[:max_diff]
         if len(diff) > max_diff:
             diff_preview += "\n\n... (diff truncated)"
@@ -253,7 +254,7 @@ COMMIT_MESSAGE: <conventional commit message>"""
         request = AgentRequest(
             context=prompt,
             max_tokens=200,
-            system_prompt=self.config.commit_system_prompt  # Use specific commit prompt
+            system_prompt=self.config_loader.commit_system_prompt  # Use specific commit prompt
         )
 
         try:
@@ -332,7 +333,7 @@ COMMIT_MESSAGE: <conventional commit message>"""
         request = AgentRequest(
             context=prompt,
             max_tokens=max_tokens,
-            system_prompt=self.config.pr_system_prompt
+            system_prompt=self.config_loader.pr_system_prompt
         )
 
         try:
@@ -353,28 +354,6 @@ COMMIT_MESSAGE: <conventional commit message>"""
             "tokens_used": response.tokens_used
         }
 
-    def _calculate_pr_size(self, diff: str) -> tuple[str, int, int, int]:
-        """
-        Calculate PR size and determine character limits (from config).
-
-        Returns:
-            Tuple of (size_label, max_chars, files_changed, lines_changed)
-        """
-        lines_changed = len(diff.split('\n'))
-
-        # Count files changed
-        file_pattern = r'^diff --git'
-        files_changed = len(re.findall(file_pattern, diff, re.MULTILINE))
-
-        # Determine size and character limit (from config)
-        if files_changed <= 3 and lines_changed < 100:
-            return "small", self.config.small_pr_max_chars, files_changed, lines_changed
-        elif files_changed <= 10 and lines_changed < 500:
-            return "medium", self.config.medium_pr_max_chars, files_changed, lines_changed
-        elif files_changed <= 30 and lines_changed < 2000:
-            return "large", self.config.large_pr_max_chars, files_changed, lines_changed
-        else:
-            return "very large", self.config.very_large_pr_max_chars, files_changed, lines_changed
 
     def _build_pr_prompt(
         self,
@@ -388,12 +367,12 @@ COMMIT_MESSAGE: <conventional commit message>"""
     ) -> str:
         """Build the prompt for PR generation."""
         # Prepare commits text
-        commits_text = "\n".join([f"  - {c}" for c in commits[:self.config.max_commits_to_analyze]])
-        if len(commits) > self.config.max_commits_to_analyze:
-            commits_text += f"\n  ... and {len(commits) - self.config.max_commits_to_analyze} more commits"
+        commits_text = "\n".join([f"  - {c}" for c in commits[:self.config_loader.max_commits_to_analyze]])
+        if len(commits) > self.config_loader.max_commits_to_analyze:
+            commits_text += f"\n  ... and {len(commits) - self.config_loader.max_commits_to_analyze} more commits"
 
         # Limit diff size
-        max_diff = self.config.max_diff_size
+        max_diff = self.config_loader.max_diff_size
         diff_preview = diff[:max_diff] if diff else "No diff available"
         if len(diff) > max_diff:
             diff_preview += "\n\n... (diff truncated for brevity)"

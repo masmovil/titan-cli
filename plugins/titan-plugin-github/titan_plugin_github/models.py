@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
+# Import PRSizeEstimation from utils
+from .utils import PRSizeEstimation
+
 
 @dataclass
 class User:
@@ -291,11 +294,3 @@ class PRMergeResult:
     merged: bool
     sha: Optional[str] = None
     message: str = ""
-
-
-class PRSizeEstimation(BaseModel):
-    """Data model for PR size estimation metrics."""
-    pr_size: str
-    max_chars: int
-    files_changed: int
-    diff_lines: int

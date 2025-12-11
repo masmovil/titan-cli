@@ -1,9 +1,9 @@
-# Platform Agent Configuration
+# PR Agent Configuration
 # AI agent for analyzing code changes and generating PR descriptions
 
 [agent]
-name = "PlatformAgent"
-description = "AI agent specialized in code analysis and PR generation"
+name = "PRAgent"
+description = "AI agent specialized in PR analysis and generation"
 version = "1.0.0"
 
 [agent.capabilities]
@@ -64,19 +64,6 @@ Guidelines:
 """
 
 [agent.limits]
-# Token limits per PR size category
-small_pr_max_chars = 500
-small_pr_max_tokens = 575
-
-medium_pr_max_chars = 1200
-medium_pr_max_tokens = 1100
-
-large_pr_max_chars = 2000
-large_pr_max_tokens = 1700
-
-very_large_pr_max_chars = 3000
-very_large_pr_max_tokens = 2450
-
 # Diff analysis limits
 max_diff_size = 8000  # Characters
 max_files_in_diff = 50
@@ -93,6 +80,6 @@ enable_debug_output = false  # Set to true for debugging
 [agent.metadata]
 # Agent metadata
 author = "Titan CLI Team"
-created = "2024-12-09"
-updated = "2024-12-09"
-tags = ["pr-generation", "code-analysis", "git", "ai"]
+created = "2024-12-11"
+updated = "2024-12-11"
+tags = ["pr-generation", "code-analysis", "git", "ai", "github"]
