@@ -62,7 +62,7 @@ def search_saved_query_step(ctx: WorkflowContext) -> WorkflowResult:
     # Get query name
     query_name = ctx.get("query_name")
     if not query_name:
-        return Error("query_name parameter is required")
+        return Error(msg.Steps.Search.QUERY_NAME_REQUIRED)
 
     # Get all predefined queries from utils
     predefined_queries = SAVED_QUERIES.get_all()
@@ -114,14 +114,7 @@ def search_saved_query_step(ctx: WorkflowContext) -> WorkflowResult:
                 project = ctx.jira.project_key
 
         if not project:
-            return Error(
-                f"Query '{query_name}' requires a 'project' parameter.\n"
-                f"JQL template: {jql}\n\n"
-                f"Provide it in workflow:\n"
-                f"  params:\n"
-                f"    query_name: \"{query_name}\"\n"
-                f"    project: \"PROJ\""
-            )
+            return Error(msg.Steps.Search.PROJECT_REQUIRED.format(query_name=query_name, jql=jql))
 
         jql = jql.format(project=project)
 

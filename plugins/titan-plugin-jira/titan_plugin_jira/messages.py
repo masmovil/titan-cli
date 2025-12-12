@@ -28,6 +28,15 @@ class Messages:
             CUSTOM_QUERIES_HEADER: str = "🔧 Custom queries from config:"
             ADD_CUSTOM_HINT: str = "💡 Add custom queries to .titan/config.toml:"
             CUSTOM_QUERY_EXAMPLE: str = "[jira.saved_queries]\nmy_custom = \"assignee = currentUser() AND status != Done\""
+            QUERY_NAME_REQUIRED: str = "query_name parameter is required"
+            PROJECT_REQUIRED: str = (
+                "Query '{query_name}' requires a 'project' parameter.\n"
+                "JQL template: {jql}\n\n"
+                "Provide it in workflow:\n"
+                "  params:\n"
+                "    query_name: \"{query_name}\"\n"
+                "    project: \"PROJ\""
+            )
 
         class GetIssue:
             """Get issue step messages"""
@@ -65,12 +74,15 @@ class Messages:
         class AIIssue:
             """AI issue generation step messages"""
             AI_NOT_CONFIGURED: str = "AI not configured. Run 'titan ai configure' to enable AI features."
+            AI_NOT_CONFIGURED_SKIP: str = "AI not configured - skipping analysis"
             GENERATING_ISSUE: str = "Generating JIRA issue with AI..."
             GENERATION_SUCCESS: str = "AI generated JIRA issue successfully"
             GENERATION_FAILED: str = "AI generation failed: {e}"
             INVALID_ISSUE_TYPE: str = "Invalid issue type: {issue_type}. Use: bug, feature, or task"
             USER_REJECTED: str = "User rejected AI-generated issue"
             CONFIRM_USE_AI: str = "Use this AI-generated issue?"
+            NO_ISSUE_FOUND: str = "No issue found to analyze"
+            ANALYZING: str = "Analyzing issue with AI..."
 
         class ExtractKey:
             """Extract issue key step messages"""

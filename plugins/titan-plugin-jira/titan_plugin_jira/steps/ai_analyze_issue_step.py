@@ -4,6 +4,7 @@ AI-powered JIRA issue analysis step
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from rich.markdown import Markdown
+from ..messages import msg
 
 
 def ai_analyze_issue_requirements(ctx: WorkflowContext) -> WorkflowResult:
@@ -32,13 +33,13 @@ def ai_analyze_issue_requirements(ctx: WorkflowContext) -> WorkflowResult:
     # Check if AI is available
     if not ctx.ai or not ctx.ai.is_available():
         if ctx.ui:
-            ctx.ui.panel.print("AI not configured - skipping analysis", panel_type="info")
-        return Skip("AI not configured")
+            ctx.ui.panel.print(msg.Steps.AIIssue.AI_NOT_CONFIGURED_SKIP, panel_type="info")
+        return Skip(msg.Steps.AIIssue.AI_NOT_CONFIGURED)
 
     # Get issue to analyze
     issue = ctx.get("jira_issue") or ctx.get("selected_issue")
     if not issue:
-        return Error("No issue found to analyze")
+        return Error(msg.Steps.AIIssue.NO_ISSUE_FOUND)
 
     # Build context for AI
     issue_context = f"""# JIRA Issue Analysis Request
@@ -89,7 +90,7 @@ Format your response in clear markdown with proper headers and bullet points.
 """
 
     if ctx.ui:
-        ctx.ui.text.info("Analyzing issue with AI...")
+        ctx.ui.text.info(msg.Steps.AIIssue.ANALYZING)
         ctx.ui.spacer.small()
 
     # Generate AI analysis
