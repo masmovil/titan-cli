@@ -1,0 +1,16 @@
+# .titan/workflows/create-pr-ai.yaml
+# This workflow overrides the default one from the github plugin.
+
+name: "Create Pull Request with AI + Linter"
+description: "AI-powered PR creation with an additional linting step for this project."
+
+# Extend the base workflow from the github plugin
+extends: "plugin:github/create-pr-ai"
+
+# Use hooks to inject custom steps
+hooks:
+  before_commit:
+    - id: ruff-lint
+      name: "Run Ruff Linter"
+      command: "ruff check ."
+      on_error: fail  # Stop the workflow if linting fails

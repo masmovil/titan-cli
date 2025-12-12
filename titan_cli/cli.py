@@ -700,6 +700,7 @@ def _handle_run_workflow_action(config: TitanConfig, text: TextRenderer, spacer:
 
     if chosen_workflow_item and chosen_workflow_item.action != "cancel":
         selected_workflow_name = chosen_workflow_item.action
+        original_cwd = os.getcwd() # Moved assignment before the try block
 
         try:
             parsed_workflow = config.workflows.get_workflow(selected_workflow_name)
@@ -721,7 +722,6 @@ def _handle_run_workflow_action(config: TitanConfig, text: TextRenderer, spacer:
             spacer.small()
 
             # Change to active project directory for workflow execution
-            original_cwd = os.getcwd()
             if config.active_project_path:
                 os.chdir(config.active_project_path)
                 text.body(f"Working directory: {config.active_project_path}", style="dim")

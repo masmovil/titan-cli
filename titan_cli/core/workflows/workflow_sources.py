@@ -245,6 +245,21 @@ class PluginWorkflowSource(WorkflowSource):
         return workflows
 
     def find(self, name: str) -> Optional[Path]:
+        # Handle qualified names like "github/create-pr"
+        if "/" in name:
+            plugin_name_ref, workflow_name = name.split('/', 1)
+            plugin_instance = self._plugin_registry.get_plugin(plugin_name_ref)
+            if plugin_instance and plugin_instance.workflows_path:
+                plugin_workflows_dir = plugin_instance.workflows_path
+                yaml_file = plugin_workflows_dir / f"{workflow_name}.yaml"
+                if yaml_file.is_file():
+                    return yaml_file
+                yml_file = plugin_workflows_dir / f"{workflow_name}.yml"
+                if yml_file.is_file():
+                    return yml_file
+            return None # If qualified name is used, only search that plugin
+
+        # Fallback to original behavior for unqualified names
         for plugin_name in self._plugin_registry.list_installed():
             plugin_instance = self._plugin_registry.get_plugin(plugin_name)
             if plugin_instance and plugin_instance.workflows_path:
