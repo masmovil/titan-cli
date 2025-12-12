@@ -293,22 +293,30 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
             text.info(f"Installing {plugin_to_install}...")
 
             try:
-                # Build a robust path to the plugin directory, independent of CWD
+                # Detect if we're in development (local plugins/) or production (installed from PyPI)
                 cli_file_path = Path(__file__).resolve()
                 project_root = cli_file_path.parent.parent
                 plugin_path = project_root / "plugins" / plugin_to_install
 
-                if not plugin_path.exists():
-                    text.error(f"Plugin source directory not found at: {plugin_path}")
-                    continue
-
-                # Use subprocess.run to execute the command with the absolute path
-                result = subprocess.run(
-                    ["pipx", "inject", "titan-cli", str(plugin_path)],
-                    capture_output=True,
-                    text=True,
-                    check=False
-                )
+                # Check if local plugin directory exists (development mode)
+                if plugin_path.exists():
+                    # Development mode: install from local path
+                    text.body(f"Installing from local path: {plugin_path}", style="dim")
+                    result = subprocess.run(
+                        ["pipx", "inject", "titan-cli", str(plugin_path)],
+                        capture_output=True,
+                        text=True,
+                        check=False
+                    )
+                else:
+                    # Production mode: install from PyPI
+                    text.body(f"Installing from PyPI: {plugin_to_install}", style="dim")
+                    result = subprocess.run(
+                        ["pipx", "inject", "titan-cli", plugin_to_install],
+                        capture_output=True,
+                        text=True,
+                        check=False
+                    )
 
                 if result.returncode == 0:
                     text.success(f"Successfully installed {plugin_to_install}.")

@@ -6,6 +6,49 @@
 
 ---
 
+## 🛠️ Development Setup
+
+### Prerequisites
+
+- Python 3.9+
+- pipx
+
+### Installation for Development
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/your-org/titan-cli.git
+cd titan-cli
+
+# 2. Install titan-cli in editable mode
+pipx install -e .
+
+# 3. Verify installation
+titan --help
+```
+
+### Initial Configuration
+
+After installation, configure Titan for your projects:
+
+```bash
+# 1. Navigate to your projects directory (parent of all your projects)
+cd ~/projects  # or wherever you keep your projects
+
+# 2. Launch Titan interactive menu
+titan
+
+# 3. Follow the setup wizard:
+#    - Set project root (e.g., ~/projects)
+#    - Configure a project from the "Project Management" menu
+#    - Install plugins from the "Plugin Management" menu
+#      (plugins will be installed from local ./plugins/ directory automatically)
+```
+
+**Note:** With editable installation (`-e` flag), Titan will automatically detect local plugins in the repository and install them from there. No need to manually inject plugins.
+
+---
+
 ## 🎨 UI Architecture and Theming
 
 The UI components are organized to ensure consistency, reusability, and maintainability.

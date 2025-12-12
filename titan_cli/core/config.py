@@ -154,30 +154,55 @@ class TitanConfig:
         for key, value in project_cfg.items():
             if key == "plugins" and isinstance(value, dict):
                 merged_plugins = merged.setdefault("plugins", {})
-                
+
                 for plugin_name, plugin_data_project in value.items():
                     plugin_data_global = merged_plugins.get(plugin_name, {})
-                    
+
                     # Start with a copy of the global plugin config for this specific plugin
                     # This ensures all global settings (like 'enabled') are carried over
                     # unless explicitly overridden.
                     final_plugin_data = {**plugin_data_global}
-                    
+
                     # Merge top-level keys from project config, excluding 'config'
                     for pk, pv in plugin_data_project.items():
                         if pk != "config":
                             final_plugin_data[pk] = pv
-                    
+
                     # Handle the nested 'config' dictionary separately (deep merge)
                     config_section_global = plugin_data_global.get("config", {})
                     config_section_project = plugin_data_project.get("config", {})
-                    
+
                     if config_section_global or config_section_project:
                         final_plugin_data["config"] = {**config_section_global, **config_section_project}
                     elif "config" in final_plugin_data: # If global had a config, and project didn't touch it
                          pass # Keep the global config
-                    
+
                     merged_plugins[plugin_name] = final_plugin_data
+            elif key == "ai" and isinstance(value, dict):
+                # AI config should be merged intelligently (global + project)
+                # Global AI config is always available, project can override specific settings
+                merged_ai = merged.setdefault("ai", {})
+
+                # Merge providers (project providers supplement global providers)
+                if "providers" in value:
+                    merged_providers = merged_ai.setdefault("providers", {})
+                    # Deep merge: preserve global fields, override with project fields
+                    for provider_id, provider_data in value["providers"].items():
+                        if provider_id in merged_providers:
+                            # Provider exists in global: deep merge (extend, not replace)
+                            merged_providers[provider_id] = {**merged_providers[provider_id], **provider_data}
+                        else:
+                            # New provider: just add it
+                            merged_providers[provider_id] = provider_data
+
+                # Project can override default provider, otherwise keep global
+                if "default" in value:
+                    merged_ai["default"] = value["default"]
+
+                # Merge any other AI settings
+                for ai_key, ai_value in value.items():
+                    if ai_key not in ("providers", "default"):
+                        merged_ai[ai_key] = ai_value
             else:
                 merged[key] = value
 
