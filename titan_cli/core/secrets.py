@@ -85,12 +85,8 @@ class SecretManager:
                 keyring.set_password(namespace, key, value)
             except Exception as e:
                 # Fallback to project scope if keyring fails (common on macOS with unsigned apps)
-                import warnings
-                warnings.warn(
-                    f"Failed to store secret in system keyring: {e}. "
-                    f"Falling back to project scope.",
-                    RuntimeWarning
-                )
+                text = TextRenderer()
+                text.warning(msg.Secrets.KEYRING_FALLBACK.format(e=e))
                 # Recursively call with project scope
                 self.set(key, value, scope="project")
 

@@ -86,19 +86,18 @@ def search_saved_query_step(ctx: WorkflowContext) -> WorkflowResult:
         predefined_list = list(predefined_queries.keys())
         custom_list = list(custom_queries.keys())
 
-        error_msg = f"Saved query '{query_name}' not found.\n\n"
-        error_msg += "📚 Available predefined queries (first 15):\n  "
+        error_msg = msg.Steps.Search.QUERY_NOT_FOUND.format(query_name=query_name) + "\n\n"
+        error_msg += msg.Steps.Search.AVAILABLE_PREDEFINED + "\n  "
         error_msg += "\n  ".join(predefined_list[:15])
         if len(predefined_list) > 15:
-            error_msg += f"\n  ... and {len(predefined_list) - 15} more"
+            error_msg += "\n" + msg.Steps.Search.MORE_QUERIES.format(count=len(predefined_list) - 15)
 
         if custom_list:
-            error_msg += "\n\n🔧 Custom queries from config:\n  "
+            error_msg += "\n\n" + msg.Steps.Search.CUSTOM_QUERIES_HEADER + "\n  "
             error_msg += "\n  ".join(custom_list)
         else:
-            error_msg += "\n\n💡 Add custom queries to .titan/config.toml:\n"
-            error_msg += "[jira.saved_queries]\n"
-            error_msg += "my_custom = \"assignee = currentUser() AND status != Done\""
+            error_msg += "\n\n" + msg.Steps.Search.ADD_CUSTOM_HINT + "\n"
+            error_msg += msg.Steps.Search.CUSTOM_QUERY_EXAMPLE
 
         return Error(error_msg)
 

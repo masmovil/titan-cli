@@ -146,10 +146,22 @@ class WorkflowContextBuilder:
 
     def with_jira(self, jira_client: Optional[Any] = None) -> "WorkflowContextBuilder":
         """
-        Add JIRA client.
+        Add JIRA client to workflow context.
+
+        The JIRA client is optional and only used by JIRA plugin steps.
+        Other plugin steps will have ctx.jira = None and should ignore it.
 
         Args:
-            jira_client: Optional JiraClient instance (auto-loaded if None)
+            jira_client: Optional JiraClient instance (auto-loaded if None).
+                        If None, attempts to load from JIRA plugin registry.
+                        If plugin is not available or fails to load, sets ctx.jira = None.
+
+        Returns:
+            Self for method chaining
+
+        Note:
+            Steps from other plugins do not need to handle ctx.jira.
+            Only JIRA plugin steps should check for and use ctx.jira.
         """
         if jira_client:
             self._jira = jira_client

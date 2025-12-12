@@ -22,6 +22,12 @@ class Messages:
             SEARCH_SUCCESS: str = "Found {count} JIRA issue(s)"
             NO_RESULTS: str = "No JIRA issues found matching the query"
             SEARCH_FAILED: str = "Failed to search JIRA issues: {e}"
+            QUERY_NOT_FOUND: str = "Saved query '{query_name}' not found."
+            AVAILABLE_PREDEFINED: str = "📚 Available predefined queries (first 15):"
+            MORE_QUERIES: str = "  ... and {count} more"
+            CUSTOM_QUERIES_HEADER: str = "🔧 Custom queries from config:"
+            ADD_CUSTOM_HINT: str = "💡 Add custom queries to .titan/config.toml:"
+            CUSTOM_QUERY_EXAMPLE: str = "[jira.saved_queries]\nmy_custom = \"assignee = currentUser() AND status != Done\""
 
         class GetIssue:
             """Get issue step messages"""
