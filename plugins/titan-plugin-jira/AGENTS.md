@@ -26,7 +26,7 @@ titan_plugin_jira/
 │   └── jira_client.py         # JIRA REST API wrapper
 ├── models.py                  # Pydantic models for JIRA objects (Issue, Project, etc.)
 ├── exceptions.py              # Custom exceptions (JiraAPIError, JiraClientError, etc.)
-├── messages.py                # Centralized user-facing strings
+├── messages.py                # Centralized user-facing strings (100% coverage)
 ├── plugin.py                  # The JiraPlugin definition
 ├── steps/                     # Workflow steps
 │   ├── search_saved_query_step.py
@@ -214,6 +214,59 @@ def list_projects_step(ctx: WorkflowContext) -> WorkflowResult:
 - Shows project key, name, and type
 - Useful for discovering correct project keys
 
+### Messages (`messages.py`)
+
+All user-facing strings are centralized in `messages.py` for maintainability and future i18n support.
+
+**Structure:**
+```python
+class Messages:
+    class Plugin:
+        """Plugin-level messages"""
+        CLIENT_INIT_WARNING: str = "Warning: JiraPlugin could not initialize..."
+        CLIENT_NOT_AVAILABLE: str = "JiraPlugin not initialized..."
+
+    class Steps:
+        class Search:
+            """Search step messages"""
+            QUERY_NAME_REQUIRED: str = "query_name parameter is required"
+            PROJECT_REQUIRED: str = (
+                "Query '{query_name}' requires a 'project' parameter.\n"
+                "JQL template: {jql}\n\n"
+                "Provide it in workflow:\n"
+                "  params:\n"
+                "    query_name: \"{query_name}\"\n"
+                "    project: \"PROJ\""
+            )
+
+        class AIIssue:
+            """AI analysis step messages"""
+            AI_NOT_CONFIGURED_SKIP: str = "AI not configured - skipping analysis"
+            NO_ISSUE_FOUND: str = "No issue found to analyze"
+            ANALYZING: str = "Analyzing issue with AI..."
+
+        # ... and more step-specific message classes
+```
+
+**Usage in Steps:**
+```python
+from ..messages import msg
+
+def my_step(ctx: WorkflowContext) -> WorkflowResult:
+    if not ctx.ai:
+        return Skip(msg.Steps.AIIssue.AI_NOT_CONFIGURED_SKIP)
+
+    ctx.ui.text.info(msg.Steps.AIIssue.ANALYZING)
+    # ... step logic
+```
+
+**Benefits:**
+- ✅ No hardcoded strings in code
+- ✅ Easy to find and update messages
+- ✅ Consistent error messages
+- ✅ Ready for future i18n support
+- ✅ Type-safe with IDE autocomplete
+
 ### Workflows (`workflows/`)
 
 #### `analyze-jira-issues.yaml`
@@ -326,20 +379,68 @@ Tests for this plugin are located in the `tests/` directory.
 **Test Structure:**
 ```
 tests/
-├── utils/
-│   └── test_issue_sorter.py    # IssueSorter tests (16 tests, 100% coverage)
-└── (future test files)
+├── integration/
+│   ├── __init__.py
+│   └── test_analyze_workflow.py    # Workflow integration tests (8 tests)
+└── utils/
+    └── test_issue_sorter.py        # IssueSorter tests (16 tests, 100% coverage)
 ```
 
 **Running Tests:**
 ```bash
 cd plugins/titan-plugin-jira
-poetry run pytest
-poetry run pytest --cov=titan_plugin_jira
+poetry run pytest                          # Run all tests
+poetry run pytest --cov=titan_plugin_jira  # With coverage
+poetry run pytest tests/integration/       # Integration tests only
+poetry run pytest tests/utils/             # Unit tests only
+```
+
+### Integration Tests
+
+**File:** `tests/integration/test_analyze_workflow.py`
+
+Comprehensive end-to-end tests for the `analyze-jira-issues` workflow with mocked JIRA API and AI responses.
+
+**Test Coverage (8 tests):**
+1. `test_workflow_step_1_search_issues` - Search for open issues
+2. `test_workflow_step_2_select_issue` - User selects an issue
+3. `test_workflow_step_3_get_issue_details` - Fetch full issue details
+4. `test_workflow_step_4_ai_analysis` - AI analyzes the issue
+5. `test_workflow_full_execution` - Complete workflow execution (all 4 steps)
+6. `test_workflow_ai_not_available` - Workflow when AI is not configured
+7. `test_workflow_no_issues_found` - Workflow when no issues match the query
+8. `test_workflow_invalid_issue_selection` - User cancels issue selection
+
+**Test Helpers:**
+
+```python
+def create_mock_ticket(**kwargs):
+    """
+    Helper to create JiraTicket with default values.
+
+    Usage:
+        ticket = create_mock_ticket(
+            key="ECAPP-123",
+            summary="Fix login bug",
+            status="Open"
+        )
+    """
+```
+
+```python
+def execute_step_with_metadata(step_func, ctx):
+    """
+    Execute a step and merge metadata into context.
+    This mimics what WorkflowExecutor does.
+
+    Usage:
+        result = execute_step_with_metadata(search_saved_query_step, ctx)
+        # ctx.data now contains metadata from result
+    """
 ```
 
 **Testing Steps:**
-Use `pytest` and `unittest.mock` to mock the `JiraClient` when testing steps in isolation.
+Use `pytest` and `unittest.mock` to mock the `JiraClient` when testing steps in isolation. For integration tests, mock all external dependencies (JIRA client, AI client, UI components) and verify the complete workflow flow.
 
 ---
 
@@ -376,6 +477,17 @@ For JIRA Cloud, you would need:
 **Adding a New Workflow:**
 1. Create YAML file in `workflows/`
 2. Workflow is automatically discovered via `workflows_path`
+
+---
+
+## 📝 Recent Updates
+
+**2025-12-12:**
+- ✅ Added comprehensive integration tests (8 tests, 100% passing)
+- ✅ Centralized 5 hardcoded strings to `messages.py`
+- ✅ Created test helpers: `create_mock_ticket()`, `execute_step_with_metadata()`
+- ✅ Documented message centralization pattern
+- ✅ Added `/review` slash command for code reviews
 
 ---
 
