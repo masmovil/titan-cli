@@ -35,7 +35,6 @@ from titan_cli.core.project_init import initialize_project
 from titan_cli.ui.views.menu_components.dynamic_menu import DynamicMenu
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.plugins.available import KNOWN_PLUGINS
-from titan_cli.core.plugins.models import PluginConfig
 
 # New Workflow-related imports
 from titan_cli.engine.workflow_executor import WorkflowExecutor
@@ -321,32 +320,16 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
                 if result.returncode == 0:
                     text.success(f"Successfully installed {plugin_to_install}.")
 
-                    # After successful installation, enable and configure the plugin
+                    # After successful installation, automatically configure the plugin
                     spacer.line()
-                    should_configure = prompts.ask_confirm(
-                        f"Would you like to enable and configure the '{selected_plugin['name']}' plugin now?",
-                        default=True
-                    )
+                    config.registry.reset()
 
-                    if should_configure:
-                        # Reset registry to pick up the newly installed plugin
-                        config.registry.reset()
-
-                        # Use the existing interactive configuration function
-                        if _configure_plugin_interactive(selected_plugin['name']):
-                            # Only enable if configuration was successful
-                            if selected_plugin['name'] not in config.config.plugins:
-                                config.config.plugins[selected_plugin['name']] = PluginConfig(enabled=True, config={})
-                            else:
-                                config.config.plugins[selected_plugin['name']].enabled = True
-
-                            text.success(f"Plugin '{selected_plugin['name']}' has been enabled and configured.")
-                        else:
-                            text.error(f"Plugin '{selected_plugin['name']}' configuration failed. Plugin not enabled.")
-                            text.info("You can try again from 'Enable/Disable Plugins' menu.")
+                    # Use the existing interactive configuration function
+                    if _configure_plugin_interactive(selected_plugin['name']):
+                        text.success(f"Plugin '{selected_plugin['name']}' has been configured successfully.")
                     else:
-                        text.info("You can enable and configure the plugin later from 'Enable/Disable Plugins' menu.")
-
+                        text.warning(f"Plugin '{selected_plugin['name']}' configuration was skipped or failed.")
+                        text.info("You can configure it later from 'Enable/Disable Plugins' menu.")
                 else:
                     text.error(f"Failed to install {plugin_to_install}.")
                     if result.stderr:
