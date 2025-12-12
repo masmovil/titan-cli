@@ -38,7 +38,7 @@ titan_plugin_jira/
 │   ├── issue_sorter.py        # Issue sorting logic
 │   └── saved_queries.py       # Predefined JQL queries
 └── workflows/                 # YAML workflow definitions
-    └── analyze-my-issues.yaml
+    └── analyze-jira-issues.yaml
 ```
 
 ---
@@ -77,7 +77,7 @@ This class is the entry point for the plugin system. It is responsible for:
 **Configuration Model** (`core/plugins/models.py`):
 ```python
 class JiraPluginConfig(BaseModel):
-    base_url: str          # JIRA instance URL (e.g., "https://jiranext.masorange.es")
+    base_url: str
     email: str             # User email for authentication
     api_token: Optional[str]  # Personal Access Token (stored in keychain, not config)
     default_project: str   # Default project key (e.g., "ECAPP")
@@ -216,13 +216,13 @@ def list_projects_step(ctx: WorkflowContext) -> WorkflowResult:
 
 ### Workflows (`workflows/`)
 
-#### `analyze-my-issues.yaml`
+#### `analyze-jira-issues.yaml`
 
 Complete workflow for analyzing JIRA issues with AI.
 
 ```yaml
-name: "Analyze JIRA Issues"
-description: "List all open issues ready for development and analyze selected issue with AI"
+name: "Analyze JIRA Open and Ready to Dev Issues"
+description: "List all JIRA issues in Open or Ready to Dev status and analyze selected issue with AI"
 
 params:
   query_name: "open_issues"  # Can override
