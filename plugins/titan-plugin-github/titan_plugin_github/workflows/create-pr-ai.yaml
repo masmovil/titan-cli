@@ -1,5 +1,5 @@
 name: "Create Pull Request with AI"
-description: "AI-powered PR creation with intelligent commit strategy and analysis"
+description: "AI-powered PR creation with intelligent analysis and suggestions"
 
 params:
   draft: false
@@ -18,13 +18,13 @@ steps:
 
   - hook: before_commit
 
-  # AI generates commit message for all changes
-  - id: ai_commit_message
-    name: "AI Generate Commit Message"
-    plugin: git
-    step: ai_generate_commit_message
+  # Platform Agent analyzes everything upfront
+  - id: platform_agent_analyze
+    name: "Platform Agent Analysis"
+    plugin: github
+    step: ai_suggest_pr_description
 
-  # Create commit with AI-generated message
+  # If Platform Agent suggested a commit message, create commit
   - id: create_commit
     name: "Create Commit"
     plugin: git
@@ -36,12 +36,6 @@ steps:
     name: "Push to Remote"
     plugin: git
     step: push
-
-  # After commits are made and pushed, analyze branch for PR description
-  - id: platform_agent_analyze
-    name: "AI Generate PR Description"
-    plugin: github
-    step: ai_suggest_pr_description
 
   # Fallback to manual prompts if AI was rejected
   - id: prompt_pr_title

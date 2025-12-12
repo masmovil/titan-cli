@@ -24,7 +24,7 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
     Requires:
         ctx.ai: An initialized AIClient
         ctx.git: An initialized GitClient
-        ctx.github: An initialized GitHubClient
+        ctx.github: An initialized GitHubClient (optional)
 
     Inputs (from ctx.data):
         pr_head_branch (str): The head branch for the PR
