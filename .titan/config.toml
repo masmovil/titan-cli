@@ -20,3 +20,11 @@ default_branch = "master"
 default_reviewers = []
 pr_template_path = ""
 auto_assign_prs = false
+
+[plugins.jira]
+enabled = true
+
+[plugins.jira.config]
+base_url = "https://jiranext.masorange.es"
+email = "alejandro.lopezr@masmovil.com"
+default_project = "ECAPP"
