@@ -27,4 +27,10 @@ KNOWN_PLUGINS: List[KnownPlugin] = [
         "package_name": "titan-plugin-github",
         "dependencies": ["git"]  # Requires git plugin
     },
+    {
+        "name": "jira",
+        "description": "JIRA integration for issue management.",
+        "package_name": "titan-plugin-jira",
+        "dependencies": []
+    },
 ]

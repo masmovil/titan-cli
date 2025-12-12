@@ -122,9 +122,12 @@ class WorkflowExecutor:
         # Prepare parameters for the step function
         resolved_params = self._resolve_parameters(step_params, ctx)
 
-        # Execute the step function.
+        # Add resolved parameters to context data so step can access them via ctx.get()
+        ctx.data.update(resolved_params)
+
+        # Execute the step function (only pass ctx, parameters are in ctx.data)
         try:
-            return step_func(ctx=ctx, **resolved_params)
+            return step_func(ctx)
         except Exception as e:
             return Error(f"Error executing plugin step '{step_func_name}' from plugin '{plugin_name}': {e}", e)
 
@@ -175,13 +178,19 @@ class WorkflowExecutor:
 
     def _resolve_parameters_in_string(self, text: str, ctx: WorkflowContext) -> str:
         """
-        Substitutes ${placeholder} in a string using values from ctx.data.
+        Substitutes placeholders in a string using values from ctx.data.
+        Supports both ${placeholder} and {{ params.key }} or {{ key }} syntax.
         All workflow params are already in ctx.data.
         """
         import re
 
         def replace_placeholder(match):
-            placeholder = match.group(1) # e.g., "commit_message"
+            # Extract the placeholder - could be from ${var} or {{ var }} or {{ params.var }}
+            placeholder = match.group(1).strip()
+
+            # Handle params.key format (remove "params." prefix)
+            if placeholder.startswith("params."):
+                placeholder = placeholder[7:]  # Remove "params."
 
             # Check ctx.data (all params including workflow-level are here)
             if placeholder in ctx.data:
@@ -193,5 +202,10 @@ class WorkflowExecutor:
             # If not found, return original placeholder or raise an error
             return match.group(0) # Keep placeholder if not resolved
 
-        # Regex to find ${placeholder} patterns
-        return re.sub(r'\$\{(\w+)\}', replace_placeholder, text)
+        # Replace both ${placeholder} and {{ placeholder }} or {{ params.placeholder }}
+        # First handle Jinja2-style {{ ... }}
+        text = re.sub(r'\{\{\s*([\w.]+)\s*\}\}', replace_placeholder, text)
+        # Then handle shell-style ${...}
+        text = re.sub(r'\$\{(\w+)\}', replace_placeholder, text)
+
+        return text

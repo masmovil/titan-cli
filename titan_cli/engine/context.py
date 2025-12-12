@@ -38,10 +38,14 @@ class WorkflowContext:
     ui: Optional[UIComponents] = None
     views: Optional[UIViews] = None
 
+    # Plugin registry
+    plugin_manager: Optional[Any] = None
+
     # Service clients (populated by builder)
     ai: Optional[Any] = None
     git: Optional[Any] = None
     github: Optional[Any] = None
+    jira: Optional[Any] = None
 
     # Workflow metadata (set by executor)
     workflow_name: Optional[str] = None

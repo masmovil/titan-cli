@@ -144,7 +144,16 @@ class PRAgent(BaseAIAgent):
                 # Get unstaged/staged changes
                 try:
                     if auto_stage:
+                        # Get modified files diff
                         diff = self.git.get_unstaged_diff()
+
+                        # Also include untracked files if they exist
+                        if status.untracked_files:
+                            # Add header for untracked files context
+                            untracked_info = f"\n\n# New untracked files:\n"
+                            for file in status.untracked_files:
+                                untracked_info += f"# - {file}\n"
+                            diff = diff + untracked_info if diff else untracked_info
                     else:
                         diff = self.git.get_staged_diff()
 

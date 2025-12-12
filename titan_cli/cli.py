@@ -319,7 +319,17 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
 
                 if result.returncode == 0:
                     text.success(f"Successfully installed {plugin_to_install}.")
-                    text.info("Registry will be updated on next action.")
+
+                    # After successful installation, automatically configure the plugin
+                    spacer.line()
+                    config.registry.reset()
+
+                    # Use the existing interactive configuration function
+                    if _configure_plugin_interactive(selected_plugin['name']):
+                        text.success(f"Plugin '{selected_plugin['name']}' has been configured successfully.")
+                    else:
+                        text.warning(f"Plugin '{selected_plugin['name']}' configuration was skipped or failed.")
+                        text.info("You can configure it later from 'Enable/Disable Plugins' menu.")
                 else:
                     text.error(f"Failed to install {plugin_to_install}.")
                     if result.stderr:
@@ -413,12 +423,32 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
 
         new_config_values = {}
 
+        # Track secrets separately
+        secrets_to_save = {}
+
         # Iterate over schema and ask for values
         for field_name, field_schema in properties.items():
             field_type = field_schema.get("type")
             description = field_schema.get("description", "")
+            field_format = field_schema.get("format", "")
             current_value = current_plugin_config.get(field_name, field_schema.get("default"))
             is_required = field_name in schema.get("required", [])
+
+            # Skip fields that have defaults and are not required
+            # (they will use their default values from the model)
+            has_default = "default" in field_schema
+            if not is_required and has_default and field_name not in current_plugin_config:
+                # Use default value, don't prompt
+                continue
+
+            # Detect if this is a secret field (by name pattern or format)
+            is_secret = (
+                "token" in field_name.lower() or
+                "password" in field_name.lower() or
+                "secret" in field_name.lower() or
+                "api_key" in field_name.lower() or
+                field_format == "password"
+            )
 
             prompt_text = f"{field_name}"
             if description:
@@ -443,14 +473,37 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
                     new_value = current_list
             else:  # Default to string
                 default_val = str(current_value) if current_value is not None else ""
-                new_value = prompts.ask_text(prompt_text, default=default_val)
+                # For secrets, check if already exists in keychain
+                if is_secret:
+                    # Try to get from keychain with project-specific key
+                    project_name = config.get_active_project()
+                    secret_key = f"{plugin_name}_{field_name}"
+                    keychain_key = f"{project_name}_{secret_key}" if project_name else secret_key
+
+                    # Also try without project prefix for backwards compatibility
+                    existing_secret = config.secrets.get(keychain_key) or config.secrets.get(secret_key)
+
+                    if existing_secret:
+                        text.body(f"(Already configured)", style="dim")
+                        skip_secret = prompts.ask_confirm("Keep existing value?", default=True)
+                        if skip_secret:
+                            # Keep the existing secret (will be saved to keychain later)
+                            secrets_to_save[secret_key] = existing_secret
+                            continue  # Don't prompt for new value
+
+                # Ask for value (hidden if secret)
+                new_value = prompts.ask_text(prompt_text, default=default_val if not is_secret else "", password=is_secret)
                 if new_value is None or (not new_value and is_required):
                     if is_required:
                         text.error(f"Field '{field_name}' is required.")
                         return False
                     new_value = ""
 
-            new_config_values[field_name] = new_value
+            # Store secrets separately
+            if is_secret and new_value:
+                secrets_to_save[f"{plugin_name}_{field_name}"] = new_value
+            else:
+                new_config_values[field_name] = new_value
 
         # Save the configuration
         try:
@@ -470,8 +523,18 @@ def _show_plugin_management_menu(prompts: PromptsRenderer, text: TextRenderer, c
             with open(project_cfg_path, "wb") as f:
                 tomli_w.dump(project_cfg_dict, f)
 
+            # Save secrets to user keychain (secure, per-project)
+            # Use project name in key to support multiple projects
+            project_name = config.get_active_project()
+            for secret_key, secret_value in secrets_to_save.items():
+                # Format: projectname_pluginname_fieldname (e.g., titan-cli_jira_api_token)
+                keychain_key = f"{project_name}_{secret_key}" if project_name else secret_key
+                config.secrets.set(keychain_key, secret_value, scope="user")
+
             spacer.small()
             text.success(f"Configuration for '{plugin_name}' saved successfully.")
+            if secrets_to_save:
+                text.info(f"Saved {len(secrets_to_save)} secret(s) to project secrets.")
             return True
 
         except Exception as e:

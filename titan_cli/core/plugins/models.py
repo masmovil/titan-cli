@@ -24,3 +24,16 @@ class GitHubPluginConfig(BaseModel):
     default_reviewers: List[str] = Field(default_factory=list, description="Default PR reviewers.")
     pr_template_path: Optional[str] = Field(None, description="Path to PR template file within the repository.")
     auto_assign_prs: bool = Field(False, description="Automatically assign PRs to the author.")
+
+
+class JiraPluginConfig(BaseModel):
+    """Configuration for JIRA plugin."""
+    base_url: str = Field(..., description="JIRA instance URL (e.g., 'https://jira.company.com')")
+    email: str = Field(..., description="User email for authentication")
+    # api_token is stored in secrets, not in config.toml
+    # It appears in the JSON schema for interactive configuration but is optional in the model
+    api_token: Optional[str] = Field(None, description="JIRA API token (Personal Access Token)", json_schema_extra={"format": "password", "required_in_schema": True})
+    default_project: str = Field(..., description="Default JIRA project key (e.g., 'ECAPP', 'PROJ')")
+    timeout: int = Field(30, description="Request timeout in seconds")
+    enable_cache: bool = Field(True, description="Enable caching for API responses")
+    cache_ttl: int = Field(300, description="Cache time-to-live in seconds")

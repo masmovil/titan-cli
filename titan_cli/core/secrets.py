@@ -81,7 +81,14 @@ class SecretManager:
 
         elif scope == "user":
             # Store in system keyring (most secure)
-            keyring.set_password(namespace, key, value)
+            try:
+                keyring.set_password(namespace, key, value)
+            except Exception as e:
+                # Fallback to project scope if keyring fails (common on macOS with unsigned apps)
+                text = TextRenderer()
+                text.warning(msg.Secrets.KEYRING_FALLBACK.format(e=e))
+                # Recursively call with project scope
+                self.set(key, value, scope="project")
 
         elif scope == "project":
             # Store in .titan/secrets.env
