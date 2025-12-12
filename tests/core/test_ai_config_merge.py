@@ -232,3 +232,104 @@ def test_project_can_add_additional_ai_providers(tmp_path: Path, monkeypatch, mo
     assert project_provider.name == "Project Gemini"
     assert project_provider.type == "corporate"
     assert project_provider.base_url == "https://gemini.company.com"
+
+
+def test_ai_config_merge_preserves_both_sides(tmp_path: Path, monkeypatch, mocker):
+    """
+    Test that AI config merge preserves providers from BOTH global and project.
+    This ensures nothing is lost from either side during merge.
+    """
+    # Mock PluginRegistry
+    mocker.patch('titan_cli.core.config.PluginRegistry')
+
+    # 1. Create global config with TWO providers
+    global_config_dir = tmp_path / ".titan"
+    global_config_dir.mkdir()
+    global_config_path = global_config_dir / "config.toml"
+    global_config_data = {
+        "core": {
+            "project_root": str(tmp_path),
+            "active_project": "test-project"
+        },
+        "ai": {
+            "default": "global-claude",
+            "providers": {
+                "global-claude": {
+                    "name": "Global Claude",
+                    "type": "individual",
+                    "provider": "anthropic",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "temperature": 0.7,
+                    "max_tokens": 4096
+                },
+                "global-gemini": {
+                    "name": "Global Gemini",
+                    "type": "individual",
+                    "provider": "gemini",
+                    "model": "gemini-1.5-pro",
+                    "temperature": 0.7,
+                    "max_tokens": 4096
+                }
+            }
+        }
+    }
+    with open(global_config_path, "wb") as f:
+        tomli_w.dump(global_config_data, f)
+
+    # 2. Create project config with TWO DIFFERENT providers
+    project_dir = tmp_path / "test-project"
+    project_dir.mkdir()
+    project_config_dir = project_dir / ".titan"
+    project_config_dir.mkdir()
+    project_config_path = project_config_dir / "config.toml"
+    project_config_data = {
+        "ai": {
+            "default": "project-claude",
+            "providers": {
+                "project-claude": {
+                    "name": "Project Claude",
+                    "type": "corporate",
+                    "provider": "anthropic",
+                    "model": "claude-3-opus-20240229",
+                    "temperature": 0.5,
+                    "max_tokens": 8192,
+                    "base_url": "https://claude.company.com"
+                },
+                "project-openai": {
+                    "name": "Project OpenAI",
+                    "type": "corporate",
+                    "provider": "openai",
+                    "model": "gpt-4-turbo",
+                    "temperature": 0.5,
+                    "max_tokens": 8192,
+                    "base_url": "https://openai.company.com"
+                }
+            }
+        }
+    }
+    with open(project_config_path, "wb") as f:
+        tomli_w.dump(project_config_data, f)
+
+    # 3. Initialize TitanConfig
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
+    config_instance = TitanConfig()
+
+    # 4. Assert that ALL FOUR providers are available (2 global + 2 project)
+    assert len(config_instance.config.ai.providers) == 4
+
+    # Verify global providers are preserved
+    assert "global-claude" in config_instance.config.ai.providers
+    assert "global-gemini" in config_instance.config.ai.providers
+
+    # Verify project providers are added
+    assert "project-claude" in config_instance.config.ai.providers
+    assert "project-openai" in config_instance.config.ai.providers
+
+    # Verify default was overridden
+    assert config_instance.config.ai.default == "project-claude"
+
+    # Verify each provider has correct data
+    assert config_instance.config.ai.providers["global-claude"].name == "Global Claude"
+    assert config_instance.config.ai.providers["global-gemini"].name == "Global Gemini"
+    assert config_instance.config.ai.providers["project-claude"].name == "Project Claude"
+    assert config_instance.config.ai.providers["project-openai"].name == "Project OpenAI"
