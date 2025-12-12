@@ -110,14 +110,9 @@ def search_saved_query_step(ctx: WorkflowContext) -> WorkflowResult:
     # Format query if it has parameters
     if "{project}" in jql:
         if not project:
-            # Try to use default project from config
-            try:
-                if hasattr(ctx, 'plugin_manager') and ctx.plugin_manager is not None:
-                    jira_plugin = ctx.plugin_manager.get_plugin('jira')
-                    if jira_plugin and hasattr(jira_plugin, '_config') and jira_plugin._config is not None:
-                        project = jira_plugin._config.default_project
-            except Exception:
-                pass
+            # Try to use default project from JIRA client
+            if ctx.jira and hasattr(ctx.jira, 'project_key'):
+                project = ctx.jira.project_key
 
         if not project:
             return Error(

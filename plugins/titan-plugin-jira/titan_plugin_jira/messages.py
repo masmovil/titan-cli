@@ -11,6 +11,7 @@ class Messages:
         CLIENT_INIT_WARNING: str = "Warning: JiraPlugin could not initialize JiraClient: {e}"
         CLIENT_NOT_AVAILABLE: str = "JiraPlugin not initialized or JIRA API not available."
         CLIENT_NOT_AVAILABLE_IN_CONTEXT: str = "JIRA client is not available in the workflow context."
+        JIRA_CLIENT_NOT_AVAILABLE: str = "JIRA client not initialized. Please configure the plugin first."
 
     class Steps:
         """Step-level messages"""

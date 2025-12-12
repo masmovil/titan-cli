@@ -3,4 +3,7 @@
 
 from .pr_agent import PRAgent, PRAnalysis
 
-__all__ = ["PRAgent", "PRAnalysis"]
+__all__ = [
+    "PRAgent",
+    "PRAnalysis",
+]

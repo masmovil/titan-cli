@@ -142,16 +142,15 @@ class JiraClient:
             raise JiraAPIError("JIRA user email not provided")
 
         self.session = requests.Session()
-        # Use Bearer token for JIRA Server PAT authentication
+        # Use Bearer token for JIRA Server/Data Center PAT authentication
         self.session.headers.update({
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_token}"
         })
 
-        # Initialize cache
-        from ..utils.cache import JiraCache
-        self._cache = JiraCache(default_ttl_seconds=cache_ttl) if enable_cache else None
+        # Cache disabled for now (TODO: implement JiraCache)
+        self._cache = None
 
         logger.info(f"Initialized JIRA client for: {self.base_url}")
 
