@@ -12,13 +12,13 @@ hooks:
   before_commit:
     - id: ruff-fix
       name: "Auto-fix linting errors with Ruff"
-      command: "ruff check . --fix"
+      command: "ruff check . --fix --output-format=json"
       on_error: continue  # Try to fix, but don't fail if some errors remain
       params:
         use_venv: true
     - id: ruff-check-diff
       name: "Check for remaining linting errors in modified files"
-      command: "git diff --name-only | xargs ruff check"
+      command: "git diff --name-only | xargs ruff check --output-format=json"
       on_error: fail      # Fail if there are any errors left after auto-fixing
       params:
         use_venv: true
