@@ -74,7 +74,7 @@ class ProjectStepSource:
                     return step_func
                 else:
                     # Optional: Log a warning if a file exists but the function doesn't
-                    print(f"Warning: File found for step '{step_name}', but callable function not found inside.")
+                    pass
                     
         except Exception as e:
             # Optional: Log a more detailed error
