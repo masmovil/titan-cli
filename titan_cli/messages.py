@@ -51,6 +51,7 @@ class Messages:
         INIT_SUCCESS = "Project '{project_name}' initialized successfully at: {config_path}"
         INIT_CANCELLED = "Project initialization cancelled."
         SECRET_SAVED = "{key} saved securely ({scope} scope)"
+        ACTIVE_PROJECT_SET = "Active project set to: {project_name}"
 
     # ═══════════════════════════════════════════════════════════════
     # UI Components
@@ -405,6 +406,8 @@ class Messages:
         # Saving
         SAVE_GLOBAL_CONFIG_ERROR = "Error saving global config: {e}"
         TOMLI_W_NOT_INSTALLED = "Warning: tomli_w is not installed. Cannot save global config."
+        SAVE_GLOBAL_CONFIG_FAILED_UNSET = "Failed to save global config after unsetting invalid project: {e}"
+        ACTIVE_PROJECT_INVALID = "Active project '{project_name}' was invalid or not configured. It has been unset. Use 'Switch Project' to select a valid project."
 
         # Project Root Setup
         PROJECT_ROOT_WELCOME_TITLE = "Welcome to Titan CLI! Let's get you set up."
