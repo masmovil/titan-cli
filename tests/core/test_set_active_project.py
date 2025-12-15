@@ -5,7 +5,6 @@ Tests for set_active_project to ensure it preserves global config sections.
 This prevents the bug where switching projects would delete [ai] and [plugins]
 sections from ~/.titan/config.toml
 """
-import pytest
 import tomli_w
 import tomllib
 from pathlib import Path

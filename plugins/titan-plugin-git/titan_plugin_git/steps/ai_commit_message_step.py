@@ -85,19 +85,20 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
 {diff_preview}
 ```
 
-## Instructions
-Generate a single conventional commit message following this format:
+## CRITICAL Instructions
+Generate ONE single-line conventional commit message following this EXACT format:
 - type(scope): description
 - Types: feat, fix, refactor, docs, test, chore, style, perf
 - Scope: area affected (e.g., auth, api, ui)
-- Description: brief summary in imperative mood (max 72 chars)
+- Description: clear summary in imperative mood (be descriptive but concise)
+- NO line breaks, NO body, NO additional explanation
 
-Examples:
-- feat(auth): add OAuth2 integration
-- fix(api): resolve race condition in cache
-- refactor(ui): simplify menu component structure
+Examples (notice they are all one line):
+- feat(auth): add OAuth2 integration with Google provider
+- fix(api): resolve race condition in cache invalidation
+- refactor(ui): simplify menu component and remove unused props
 
-Return ONLY the commit message, nothing else."""
+Return ONLY the single-line commit message, absolutely nothing else."""
 
         if ctx.ui:
             ctx.ui.text.info(msg.Steps.AICommitMessage.GENERATING_MESSAGE)
@@ -106,12 +107,14 @@ Return ONLY the commit message, nothing else."""
         from titan_cli.ai.models import AIMessage
 
         messages = [AIMessage(role="user", content=prompt)]
-        response = ctx.ai.generate(messages, max_tokens=400, temperature=0.7)
+        response = ctx.ai.generate(messages, max_tokens=150, temperature=0.7)
 
         commit_message = response.content.strip()
 
-        # Clean up the message (remove quotes if present)
+        # Clean up the message (remove quotes, newlines, extra whitespace)
         commit_message = commit_message.strip('"').strip("'").strip()
+        # Take only the first line if AI returned multiple lines
+        commit_message = commit_message.split('\n')[0].strip()
 
         # Show preview to user
         if ctx.ui:
