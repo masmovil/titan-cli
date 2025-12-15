@@ -5,18 +5,19 @@ params:
   draft: false
 
 steps:
+  # Run hooks first (linter/tests may modify files)
+  - hook: before_commit
+
+  # Capture git status AFTER hook modifications
   - id: git_status
     name: "Check Git Status"
     plugin: git
     step: get_status
 
-  # Get current branch first
   - id: get_head_branch
     name: "Get Head Branch"
     plugin: git
     step: get_current_branch
-
-  - hook: before_commit
 
   # Platform Agent analyzes everything upfront
   - id: platform_agent_analyze
