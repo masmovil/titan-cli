@@ -25,6 +25,7 @@ google-auth = ">=2.43.0,<3.0.0"
 
 titan-plugin-git = {path = "plugins/titan-plugin-git", develop = true}
 titan-plugin-github = {path = "plugins/titan-plugin-github", develop = true}
+titan-plugin-jira = {path = "plugins/titan-plugin-jira", develop = true}
 pyyaml = "^6.0.3"
 
 [tool.poetry.group.dev.dependencies]
