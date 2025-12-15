@@ -23,18 +23,9 @@ from ..models import (
     JiraComment,
     JiraTicket,
 )
+from ..exceptions import JiraAPIError
 
 logger = logging.getLogger(__name__)
-
-
-class JiraAPIError(Exception):
-    """Exception raised for JIRA API errors"""
-
-    def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[Dict] = None):
-        self.message = message
-        self.status_code = status_code
-        self.response = response
-        super().__init__(self.message)
 
 
 class JiraClient:
@@ -735,5 +726,4 @@ class JiraClient:
 # Export public API
 __all__ = [
     "JiraClient",
-    "JiraAPIError",
 ]

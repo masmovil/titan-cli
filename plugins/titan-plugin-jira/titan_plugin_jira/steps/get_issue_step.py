@@ -3,7 +3,7 @@ Get JIRA issue details step
 """
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
-from ..clients.jira_client import JiraAPIError
+from ..exceptions import JiraAPIError
 from ..messages import msg
 
 

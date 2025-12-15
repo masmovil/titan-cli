@@ -3,7 +3,7 @@ Search JIRA issues using saved query from utils registry
 """
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
-from ..clients.jira_client import JiraAPIError
+from ..exceptions import JiraAPIError
 from ..messages import msg
 from ..utils import SAVED_QUERIES, IssueSorter
 
