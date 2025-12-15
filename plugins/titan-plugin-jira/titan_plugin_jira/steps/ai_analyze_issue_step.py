@@ -127,4 +127,4 @@ Format your response in clear markdown with proper headers and bullet points.
     )
 
 
-__all__ = ["ai_analyze_issue_requirements"]
+__all__ = ["ai_analyze_issue_requirements_step"]

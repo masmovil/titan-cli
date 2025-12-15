@@ -258,7 +258,7 @@ def test_workflow_step_3_get_issue_details(workflow_context, mock_jira_client):
 
 def test_workflow_step_4_ai_analysis(workflow_context, mock_ai_client):
     """Test step 4: AI analyzes the issue."""
-    from titan_plugin_jira.steps.ai_analyze_issue_step import ai_analyze_issue_requirements
+    from titan_plugin_jira.steps.ai_analyze_issue_step import ai_analyze_issue_requirements_step
 
     # Setup: Issue from step 3
     workflow_context.data["jira_issue"] = create_mock_ticket(
@@ -273,7 +273,7 @@ def test_workflow_step_4_ai_analysis(workflow_context, mock_ai_client):
     workflow_context.current_step = 4
 
     # Execute step with metadata merge
-    result = execute_step_with_metadata(ai_analyze_issue_requirements, workflow_context)
+    result = execute_step_with_metadata(ai_analyze_issue_requirements_step, workflow_context)
 
     # Assertions
     assert isinstance(result, Success)
@@ -291,7 +291,7 @@ def test_workflow_full_execution(workflow_context, mock_jira_client, mock_ai_cli
     from titan_plugin_jira.steps.search_saved_query_step import search_saved_query_step
     from titan_plugin_jira.steps.prompt_select_issue_step import prompt_select_issue_step
     from titan_plugin_jira.steps.get_issue_step import get_issue_step
-    from titan_plugin_jira.steps.ai_analyze_issue_step import ai_analyze_issue_requirements
+    from titan_plugin_jira.steps.ai_analyze_issue_step import ai_analyze_issue_requirements_step
 
     # Step 1: Search issues
     workflow_context.data["query_name"] = "open_issues"
@@ -311,7 +311,7 @@ def test_workflow_full_execution(workflow_context, mock_jira_client, mock_ai_cli
 
     # Step 4: AI analysis
     workflow_context.current_step = 4
-    result4 = execute_step_with_metadata(ai_analyze_issue_requirements, workflow_context)
+    result4 = execute_step_with_metadata(ai_analyze_issue_requirements_step, workflow_context)
     assert isinstance(result4, Success)
 
     # Verify final state
@@ -321,7 +321,7 @@ def test_workflow_full_execution(workflow_context, mock_jira_client, mock_ai_cli
 
 def test_workflow_ai_not_available(workflow_context):
     """Test workflow when AI is not configured."""
-    from titan_plugin_jira.steps.ai_analyze_issue_step import ai_analyze_issue_requirements
+    from titan_plugin_jira.steps.ai_analyze_issue_step import ai_analyze_issue_requirements_step
 
     # Setup: Disable AI
     workflow_context.ai.is_available.return_value = False
@@ -333,7 +333,7 @@ def test_workflow_ai_not_available(workflow_context):
     workflow_context.current_step = 4
 
     # Execute step
-    result = ai_analyze_issue_requirements(workflow_context)
+    result = ai_analyze_issue_requirements_step(workflow_context)
 
     # Should skip when AI not available
     assert isinstance(result, Skip)

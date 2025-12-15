@@ -124,12 +124,12 @@ class JiraPlugin(TitanPlugin):
         from .steps.search_saved_query_step import search_saved_query_step
         from .steps.prompt_select_issue_step import prompt_select_issue_step
         from .steps.get_issue_step import get_issue_step
-        from .steps.ai_analyze_issue_step import ai_analyze_issue_requirements
+        from .steps.ai_analyze_issue_step import ai_analyze_issue_requirements_step
         return {
             "search_saved_query": search_saved_query_step,
             "prompt_select_issue": prompt_select_issue_step,
             "get_issue": get_issue_step,
-            "ai_analyze_issue_requirements": ai_analyze_issue_requirements,
+            "ai_analyze_issue_requirements": ai_analyze_issue_requirements_step,
         }
 
     @property
