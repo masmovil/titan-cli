@@ -22,7 +22,6 @@ from .results import (
 )
 from .context import WorkflowContext
 from .builder import WorkflowContextBuilder
-from .workflow_executor import WorkflowExecutor
 from .ui_container import UIComponents
 from .views_container import UIViews
 
@@ -39,8 +38,6 @@ __all__ = [
     # Context & builder
     "WorkflowContext",
     "WorkflowContextBuilder",
-    # Executor
-    "WorkflowExecutor",
     # UI containers
     "UIComponents",
     "UIViews",

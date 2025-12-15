@@ -24,7 +24,7 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
     Requires:
         ctx.ai: An initialized AIClient
         ctx.git: An initialized GitClient
-        ctx.github: An initialized GitHubClient (optional)
+        ctx.github: An initialized GitHubClient
 
     Inputs (from ctx.data):
         pr_head_branch (str): The head branch for the PR
@@ -86,11 +86,12 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
 
         analysis = pr_agent.analyze_and_plan(
             head_branch=head_branch,
-            base_branch=base_branch
+            base_branch=base_branch,
+            auto_stage=True  # Enable auto-staging to detect uncommitted changes
         )
 
-        # Check if PR content was generated
-        if not analysis.pr_title or not analysis.pr_body:
+        # Check if anything was generated
+        if not analysis.commit_message and (not analysis.pr_title or not analysis.pr_body):
             return Skip(msg.GitHub.AI.NO_CHANGES_FOUND)
 
         # Show PR size info
@@ -102,61 +103,109 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
                 max_chars="varies by size"
             ))
 
-        # Show preview to user
-        if ctx.ui:
-            ctx.ui.spacer.small()
-            ctx.ui.text.subtitle(msg.GitHub.AI.AI_GENERATED_PR_TITLE)
-            ctx.ui.spacer.small()
+        # FIRST: Show and confirm commit message if there are uncommitted changes
+        # This happens BEFORE showing PR title/body so user sees commit message first
+        if analysis.commit_message:
+            if ctx.ui:
+                ctx.ui.spacer.small()
+                ctx.ui.text.subtitle(msg.GitHub.AI.AI_GENERATED_COMMIT_MESSAGE)
+                ctx.ui.spacer.small()
 
-            # Show title
-            ctx.ui.text.body(msg.GitHub.AI.TITLE_LABEL, style="bold")
-            ctx.ui.text.body(f"  {analysis.pr_title}", style="cyan")
+                # Show commit message
+                ctx.ui.text.body(msg.GitHub.AI.COMMIT_MESSAGE_LABEL, style="bold")
+                ctx.ui.panel.print(
+                    analysis.commit_message,
+                    title=None,
+                    panel_type="default"
+                )
 
-            # Warn if title is too long
-            if len(analysis.pr_title) > 72:
-                ctx.ui.text.warning(msg.GitHub.AI.TITLE_TOO_LONG_WARNING.format(
-                    length=len(analysis.pr_title)
-                ))
+                ctx.ui.spacer.small()
 
-            ctx.ui.spacer.small()
+                # Ask for confirmation
+                use_ai_commit = ctx.views.prompts.ask_confirm(
+                    msg.GitHub.AI.CONFIRM_USE_AI_COMMIT,
+                    default=True
+                )
 
-            # Show description
-            ctx.ui.text.body(msg.GitHub.AI.DESCRIPTION_LABEL, style="bold")
-            ctx.ui.panel.print(
-                Markdown(analysis.pr_body),
-                title=None,
-                panel_type="default"
-            )
+                if not use_ai_commit:
+                    ctx.ui.text.warning(msg.GitHub.AI.AI_COMMIT_REJECTED)
+                    # User rejected commit message - skip entire AI analysis
+                    return Skip("User rejected AI-generated commit message")
 
-            ctx.ui.spacer.small()
+        # Show PR preview to user (only if PR content was generated)
+        if analysis.pr_title and analysis.pr_body:
+            if ctx.ui:
+                ctx.ui.spacer.small()
+                ctx.ui.text.subtitle(msg.GitHub.AI.AI_GENERATED_PR_TITLE)
+                ctx.ui.spacer.small()
 
-            # Single confirmation for both title and description
-            use_ai_pr = ctx.views.prompts.ask_confirm(
-                msg.GitHub.AI.CONFIRM_USE_AI_PR,
-                default=True
-            )
+                # Show title
+                ctx.ui.text.body(msg.GitHub.AI.TITLE_LABEL, style="bold")
+                ctx.ui.text.body(f"  {analysis.pr_title}", style="cyan")
 
-            if not use_ai_pr:
-                ctx.ui.text.warning(msg.GitHub.AI.AI_SUGGESTION_REJECTED)
-                return Skip("User rejected AI-generated PR")
+                # Warn if title is too long
+                if len(analysis.pr_title) > 72:
+                    ctx.ui.text.warning(msg.GitHub.AI.TITLE_TOO_LONG_WARNING.format(
+                        length=len(analysis.pr_title)
+                    ))
+
+                ctx.ui.spacer.small()
+
+                # Show description
+                ctx.ui.text.body(msg.GitHub.AI.DESCRIPTION_LABEL, style="bold")
+                ctx.ui.panel.print(
+                    Markdown(analysis.pr_body),
+                    title=None,
+                    panel_type="default"
+                )
+
+                ctx.ui.spacer.small()
+
+                # Single confirmation for both title and description
+                use_ai_pr = ctx.views.prompts.ask_confirm(
+                    msg.GitHub.AI.CONFIRM_USE_AI_PR,
+                    default=True
+                )
+
+                if not use_ai_pr:
+                    ctx.ui.text.warning(msg.GitHub.AI.AI_SUGGESTION_REJECTED)
+                    return Skip("User rejected AI-generated PR")
 
         # Show success panel
         if ctx.ui:
-            ctx.ui.panel.print(
-                "AI PR description generated successfully",
-                panel_type="success"
-            )
-            ctx.ui.spacer.small()
+            success_msg = []
+            if analysis.commit_message:
+                success_msg.append("Commit message")
+            if analysis.pr_title and analysis.pr_body:
+                success_msg.append("PR description")
+
+            if success_msg:
+                ctx.ui.panel.print(
+                    f"AI generated {' and '.join(success_msg)} successfully",
+                    panel_type="success"
+                )
+                ctx.ui.spacer.small()
 
         # Success - save to context
+        metadata = {
+            "ai_generated": True
+        }
+
+        # Include PR content if generated
+        if analysis.pr_title:
+            metadata["pr_title"] = analysis.pr_title
+        if analysis.pr_body:
+            metadata["pr_body"] = analysis.pr_body
+        if analysis.pr_size:
+            metadata["pr_size"] = analysis.pr_size
+
+        # Include commit message if generated
+        if analysis.commit_message:
+            metadata["commit_message"] = analysis.commit_message
+
         return Success(
             msg.GitHub.AI.AI_GENERATED_PR_DESCRIPTION_SUCCESS,
-            metadata={
-                "pr_title": analysis.pr_title,
-                "pr_body": analysis.pr_body,
-                "pr_size": analysis.pr_size,
-                "ai_generated": True
-            }
+            metadata=metadata
         )
 
     except Exception as e:

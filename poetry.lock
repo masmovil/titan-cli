@@ -1898,6 +1898,24 @@ type = "directory"
 url = "plugins/titan-plugin-github"
 
 [[package]]
+name = "titan-plugin-jira"
+version = "1.0.0"
+description = "JIRA integration plugin for Titan CLI with AI-powered issue management"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = []
+develop = true
+
+[package.dependencies]
+pydantic = ">=2.0.0"
+requests = ">=2.31.0"
+
+[package.source]
+type = "directory"
+url = "plugins/titan-plugin-jira"
+
+[[package]]
 name = "tomli"
 version = "2.3.0"
 description = "A lil' TOML parser"
@@ -2084,4 +2102,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "80b3ec3b87600b92b7d721d6dcdfcc0ab63e9a3da15e522a0cb7fe2d0ede45f8"
+content-hash = "dcab56efaf25288651b49af1e06fb0f673b23dd74a26965fc89fa43ee7a4f618"

@@ -1,0 +1,34 @@
+name: "Analyze JIRA Open and Ready to Dev Issues"
+description: "List all JIRA issues in Open or Ready to Dev status and analyze selected issue with AI"
+
+params:
+  # Can override which saved query to use
+  query_name: "open_issues"
+
+steps:
+  - id: search_open_issues
+    name: "Search Open Issues"
+    plugin: jira
+    step: search_saved_query
+    params:
+      query_name: "{{ params.query_name }}"
+      max_results: 20
+
+  - id: prompt_select_issue
+    name: "Select Issue to Analyze"
+    plugin: jira
+    step: prompt_select_issue
+
+  - id: get_issue_details
+    name: "Get Full Issue Details"
+    plugin: jira
+    step: get_issue
+    requires:
+      - jira_issue_key
+
+  - id: ai_analyze_issue
+    name: "AI Analyze Issue"
+    plugin: jira
+    step: ai_analyze_issue_requirements
+    requires:
+      - jira_issue

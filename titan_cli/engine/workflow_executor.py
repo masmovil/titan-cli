@@ -139,21 +139,26 @@ class WorkflowExecutor:
             plugin_instance = self._plugin_registry.get_plugin(plugin_name)
             if not plugin_instance:
                 return Error(f"Plugin '{plugin_name}' not found or not initialized.", WorkflowExecutionError(f"Plugin '{plugin_name}' not found"))
-            
+
             step_functions = plugin_instance.get_steps()
             step_func = step_functions.get(step_func_name)
             if not step_func:
                 return Error(f"Step '{step_func_name}' not found in plugin '{plugin_name}'.", WorkflowExecutionError(f"Step '{step_func_name}' not found"))
 
-        # Execute the step function.
+        # Prepare parameters for the step function
+        resolved_params = self._resolve_parameters(step_params, ctx)
+
+        # Add resolved parameters to context data so step can access them via ctx.get()
+        ctx.data.update(resolved_params)
+
+        # Execute the step function
         try:
             if plugin_name == "core":
                 # Core steps receive (step: WorkflowStepModel, ctx: WorkflowContext)
                 return step_func(step_config, ctx)
             else:
-                # Plugin and project steps receive (ctx, **params)
-                resolved_params = self._resolve_parameters(step_params, ctx)
-                return step_func(ctx=ctx, **resolved_params)
+                # Plugin and project steps receive only ctx (params are in ctx.data)
+                return step_func(ctx)
         except Exception as e:
             error_source = f"plugin '{plugin_name}'" if plugin_name not in ("project", "core") else f"{plugin_name} step"
             return Error(f"Error executing step '{step_func_name}' from {error_source}: {e}", e)

@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "titan-plugin-jira"
+version = "1.0.0"
+description = "JIRA integration plugin for Titan CLI with AI-powered issue management"
+authors = ["Titan CLI Team"]
+packages = [{include = "titan_plugin_jira"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+requests = ">=2.31.0"
+pydantic = ">=2.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0.0"
+pytest-mock = ">=3.10.0"
+pytest-cov = ">=4.0.0"
+responses = ">=0.23.0"
+pyyaml = ">=6.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.plugins."titan.plugins"]
+jira = "titan_plugin_jira.plugin:JiraPlugin"

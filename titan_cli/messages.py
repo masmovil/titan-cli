@@ -303,6 +303,7 @@ class Messages:
     class Secrets:
         """Secrets management messages"""
         AI_SETUP_CANCELLED = "AI provider setup cancelled. No changes were made."
+        KEYRING_FALLBACK = "Failed to store secret in system keyring: {e}. Falling back to project scope."
 
     # ═══════════════════════════════════════════════════════════════
     # Plugin System

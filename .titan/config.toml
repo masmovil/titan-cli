@@ -20,3 +20,6 @@ default_branch = "master"
 default_reviewers = []
 pr_template_path = ""
 auto_assign_prs = false
+
+[plugins.jira]
+enabled = true
