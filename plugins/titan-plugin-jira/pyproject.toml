@@ -3,7 +3,6 @@ name = "titan-plugin-jira"
 version = "1.0.0"
 description = "JIRA integration plugin for Titan CLI with AI-powered issue management"
 authors = ["Titan CLI Team"]
-readme = "README.md"
 packages = [{include = "titan_plugin_jira"}]
 
 [tool.poetry.dependencies]
