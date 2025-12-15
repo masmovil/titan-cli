@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import MagicMock, Mock
 from titan_cli.engine import WorkflowContextBuilder, Success, Error, Skip
 from titan_cli.core.secrets import SecretManager
-from titan_plugin_jira.clients.jira_client import JiraTicket
+from titan_plugin_jira.models import JiraTicket
 
 
 def create_mock_ticket(**kwargs):

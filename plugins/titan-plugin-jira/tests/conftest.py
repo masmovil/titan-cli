@@ -34,7 +34,7 @@ def mock_workflow_context():
 @pytest.fixture
 def sample_jira_ticket():
     """Create a sample JIRA ticket for testing"""
-    from titan_plugin_jira.clients.jira_client import JiraTicket
+    from titan_plugin_jira.models import JiraTicket
 
     return JiraTicket(
         key="TEST-123",
@@ -57,7 +57,7 @@ def sample_jira_ticket():
 @pytest.fixture
 def sample_jira_project():
     """Create a sample JIRA project for testing"""
-    from titan_plugin_jira.clients.jira_client import JiraProject
+    from titan_plugin_jira.models import JiraProject
 
     return JiraProject(
         id="10000",
@@ -72,7 +72,7 @@ def sample_jira_project():
 @pytest.fixture
 def sample_issue_types():
     """Create sample JIRA issue types for testing"""
-    from titan_plugin_jira.clients.jira_client import JiraIssueType
+    from titan_plugin_jira.models import JiraIssueType
 
     return [
         JiraIssueType(
