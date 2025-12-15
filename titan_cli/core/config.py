@@ -2,11 +2,14 @@
 from pathlib import Path
 from typing import Optional, List
 import tomli
+import tomli_w
 from .models import TitanConfigModel
 from .plugins.plugin_registry import PluginRegistry
 from .workflows import WorkflowRegistry
 from .secrets import SecretManager
 from .errors import ConfigParseError
+from ..ui.components.typography import TextRenderer
+from ..messages import msg
 
 class TitanConfig:
     """Manages Titan configuration with global + project merge"""
@@ -268,25 +271,32 @@ class TitanConfig:
 
     def _save_global_config(self):
         """Saves the current state of the global config to disk."""
-        from ..ui.components.typography import TextRenderer
-        from ..messages import msg
+        
         text = TextRenderer()
 
         if not self._global_config_path.parent.exists():
             self._global_config_path.parent.mkdir(parents=True)
 
+        # Read existing global config from file to preserve non-core sections
+        existing_global_config = {}
+        if self._global_config_path.exists():
+          try:
+              with open(self._global_config_path, "rb") as f:
+                  import tomllib
+                  existing_global_config = tomllib.load(f)
+          except Exception:
+              pass  # If file doesn't exist or can't be read, start fresh
+          
         # We need to reconstruct the dictionary to write back to TOML
-        config_to_save = self.config.model_dump(exclude_none=True)
+        config_to_save = self.config.model_dump(exclude_none=True)  
 
-        # We only want to save the 'core' section to the global config
-        global_config_data = {}
+        # Update only the 'core' section, preserve everything else
         if 'core' in config_to_save:
-            global_config_data['core'] = config_to_save['core']
+            existing_global_config['core'] = config_to_save['core']
 
         try:
             with open(self._global_config_path, "wb") as f:
-                import tomli_w
-                tomli_w.dump(global_config_data, f)
+                tomli_w.dump(existing_global_config, f)
         except ImportError:
             # Handle case where tomli_w is not installed
             # For now, we can print a warning or log it.
