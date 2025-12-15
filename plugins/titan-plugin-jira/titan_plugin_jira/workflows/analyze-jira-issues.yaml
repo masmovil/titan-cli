@@ -11,7 +11,7 @@ steps:
     plugin: jira
     step: search_saved_query
     params:
-      query_name: "{{ params.query_name }}"
+      query_name: "open_issues"
       max_results: 20
 
   - id: prompt_select_issue
