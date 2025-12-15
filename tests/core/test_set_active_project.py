@@ -39,7 +39,8 @@ def test_set_active_project_preserves_ai_config(tmp_path: Path, monkeypatch, moc
                     "name": "Corporate Claude",
                     "provider": "anthropic",
                     "model": "claude-3-5-sonnet-20241022",
-                    "base_url": "https://api.company.com/llm"
+                    "base_url": "https://api.company.com/llm",
+                    "type": "corporate"
                 }
             }
         },
@@ -113,7 +114,15 @@ def test_set_active_project_preserves_all_global_sections(tmp_path: Path, monkey
             "active_project": "project-a"
         },
         "ai": {
-            "default": "claude"
+            "default": "claude",
+            "providers": {
+                "claude": {
+                    "name": "Claude Default",
+                    "provider": "anthropic",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "type": "individual"
+                }
+            }
         },
         "plugins": {
             "git": {"enabled": True}
