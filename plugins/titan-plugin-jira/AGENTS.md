@@ -26,7 +26,7 @@ titan_plugin_jira/
 │   └── jira_client.py         # JIRA REST API wrapper
 ├── models.py                  # Pydantic models for JIRA objects (Issue, Project, etc.)
 ├── exceptions.py              # Custom exceptions (JiraAPIError, JiraClientError, etc.)
-├── messages.py                # Centralized user-facing strings (100% coverage)
+├── messages.py                # Centralized user-facing strings
 ├── plugin.py                  # The JiraPlugin definition
 ├── steps/                     # Workflow steps
 │   ├── search_saved_query_step.py

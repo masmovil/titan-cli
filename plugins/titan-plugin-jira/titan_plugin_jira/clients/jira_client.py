@@ -47,7 +47,7 @@ class JiraClient:
             cache_ttl: Cache time-to-live in seconds (default: 300 = 5 minutes)
 
         Note:
-            JIRA Server uses Bearer token authentication.
+            JIRA Server/Next uses Basic Auth with Personal Access Token.
             For JIRA Cloud: API tokens can be created at https://id.atlassian.com/manage/api-tokens
         """
         self.base_url = base_url.rstrip("/")
@@ -66,10 +66,9 @@ class JiraClient:
             raise JiraAPIError("JIRA user email not provided")
 
         self.session = requests.Session()
-        # Use Bearer token for JIRA Server/Data Center PAT authentication
+        # Use Bearer Auth for JIRA Server/Next with Personal Access Token
         self.session.headers.update({
             "Accept": "application/json",
-            "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_token}"
         })
 
@@ -80,6 +79,12 @@ class JiraClient:
         """Make HTTP request to JIRA API"""
         # JIRA Server uses API v2
         url = f"{self.base_url}/rest/api/2/{endpoint.lstrip('/')}"
+
+        # Add Content-Type only for POST/PUT/PATCH (not GET/DELETE)
+        if method.upper() in ('POST', 'PUT', 'PATCH') and 'json' in kwargs:
+            headers = kwargs.get('headers', {})
+            headers['Content-Type'] = 'application/json'
+            kwargs['headers'] = headers
 
         try:
             response = self.session.request(method, url, timeout=self.timeout, **kwargs)
