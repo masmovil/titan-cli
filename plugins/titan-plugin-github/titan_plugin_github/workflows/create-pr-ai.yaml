@@ -19,17 +19,23 @@ steps:
     plugin: git
     step: get_current_branch
 
-  # Platform Agent analyzes everything upfront
-  - id: platform_agent_analyze
-    name: "Platform Agent Analysis"
-    plugin: github
-    step: ai_suggest_pr_description
+  # AI generates commit message for uncommitted changes
+  - id: ai_commit_message
+    name: "AI Commit Message"
+    plugin: git
+    step: ai_generate_commit_message
 
-  # If Platform Agent suggested a commit message, create commit
+  # Create commit with AI-generated message
   - id: create_commit
     name: "Create Commit"
     plugin: git
     step: create_commit
+
+  # AI generates PR title and description from branch commits
+  - id: ai_pr_description
+    name: "AI PR Description"
+    plugin: github
+    step: ai_suggest_pr_description
 
   - hook: before_push
 
