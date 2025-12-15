@@ -4,7 +4,8 @@ from unittest.mock import MagicMock
 from pathlib import Path
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
-from titan_cli.engine import WorkflowExecutor, WorkflowContextBuilder, Success
+from titan_cli.engine.workflow_executor import WorkflowExecutor
+from titan_cli.engine import WorkflowContextBuilder, Success
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.workflows.workflow_registry import WorkflowRegistry, ParsedWorkflow
 

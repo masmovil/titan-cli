@@ -40,3 +40,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 titan = "titan_cli.cli:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
