@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error, WorkflowResult
+from titan_cli.engine.utils import get_poetry_venv_env
 
 
 def ruff_linter(ctx: WorkflowContext) -> WorkflowResult:
@@ -13,14 +14,18 @@ def ruff_linter(ctx: WorkflowContext) -> WorkflowResult:
         return Error("UI context is not available for this step.")
 
     project_root = ctx.get("project_root", ".") # Fallback to current dir
+    venv_env = get_poetry_venv_env(cwd=project_root)
+    if not venv_env:
+        return Error("Could not determine poetry virtual environment for ruff.")
 
     # 1. Scan before fix
     ctx.ui.text.body("Running initial ruff scan...", style="dim")
     result_before = subprocess.run(
-        ["poetry", "run", "ruff", "check", ".", "--output-format=json"],
+        ["ruff", "check", ".", "--output-format=json"],
         capture_output=True,
         text=True,
-        cwd=project_root
+        cwd=project_root,
+        env=venv_env
     )
 
     try:
@@ -32,18 +37,20 @@ def ruff_linter(ctx: WorkflowContext) -> WorkflowResult:
     # 2. Auto-fix
     ctx.ui.text.body("Applying auto-fixes...", style="dim")
     subprocess.run(
-        ["poetry", "run", "ruff", "check", ".", "--fix", "--quiet"],
+        ["ruff", "check", ".", "--fix", "--quiet"],
         capture_output=True,
-        cwd=project_root
+        cwd=project_root,
+        env=venv_env
     )
 
     # 3. Scan after fix
     ctx.ui.text.body("Running final ruff scan...", style="dim")
     result_after = subprocess.run(
-        ["poetry", "run", "ruff", "check", ".", "--output-format=json"],
+        ["ruff", "check", ".", "--output-format=json"],
         capture_output=True,
         text=True,
-        cwd=project_root
+        cwd=project_root,
+        env=venv_env
     )
     try:
         errors_after = json.loads(result_after.stdout) if result_after.stdout else []
@@ -73,8 +80,13 @@ def ruff_linter(ctx: WorkflowContext) -> WorkflowResult:
         for error in errors_after:
             file_path = error.get("filename", "Unknown file")
             # Make path relative to project_root if possible for cleaner display
-            if project_root != "." and file_path.startswith(project_root):
-                file_path = str(Path(file_path).relative_to(project_root))
+            try:
+                project_path = Path(project_root).resolve()
+                file_path_obj = Path(file_path).resolve()
+                if file_path_obj.is_relative_to(project_path):
+                    file_path = str(file_path_obj.relative_to(project_path))
+            except (ValueError, OSError):
+                pass  # Keep original path if conversion fails
 
             location = error.get("location", {})
             row = str(location.get("row", "?"))
@@ -99,8 +111,13 @@ def ruff_linter(ctx: WorkflowContext) -> WorkflowResult:
         errors_text = f"{len(errors_after)} linting issues found:\n\n"
         for error in errors_after:
             file_path = error.get("filename", "Unknown file")
-            if project_root != "." and file_path.startswith(project_root):
-                file_path = str(Path(file_path).relative_to(project_root))
+            try:
+                project_path = Path(project_root).resolve()
+                file_path_obj = Path(file_path).resolve()
+                if file_path_obj.is_relative_to(project_path):
+                    file_path = str(file_path_obj.relative_to(project_path))
+            except (ValueError, OSError):
+                pass  # Keep original path if conversion fails
 
             location = error.get("location", {})
             errors_text += f"• {file_path}:{location.get('row', '?')}:{location.get('column', '?')} - [{error.get('code', '')}] {error.get('message', '')}\n"

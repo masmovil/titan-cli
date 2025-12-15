@@ -56,6 +56,10 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
         # No context to work with - skip silently
         return Skip(f"No data found in context key '{context_key}' - skipping AI assistance")
 
+    # Clear the context data immediately to prevent contamination of subsequent steps
+    if context_key in ctx.data:
+        del ctx.data[context_key]
+
     # Build the prompt
     try:
         if isinstance(context_data, str):

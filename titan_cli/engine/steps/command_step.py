@@ -1,10 +1,10 @@
 import os
-from pathlib import Path
 from subprocess import Popen, PIPE
 import re
 from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error, WorkflowResult
+from titan_cli.engine.utils import get_poetry_venv_env
 
 
 def resolve_parameters_in_string(text: str, ctx: WorkflowContext) -> str:
@@ -43,14 +43,11 @@ def execute_command_step(step: WorkflowStepModel, ctx: WorkflowContext) -> Workf
             if ctx.ui:
                 ctx.ui.text.body("Activating poetry virtual environment for step...", style="dim")
             
-            env_proc = Popen(["poetry", "env", "info", "-p"], stdout=PIPE, stderr=PIPE, text=True, cwd=cwd)
-            venv_path, err = env_proc.communicate()
-            
-            if env_proc.returncode == 0 and venv_path.strip():
-                bin_path = Path(venv_path.strip()) / "bin"
-                process_env["PATH"] = f"{bin_path}:{process_env['PATH']}"
+            venv_env = get_poetry_venv_env(cwd=cwd)
+            if venv_env:
+                process_env = venv_env
             else:
-                return Error(f"Could not determine poetry virtual environment. Error: {err}")
+                return Error("Could not determine poetry virtual environment.")
 
         # We capture stdout now instead of streaming to be able to parse it.
         process = Popen(command, shell=True, stdout=PIPE, stderr=PIPE, text=True, cwd=cwd, env=process_env)
