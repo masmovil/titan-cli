@@ -7,9 +7,7 @@ from .models import TitanConfigModel
 from .plugins.plugin_registry import PluginRegistry
 from .workflows import WorkflowRegistry
 from .secrets import SecretManager
-from .errors import ConfigParseError
-from ..ui.components.typography import TextRenderer
-from ..messages import msg
+from .errors import ConfigParseError, ConfigWriteError
 
 class TitanConfig:
     """Manages Titan configuration with global + project merge"""
@@ -110,7 +108,12 @@ class TitanConfig:
         )
 
         if had_invalid_active_project:
-            self._save_global_config()
+            try:
+                self._save_global_config()
+            except ConfigWriteError as e:
+                import warnings
+                warnings.warn(f"Failed to save global config after unsetting invalid project: {e}", RuntimeWarning)
+            
             # Store warning to show later
             import warnings
             warnings.warn(
@@ -271,40 +274,34 @@ class TitanConfig:
 
     def _save_global_config(self):
         """Saves the current state of the global config to disk."""
-        
-        text = TextRenderer()
-
         if not self._global_config_path.parent.exists():
-            self._global_config_path.parent.mkdir(parents=True)
+            try:
+                self._global_config_path.parent.mkdir(parents=True)
+            except OSError as e:
+                raise ConfigWriteError(file_path=str(self._global_config_path), original_exception=e)
 
-        # Read existing global config from file to preserve non-core sections
         existing_global_config = {}
         if self._global_config_path.exists():
-          try:
-              with open(self._global_config_path, "rb") as f:
-                  import tomllib
-                  existing_global_config = tomllib.load(f)
-          except Exception:
-              pass  # If file doesn't exist or can't be read, start fresh
-          
-        # We need to reconstruct the dictionary to write back to TOML
-        config_to_save = self.config.model_dump(exclude_none=True)  
+            try:
+                with open(self._global_config_path, "rb") as f:
+                    import tomllib
+                    existing_global_config = tomllib.load(f)
+            except Exception:
+                pass
 
-        # Update only the 'core' section, preserve everything else
+        config_to_save = self.config.model_dump(exclude_none=True)
+
         if 'core' in config_to_save:
             existing_global_config['core'] = config_to_save['core']
 
         try:
             with open(self._global_config_path, "wb") as f:
+                import tomli_w
                 tomli_w.dump(existing_global_config, f)
-        except ImportError:
-            # Handle case where tomli_w is not installed
-            # For now, we can print a warning or log it.
-            # In a real scenario, this should be a proper dependency.
-            text.warning(msg.Config.TOMLI_W_NOT_INSTALLED)
+        except ImportError as e:
+            raise ConfigWriteError(file_path=str(self._global_config_path), original_exception=e)
         except Exception as e:
-            # Handle other potential errors during file write
-            text.error(msg.Config.SAVE_GLOBAL_CONFIG_ERROR.format(e=e))
+            raise ConfigWriteError(file_path=str(self._global_config_path), original_exception=e)
 
     def is_plugin_enabled(self, plugin_name: str) -> bool:
         """Check if plugin is enabled"""

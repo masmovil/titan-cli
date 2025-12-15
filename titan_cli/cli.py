@@ -176,10 +176,13 @@ def _show_switch_project_menu(prompts: PromptsRenderer, text: TextRenderer, conf
     choice = prompts.ask_menu(menu, allow_quit=False)
 
     if choice and choice.action and choice.action != "cancel":
-        config.set_active_project(choice.action)
-        text.success(f"Active project set to: {choice.action}")
-        # Reload config to ensure new active project's settings are loaded
-        config.load()
+        try:
+            config.set_active_project(choice.action)
+            text.success(f"Active project set to: {choice.action}")
+            # Reload config to ensure new active project's settings are loaded
+            config.load()
+        except ConfigWriteError as e:
+            text.error(str(e))
 
 def _show_projects_submenu(prompts: PromptsRenderer, text: TextRenderer, config: TitanConfig):
     """Shows the submenu for project management."""
