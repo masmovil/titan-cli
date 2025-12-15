@@ -18,8 +18,8 @@ class SavedQueries:
 
     # ==================== PERSONAL QUERIES ====================
 
-    OPEN_ISSUES = 'project = {project} AND status IN ("Open", "Ready to Dev") ORDER BY updated DESC'
-    """All issues that are Open or Ready to Dev in the specified project (regardless of assignee), ordered by last updated"""
+    OPEN_ISSUES = 'project = {project} AND status IN ("Open", "Ready to Dev") ORDER BY priority DESC'
+    """All issues that are Open or Ready to Dev in the specified project (regardless of assignee), ordered by priority"""
 
     MY_OPEN_ISSUES = 'project = {project} AND assignee = currentUser() AND status IN ("Open", "Ready to Dev") ORDER BY updated DESC'
     """Issues assigned to you that are Open or Ready to Dev in the specified project"""
