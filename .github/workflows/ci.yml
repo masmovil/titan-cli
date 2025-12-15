@@ -40,4 +40,4 @@ jobs:
       - name: Run tests
         run: |
           poetry run pytest tests/ plugins/titan-plugin-git/tests/
-          cd plugins/titan-plugin-jira && poetry install --with dev && poetry run pytest
+          poetry run pytest plugins/titan-plugin-jira/tests/
