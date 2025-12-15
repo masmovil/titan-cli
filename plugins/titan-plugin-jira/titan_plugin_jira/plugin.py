@@ -50,7 +50,7 @@ class JiraPlugin(TitanPlugin):
         project_key = f"{project_name}_jira_api_token" if project_name else None
 
         api_token = (
-            secrets.get(project_key) if project_key else None or  # Project-specific keychain
+            (secrets.get(project_key) if project_key else None) or  # Project-specific keychain
             secrets.get("jira_api_token") or  # Standard: plugin_fieldname
             secrets.get("JIRA_API_TOKEN") or  # Environment variable
             secrets.get(f"{validated_config.email}_jira_api_token")  # Email-specific
