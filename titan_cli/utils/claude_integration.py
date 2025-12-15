@@ -16,18 +16,19 @@ class ClaudeCodeLauncher:
     def launch(prompt: Optional[str] = None, cwd: Optional[str] = None) -> int:
         """
         Launch Claude Code CLI in current terminal.
-        
+
         Args:
             prompt: Optional initial prompt to send to Claude
             cwd: Working directory (default: current)
-            
+
         Returns:
             Exit code from Claude Code
         """
         cmd = ["claude"]
 
         if prompt:
-            cmd.extend(["--prompt", prompt])
+            # Prompt is a positional argument, not a flag
+            cmd.append(prompt)
 
         # Execute in interactive mode, passing through terminal I/O
         result = subprocess.run(

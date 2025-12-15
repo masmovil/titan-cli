@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 import os
 
 from titan_cli.core.secrets import SecretManager
+from titan_cli.messages import msg
 
 # Fixture for a temporary project path
 @pytest.fixture
@@ -149,8 +150,6 @@ def test_delete_project_scope_secret_not_found(tmp_project_path):
     with open(secrets_file, "r") as f:
         content = f.read()
     assert "OTHER_KEY='other_value'" in content # Content should be unchanged
-
-from titan_cli.messages import msg
 
 # --- Test prompt_and_set method ---
 def test_prompt_and_set_success(mock_ui_components, mock_keyring):

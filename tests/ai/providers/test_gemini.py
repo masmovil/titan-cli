@@ -83,7 +83,7 @@ def test_gemini_custom_endpoint_usage(mock_gemini_client_lib, mock_gemini_provid
     provider = GeminiProvider(**config)
 
     request = AIRequest(messages=[AIMessage(role="user", content="Hello")])
-    response = provider.generate(request)
+    provider.generate(request)
 
     assert provider.use_custom_endpoint is True
     mock_requests_post.assert_called_once()
@@ -98,12 +98,12 @@ def test_gemini_official_endpoint_usage(mock_gemini_client_lib, mock_gemini_prov
     provider = GeminiProvider(**mock_gemini_provider_config)
 
     assert provider.use_custom_endpoint is False
-    
+
     # Ensure genai.configure IS called when official endpoint is used
     mock_gemini_client_lib["configure"].assert_called_once_with(api_key="test_api_key")
 
     request = AIRequest(messages=[AIMessage(role="user", content="Hello")])
-    response = provider.generate(request) 
+    provider.generate(request)
 
     mock_gemini_client_lib["GenerativeModel_instance"].generate_content.assert_called_once()
 

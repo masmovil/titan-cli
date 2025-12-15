@@ -47,11 +47,11 @@ def mock_anthropic_provider_config():
 def test_anthropic_base_url_normalization(mock_anthropic_client_lib, mock_anthropic_provider_config):
     """Test that base_url automatically removes trailing slashes."""
     config_with_slash = {**mock_anthropic_provider_config, "base_url": "https://custom.anthropic.com/"}
-    provider_with_slash = AnthropicProvider(**config_with_slash)
+    AnthropicProvider(**config_with_slash)
     mock_anthropic_client_lib.assert_called_with(api_key="test_api_key", base_url="https://custom.anthropic.com")
 
     config_no_slash = {**mock_anthropic_provider_config, "base_url": "https://custom.anthropic.com"}
-    provider_no_slash = AnthropicProvider(**config_no_slash)
+    AnthropicProvider(**config_no_slash)
     mock_anthropic_client_lib.assert_called_with(api_key="test_api_key", base_url="https://custom.anthropic.com")
 
 
@@ -59,13 +59,13 @@ def test_anthropic_custom_endpoint_usage(mock_anthropic_client_lib, mock_anthrop
     """Test that the Anthropic client uses a custom endpoint when provided."""
     custom_base_url = "https://my.private.anthropic.org"
     config = {**mock_anthropic_provider_config, "base_url": custom_base_url}
-    provider = AnthropicProvider(**config)
+    AnthropicProvider(**config)
     mock_anthropic_client_lib.assert_called_once_with(api_key="test_api_key", base_url=custom_base_url)
 
 
 def test_anthropic_official_endpoint_usage(mock_anthropic_client_lib, mock_anthropic_provider_config):
     """Test that the Anthropic client uses the official endpoint by default (no custom base_url)."""
-    provider = AnthropicProvider(**mock_anthropic_provider_config)
+    AnthropicProvider(**mock_anthropic_provider_config)
     # When no base_url is provided, it should only pass api_key
     mock_anthropic_client_lib.assert_called_once_with(api_key="test_api_key")
 

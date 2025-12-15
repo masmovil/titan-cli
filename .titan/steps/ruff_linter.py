@@ -61,36 +61,56 @@ def ruff_linter(ctx: WorkflowContext) -> WorkflowResult:
         return Success("Linting passed")
 
     # 5. Show remaining errors
-    ctx.ui.text.warning(f"{len(errors_after)} issue(s) require manual fix:")
-    ctx.ui.spacer.small()
+    if errors_after:
+        ctx.ui.text.warning(f"{len(errors_after)} issue(s) require manual fix:")
+        ctx.ui.spacer.small()
 
-    # Prepare data for the table
-    table_headers = ["File", "Line", "Col", "Code", "Message"]
-    table_rows = []
+        # Prepare data for the table
+        table_headers = ["File", "Line", "Col", "Code", "Message"]
+        table_rows = []
 
-    for error in errors_after:
-        file_path = error.get("filename", "Unknown file")
-        # Make path relative to project_root if possible for cleaner display
-        if project_root != "." and file_path.startswith(project_root):
-            file_path = str(Path(file_path).relative_to(project_root))
-        
-        location = error.get("location", {})
-        row = str(location.get("row", "?"))
-        col = str(location.get("column", "?"))
-        code = error.get("code", "")
-        message = error.get("message", "")
+        for error in errors_after:
+            file_path = error.get("filename", "Unknown file")
+            # Make path relative to project_root if possible for cleaner display
+            if project_root != "." and file_path.startswith(project_root):
+                file_path = str(Path(file_path).relative_to(project_root))
 
-        table_rows.append([file_path, row, col, code, message])
+            location = error.get("location", {})
+            row = str(location.get("row", "?"))
+            col = str(location.get("column", "?"))
+            code = error.get("code", "")
+            message = error.get("message", "")
 
-    if ctx.ui.table: # Ensure table renderer is available
-        ctx.ui.table.print_table(
-            headers=table_headers,
-            rows=table_rows,
-            show_lines=True,
-            title="Remaining Ruff Issues"
+            table_rows.append([file_path, row, col, code, message])
+
+        if ctx.ui.table: # Ensure table renderer is available
+            ctx.ui.table.print_table(
+                headers=table_headers,
+                rows=table_rows,
+                show_lines=True,
+                title="Remaining Ruff Issues"
+            )
+        else: # Fallback if table renderer is somehow not available
+            for row_data in table_rows:
+                ctx.ui.text.error(f"{row_data[0]}:{row_data[1]}:{row_data[2]} - [{row_data[3]}] {row_data[4]}")
+
+        # Build formatted error list for AI assistant
+        errors_text = f"{len(errors_after)} linting issues found:\n\n"
+        for error in errors_after:
+            file_path = error.get("filename", "Unknown file")
+            if project_root != "." and file_path.startswith(project_root):
+                file_path = str(Path(file_path).relative_to(project_root))
+
+            location = error.get("location", {})
+            errors_text += f"• {file_path}:{location.get('row', '?')}:{location.get('column', '?')} - [{error.get('code', '')}] {error.get('message', '')}\n"
+            if error.get("url"):
+                errors_text += f"  Docs: {error['url']}\n"
+
+        # Return Success with errors in metadata for next step to consume
+        return Success(
+            message=f"Linting complete: {fixed_count} auto-fixed, {len(errors_after)} need manual attention",
+            metadata={"step_output": errors_text}
         )
-    else: # Fallback if table renderer is somehow not available
-        for row_data in table_rows:
-            ctx.ui.text.error(f"{row_data[0]}:{row_data[1]}:{row_data[2]} - [{row_data[3]}] {row_data[4]}")
 
-    return Error(f"{len(errors_after)} linting issues remain")
+    # All issues resolved
+    return Success("Linting passed - all issues resolved!")

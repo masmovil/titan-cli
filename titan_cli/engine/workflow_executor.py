@@ -9,6 +9,7 @@ from titan_cli.core.workflows.workflow_registry import WorkflowRegistry
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.steps.command_step import execute_command_step as execute_external_command_step
+from titan_cli.engine.steps.ai_assistant_step import execute_ai_assistant_step
 
 # ... (the rest of the imports)
 
@@ -17,6 +18,11 @@ class WorkflowExecutor:
     Executes a ParsedWorkflow by iterating through its steps,
     resolving plugins, and performing parameter substitution.
     """
+
+    # Core steps available to all workflows
+    CORE_STEPS = {
+        "ai_code_assistant": execute_ai_assistant_step,
+    }
 
     def __init__(self, plugin_registry: PluginRegistry, workflow_registry: WorkflowRegistry):
         self._plugin_registry = plugin_registry
@@ -122,6 +128,12 @@ class WorkflowExecutor:
             step_func = self._workflow_registry.get_project_step(step_func_name)
             if not step_func:
                 return Error(f"Project step '{step_func_name}' not found in '.titan/steps/'.", WorkflowExecutionError(f"Project step '{step_func_name}' not found"))
+        elif plugin_name == "core":
+            # Handle virtual 'core' plugin for built-in core steps
+            step_func = self.CORE_STEPS.get(step_func_name)
+            if not step_func:
+                available = ", ".join(self.CORE_STEPS.keys())
+                return Error(f"Core step '{step_func_name}' not found. Available: {available}", WorkflowExecutionError(f"Core step '{step_func_name}' not found"))
         else:
             # Handle regular plugins
             plugin_instance = self._plugin_registry.get_plugin(plugin_name)
@@ -133,14 +145,17 @@ class WorkflowExecutor:
             if not step_func:
                 return Error(f"Step '{step_func_name}' not found in plugin '{plugin_name}'.", WorkflowExecutionError(f"Step '{step_func_name}' not found"))
 
-        # Prepare parameters for the step function
-        resolved_params = self._resolve_parameters(step_params, ctx)
-
         # Execute the step function.
         try:
-            return step_func(ctx=ctx, **resolved_params)
+            if plugin_name == "core":
+                # Core steps receive (step: WorkflowStepModel, ctx: WorkflowContext)
+                return step_func(step_config, ctx)
+            else:
+                # Plugin and project steps receive (ctx, **params)
+                resolved_params = self._resolve_parameters(step_params, ctx)
+                return step_func(ctx=ctx, **resolved_params)
         except Exception as e:
-            error_source = f"plugin '{plugin_name}'" if plugin_name != "project" else "project step"
+            error_source = f"plugin '{plugin_name}'" if plugin_name not in ("project", "core") else f"{plugin_name} step"
             return Error(f"Error executing step '{step_func_name}' from {error_source}: {e}", e)
 
 
