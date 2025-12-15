@@ -410,8 +410,8 @@ COMMIT_MESSAGE: <conventional commit message>"""
 ```
 
 ## CRITICAL Instructions
-1. **Title**: Follow conventional commits (type(scope): description), max 72 chars
-   - Examples: "feat(auth): add OAuth2 integration", "fix(api): resolve race condition in cache"
+1. **Title**: Follow conventional commits (type(scope): description), be clear and descriptive
+   - Examples: "feat(auth): add OAuth2 integration with Google provider", "fix(api): resolve race condition in cache invalidation"
 
 2. **Description**: MUST follow the template structure above but keep it under {max_chars} characters total
    - Fill in the template sections (Summary, Type of Change, Changes Made, etc.)
@@ -446,8 +446,8 @@ DESCRIPTION:
 
 ## Instructions (No template available - use standard format)
 Generate a Pull Request appropriate for a {pr_size} PR:
-1. **Title**: Follow conventional commits (type(scope): description), max 72 chars
-   - Examples: "feat(auth): add OAuth2 integration", "fix(api): resolve race condition in cache"
+1. **Title**: Follow conventional commits (type(scope): description), be clear and descriptive
+   - Examples: "feat(auth): add OAuth2 integration with Google provider", "fix(api): resolve race condition in cache invalidation"
 2. **Description**: CRITICAL - Maximum {max_chars} characters. Detail level based on PR size:
    - Small ({pr_size}): Brief summary (1-2 sentences) + key changes (2-3 bullets)
    - Medium: What changed (2-3 sentences) + why (1-2 sentences) + key changes (4-5 bullets)
@@ -481,11 +481,7 @@ DESCRIPTION:
         # Clean up title
         title = title.strip('"').strip("'")
 
-        # Truncate title if too long
-        if len(title) > 72:
-            title = title[:69] + "..."
-
-        # Truncate description if needed
+        # Truncate description if needed (but not title)
         if len(description) > max_chars:
             description = description[:max_chars - 3] + "..."
 
