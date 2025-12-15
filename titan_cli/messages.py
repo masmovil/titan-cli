@@ -51,6 +51,7 @@ class Messages:
         INIT_SUCCESS = "Project '{project_name}' initialized successfully at: {config_path}"
         INIT_CANCELLED = "Project initialization cancelled."
         SECRET_SAVED = "{key} saved securely ({scope} scope)"
+        ACTIVE_PROJECT_SET = "Active project set to: {project_name}"
 
     # ═══════════════════════════════════════════════════════════════
     # UI Components

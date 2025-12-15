@@ -178,7 +178,7 @@ def _show_switch_project_menu(prompts: PromptsRenderer, text: TextRenderer, conf
     if choice and choice.action and choice.action != "cancel":
         try:
             config.set_active_project(choice.action)
-            text.success(f"Active project set to: {choice.action}")
+            text.success(msg.Projects.ACTIVE_PROJECT_SET.format(project_name=choice.action))
             # Reload config to ensure new active project's settings are loaded
             config.load()
         except ConfigWriteError as e:
