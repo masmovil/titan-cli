@@ -54,7 +54,7 @@ class GitHubPlugin(TitanPlugin):
         
         # If still missing, raise an error
         if not repo_owner or not repo_name:
-            raise GitHubConfigurationError(msg.GitHub.CONFIG_REPO_MISSING)
+            raise GitHubError("GitHub repository owner and name must be configured or auto-detected from git remote.")
 
         # Initialize client with validated configuration and git_client
         self._client = GitHubClient(
