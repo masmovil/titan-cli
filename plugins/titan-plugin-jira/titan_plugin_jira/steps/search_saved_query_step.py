@@ -53,8 +53,8 @@ def search_saved_query_step(ctx: WorkflowContext) -> WorkflowResult:
             project: "ECAPP"
         ```
     """
-    if ctx.views:
-        ctx.views.step_header("search_saved_query", ctx.current_step, ctx.total_steps)
+    # if ctx.views:
+    #     ctx.views.step_header("search_saved_query", ctx.current_step, ctx.total_steps)
 
     if not ctx.jira:
         if ctx.ui:

@@ -23,8 +23,8 @@ def get_issue_step(ctx: WorkflowContext) -> WorkflowResult:
         Error: Failed to get issue
     """
     # Show step header
-    if ctx.views:
-        ctx.views.step_header("get_issue", ctx.current_step, ctx.total_steps)
+    # if ctx.views:
+    #     ctx.views.step_header("get_issue", ctx.current_step, ctx.total_steps)
 
     # Check if JIRA client is available
     if not ctx.jira:
