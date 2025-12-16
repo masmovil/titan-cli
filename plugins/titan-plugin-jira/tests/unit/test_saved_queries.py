@@ -75,7 +75,7 @@ class TestSavedQueries:
 
         assert 'status IN ("Open", "Ready to Dev")' in jql
         assert "{project}" in jql
-        assert "ORDER BY priority DESC" in jql
+        assert "ORDER BY updated DESC" in jql
         assert "assignee" not in jql  # Should not filter by assignee
 
     def test_my_open_issues_jql(self):
