@@ -107,7 +107,7 @@ Return ONLY the single-line commit message, absolutely nothing else."""
         from titan_cli.ai.models import AIMessage
 
         messages = [AIMessage(role="user", content=prompt)]
-        response = ctx.ai.generate(messages, max_tokens=150, temperature=0.7)
+        response = ctx.ai.generate(messages, max_tokens=300, temperature=0.7)
 
         commit_message = response.content.strip()
 
