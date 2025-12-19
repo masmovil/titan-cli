@@ -27,8 +27,8 @@ def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
         ai_analysis (str): AI-generated analysis
         analysis_sections (dict): Structured analysis breakdown
     """
-    if ctx.views:
-        ctx.views.step_header("ai_analyze_issue", ctx.current_step, ctx.total_steps)
+    # if ctx.views:
+    #     ctx.views.step_header("ai_analyze_issue", ctx.current_step, ctx.total_steps)
 
     # Check if AI is available
     if not ctx.ai or not ctx.ai.is_available():

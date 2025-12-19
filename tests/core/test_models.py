@@ -37,7 +37,7 @@ def test_aiproviderconfig_required_fields():
     assert config.provider == "gemini"
     assert config.model == "gemini-pro"
     assert config.base_url is None
-    assert config.temperature == 0.7  # Default value
+    assert config.temperature == 0.7
     assert config.max_tokens == 4096  # Default value
 
 
