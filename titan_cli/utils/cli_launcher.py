@@ -5,7 +5,26 @@ import shutil
 from typing import Optional
 
 class CLILauncher:
-    """Generic CLI launcher."""
+    """
+    Generic launcher for external CLI tools.
+
+    This class provides a standardized way to check for the availability of a CLI tool
+    and launch it, optionally passing an initial prompt. It abstracts away the
+    specific command-line arguments needed for interactive prompts for different tools.
+
+    To integrate a new CLI tool:
+    1. Ensure the tool is discoverable in the system's PATH.
+    2. Add its configuration to `titan_cli/utils/cli_configs.py` within the `CLI_REGISTRY`.
+       This configuration should include its `display_name`, `install_instructions` (optional),
+       and `prompt_flag` (e.g., "-i" for Gemini, or None if it takes a positional argument).
+
+    Attributes:
+        cli_name (str): The actual command to execute (e.g., "claude", "gemini").
+        install_instructions (Optional[str]): A message guiding the user on how to install the CLI.
+        prompt_flag (Optional[str]): The command-line flag used by the CLI to accept an
+                                       initial prompt while remaining interactive (e.g., "-i").
+                                       If the CLI accepts a positional argument for the prompt, set to None.
+    """
 
     def __init__(self, cli_name: str, install_instructions: Optional[str] = None, prompt_flag: Optional[str] = None):
         self.cli_name = cli_name
