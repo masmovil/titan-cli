@@ -104,40 +104,42 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
     else:
         preferred_clis = [cli_preference]
     
-    available_clis = []
-    for cli in preferred_clis:
-        if cli in CLI_REGISTRY and CLILauncher(cli).is_available():
-            available_clis.append(cli)
+    available_launchers = {}
+    for cli_name in preferred_clis:
+        config = CLI_REGISTRY.get(cli_name)
+        if config:
+            launcher = CLILauncher(
+                cli_name=cli_name,
+                install_instructions=config.get("install_instructions"),
+                prompt_flag=config.get("prompt_flag")
+            )
+            if launcher.is_available():
+                available_launchers[cli_name] = launcher
 
-    if not available_clis:
+    if not available_launchers:
         ctx.ui.text.warning(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
         return Skip(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
     
-    if len(available_clis) == 1:
-        cli_to_launch = available_clis[0]
+    if len(available_launchers) == 1:
+        cli_to_launch = list(available_launchers.keys())[0]
     else:
         menu = DynamicMenu(title=msg.AIAssistant.SELECT_ASSISTANT_CLI)
         cat = menu.add_category("Available CLIs")
-        for cli in available_clis:
-            display_name = CLI_REGISTRY[cli].get("display_name", cli)
-            cat.add_item(display_name, f"Launch {display_name}", cli)
+        for cli_name, launcher_instance in available_launchers.items():
+            display_name = CLI_REGISTRY[cli_name].get("display_name", cli_name)
+            cat.add_item(display_name, f"Launch {display_name}", cli_name)
         
         choice = ctx.views.prompts.ask_menu(menu.to_menu())
         if not choice:
             return Skip(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
         cli_to_launch = choice.action
 
-    # Get launcher from registry
-    config = CLI_REGISTRY.get(cli_to_launch)
-    if not config:
+    # Get the selected launcher
+    launcher = available_launchers.get(cli_to_launch)
+    if not launcher:
         return Error(f"Unknown CLI to launch: {cli_to_launch}")
 
-    launcher = CLILauncher(
-        cli_name=cli_to_launch,
-        install_instructions=config.get("install_instructions"),
-        prompt_flag=config.get("prompt_flag")
-    )
-    cli_name = config.get("display_name", cli_to_launch)
+    cli_name = CLI_REGISTRY[cli_to_launch].get("display_name", cli_to_launch)
 
     # Launch the CLI
     ctx.ui.spacer.small()
