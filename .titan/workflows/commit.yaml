@@ -1,0 +1,13 @@
+name: "Git Commit"
+description: "Create a git commit with AI-generated message"
+steps:
+  - id: gen-msg
+    name: "Generate Commit Message"
+    plugin: git
+    step: ai_generate_commit_message
+  - id: commit
+    name: "Create Commit"
+    plugin: git
+    step: create_commit
+    params:
+      message: "${commit_message}"

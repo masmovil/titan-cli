@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Set
 import yaml
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class WorkflowInfo:
@@ -14,6 +14,37 @@ class WorkflowInfo:
     source: str  # "project", "user", "system", "plugin:github"
     path: Path
     category: Optional[str] = None
+    required_plugins: Set[str] = field(default_factory=set)
+
+def _parse_workflow_info(file: Path, source_name: str) -> WorkflowInfo:
+    """
+    Helper to extract metadata and plugin dependencies from a workflow file.
+    Does not resolve 'extends' or nested 'workflow' calls to keep discovery fast.
+    """
+    try:
+        with open(file, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f) or {}
+    except Exception:
+        config = {}
+
+    required_plugins: Set[str] = set()
+    
+    # Check direct plugin dependencies in steps
+    steps = config.get("steps", [])
+    if isinstance(steps, list):
+        for step in steps:
+            if isinstance(step, dict) and "plugin" in step and step["plugin"] not in ["core", "project"]:
+                required_plugins.add(step["plugin"])
+
+    return WorkflowInfo(
+        name=file.stem,
+        description=config.get("description", "No description available."),
+        source=source_name,
+        path=file,
+        category=config.get("category"),
+        required_plugins=required_plugins
+    )
+
 
 class WorkflowSource(ABC):
     """
@@ -21,6 +52,8 @@ class WorkflowSource(ABC):
     This pattern allows discovering workflows from the project, user's home,
     system-wide, or from plugins, in a uniform way.
     """
+    def __init__(self):
+        pass
 
     @property
     @abstractmethod
@@ -50,6 +83,7 @@ class ProjectWorkflowSource(WorkflowSource):
     """
 
     def __init__(self, path: Path):
+        super().__init__()
         self._path = path.resolve()
 
     @property
@@ -91,19 +125,7 @@ class ProjectWorkflowSource(WorkflowSource):
 
     def _to_workflow_info(self, file: Path) -> WorkflowInfo:
         """Helper to extract metadata from a workflow file."""
-        try:
-            with open(file, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f) or {}
-        except Exception:
-            config = {}
-
-        return WorkflowInfo(
-            name=file.stem,
-            description=config.get("description", "No description available."),
-            source=self.name,
-            path=file,
-            category=config.get("category")
-        )
+        return _parse_workflow_info(file, self.name)
 
 class UserWorkflowSource(WorkflowSource):
     """
@@ -112,6 +134,7 @@ class UserWorkflowSource(WorkflowSource):
     """
 
     def __init__(self, path: Path):
+        super().__init__()
         self._path = path.expanduser().resolve()
 
     @property
@@ -147,19 +170,7 @@ class UserWorkflowSource(WorkflowSource):
             return False
 
     def _to_workflow_info(self, file: Path) -> WorkflowInfo:
-        try:
-            with open(file, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f) or {}
-        except Exception:
-            config = {}
-
-        return WorkflowInfo(
-            name=file.stem,
-            description=config.get("description", "No description available."),
-            source=self.name,
-            path=file,
-            category=config.get("category")
-        )
+        return _parse_workflow_info(file, self.name)
 
 class SystemWorkflowSource(WorkflowSource):
     """
@@ -168,6 +179,7 @@ class SystemWorkflowSource(WorkflowSource):
     """
 
     def __init__(self, path: Path):
+        super().__init__()
         self._path = path.resolve()
 
     @property
@@ -203,19 +215,7 @@ class SystemWorkflowSource(WorkflowSource):
             return False
 
     def _to_workflow_info(self, file: Path) -> WorkflowInfo:
-        try:
-            with open(file, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f) or {}
-        except Exception:
-            config = {}
-
-        return WorkflowInfo(
-            name=file.stem,
-            description=config.get("description", "No description available."),
-            source=self.name,
-            path=file,
-            category=config.get("category")
-        )
+        return _parse_workflow_info(file, self.name)
 
 class PluginWorkflowSource(WorkflowSource):
     """
@@ -223,7 +223,8 @@ class PluginWorkflowSource(WorkflowSource):
     Discovers workflows via the `workflows_path` property of `TitanPlugin` instances.
     """
 
-    def __init__(self, plugin_registry: Any): # Use Any to avoid circular import with core.config.TitanConfig
+    def __init__(self, plugin_registry: Any): # Use Any to avoid circular import
+        super().__init__()
         self._plugin_registry = plugin_registry
 
     @property
@@ -279,16 +280,7 @@ class PluginWorkflowSource(WorkflowSource):
         return "plugins" in path.parts # Heuristic, might need refinement
 
     def _to_workflow_info(self, file: Path, plugin_name: str) -> WorkflowInfo:
-        try:
-            with open(file, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f) or {}
-        except Exception:
-            config = {}
-
-        return WorkflowInfo(
-            name=file.stem,
-            description=config.get("description", "No description available."),
-            source=f"plugin:{plugin_name}",
-            path=file,
-            category=config.get("category")
-        )
+        info = _parse_workflow_info(file, f"plugin:{plugin_name}")
+        # For plugin workflows, the name is qualified, e.g., "github/create-pr"
+        # but the file.stem is just "create-pr". We'll handle this in the registry.
+        return info
