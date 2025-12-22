@@ -21,7 +21,7 @@ from titan_cli.commands.init import init_app
 from titan_cli.commands.projects import projects_app, list_projects
 from titan_cli.commands.ai import ai_app
 from titan_cli.commands.plugins import plugins_app
-from titan_cli.commands.cli import cli_app, launch_claude, launch_gemini
+from titan_cli.commands.cli import cli_app
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.errors import ConfigWriteError
@@ -182,23 +182,39 @@ def _show_switch_project_menu(prompts: PromptsRenderer, text: TextRenderer, conf
         except ConfigWriteError as e:
             text.error(str(e))
 
+from titan_cli.commands.cli import cli_app
+from titan_cli.core.config import TitanConfig
+from titan_cli.core.secrets import SecretManager
+#...
 def _show_cli_submenu(prompts: PromptsRenderer, text: TextRenderer):
     """Shows the submenu for launching external CLIs."""
+    from titan_cli.utils.cli_configs import CLI_REGISTRY
+    from titan_cli.utils.cli_launcher import CLILauncher
+    from titan_cli.commands.cli import launch_cli_tool
+
     while True:
         submenu_builder = DynamicMenu(title="Launch External CLI", emoji="🚀")
         action_category = submenu_builder.add_category("Available CLIs")
-        action_category.add_item("Claude CLI", "Launch Claude Code CLI", "claude")
-        action_category.add_item("Gemini CLI", "Launch Gemini CLI", "gemini")
+        
+        available_clis = []
+        for cli_name, config in CLI_REGISTRY.items():
+            if CLILauncher(cli_name).is_available():
+                display_name = config.get("display_name", cli_name)
+                action_category.add_item(display_name, f"Launch {display_name}", cli_name)
+                available_clis.append(cli_name)
+
+        if not available_clis:
+            text.warning("No configured CLI tools are available on your system.")
+            text.body("Please install Claude CLI or Gemini CLI and try again.", style="dim")
+            return
+
         submenu_builder.add_category("Back").add_item("Return to Main Menu", "", "back")
 
         choice_item = prompts.ask_menu(submenu_builder.to_menu())
         if not choice_item or choice_item.action == "back":
             break
 
-        if choice_item.action == "claude":
-            launch_claude(prompt=None)
-        elif choice_item.action == "gemini":
-            launch_gemini(prompt=None)
+        launch_cli_tool(choice_item.action, prompt=None)
 
         prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
 
@@ -1010,3 +1026,4 @@ def version():
     """Show Titan CLI version."""
     cli_version = get_version()
     typer.echo(msg.CLI.VERSION.format(version=cli_version))
+    
