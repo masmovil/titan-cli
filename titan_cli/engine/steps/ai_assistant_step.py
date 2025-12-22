@@ -14,6 +14,7 @@ from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error, Skip, WorkflowResult
 from titan_cli.utils.cli_launcher import CLILauncher
+from titan_cli.utils.cli_configs import CLI_REGISTRY
 from titan_cli.messages import msg # Added msg import
 from titan_cli.ui.views.menu_components.dynamic_menu import DynamicMenu
 
@@ -94,13 +95,13 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
 
     preferred_clis = []
     if cli_preference == "auto":
-        preferred_clis = ["claude", "gemini"]
+        preferred_clis = list(CLI_REGISTRY.keys())
     else:
         preferred_clis = [cli_preference]
     
     available_clis = []
     for cli in preferred_clis:
-        if CLILauncher(cli).is_available():
+        if cli in CLI_REGISTRY and CLILauncher(cli).is_available():
             available_clis.append(cli)
 
     if not available_clis:
@@ -113,24 +114,25 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
         menu = DynamicMenu(title=msg.AIAssistant.SELECT_ASSISTANT_CLI)
         cat = menu.add_category("Available CLIs")
         for cli in available_clis:
-            cat.add_item(f"{cli.capitalize()} CLI", f"Launch {cli.capitalize()} CLI", cli)
+            display_name = CLI_REGISTRY[cli].get("display_name", cli)
+            cat.add_item(display_name, f"Launch {display_name}", cli)
         
         choice = ctx.views.prompts.ask_menu(menu.to_menu())
         if not choice:
             return Skip(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
         cli_to_launch = choice.action
 
-    # Get launcher and cli_name
-    if cli_to_launch == "claude":
-        launcher = CLILauncher("claude", "Install: npm install -g @anthropic/claude-code", prompt_flag=None)
-        cli_name = "Claude CLI"
-    elif cli_to_launch == "gemini":
-        launcher = CLILauncher("gemini", prompt_flag="-i")
-        cli_name = "Gemini CLI"
-    else:
-        # Should not happen
+    # Get launcher from registry
+    config = CLI_REGISTRY.get(cli_to_launch)
+    if not config:
         return Error(f"Unknown CLI to launch: {cli_to_launch}")
 
+    launcher = CLILauncher(
+        cli_name=cli_to_launch,
+        install_instructions=config.get("install_instructions"),
+        prompt_flag=config.get("prompt_flag")
+    )
+    cli_name = config.get("display_name", cli_to_launch)
 
     # Launch the CLI
     ctx.ui.spacer.small()
