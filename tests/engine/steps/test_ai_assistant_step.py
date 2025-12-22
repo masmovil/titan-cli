@@ -64,25 +64,24 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         self.mock_step = MagicMock()
         self.mock_step.params = {'context_key': 'test_failures'}
 
-    @patch('titan_cli.utils.cli_launcher.CLILauncher.is_available', return_value=False)
-    def test_no_cli_available(self, mock_is_available):
+    @patch('shutil.which', return_value=None)
+    def test_no_cli_available(self, mock_which):
         result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
         self.assertIsInstance(result, Skip)
         self.mock_ctx.ui.text.warning.assert_called_with("No AI coding assistant CLI found")
 
-    @patch('titan_cli.utils.cli_launcher.CLILauncher.is_available', side_effect=lambda cli: cli == 'claude')
+    @patch('shutil.which', side_effect=lambda cli: '/usr/bin/claude' if cli == 'claude' else None)
     @patch('titan_cli.utils.cli_launcher.CLILauncher.launch', return_value=0)
-    def test_one_cli_available(self, mock_launch, mock_is_available):
+    def test_one_cli_available(self, mock_launch, mock_which):
         result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
         self.assertIsInstance(result, Success)
         mock_launch.assert_called_once()
-        # Check that it launched claude
-        self.assertEqual(mock_launch.call_args[1]['prompt'], 'some error')
+        self.assertEqual(mock_launch.call_args.kwargs['prompt'], 'some error')
 
 
-    @patch('titan_cli.utils.cli_launcher.CLILauncher.is_available', return_value=True)
+    @patch('shutil.which', return_value='/usr/bin/some_cli')
     @patch('titan_cli.utils.cli_launcher.CLILauncher.launch', return_value=0)
-    def test_multiple_clis_available_select_one(self, mock_launch, mock_is_available):
+    def test_multiple_clis_available_select_one(self, mock_launch, mock_which):
         # Mock user selection
         mock_choice = MagicMock()
         mock_choice.action = 'gemini'
@@ -102,12 +101,15 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         mock_launch.assert_called_once()
 
 
-    @patch('titan_cli.utils.cli_launcher.CLILauncher.is_available', return_value=True)
-    def test_multiple_clis_available_cancel(self, mock_is_available):
+    @patch('shutil.which', return_value='/usr/bin/some_cli')
+    def test_multiple_clis_available_cancel(self, mock_which):
         # Mock user cancelling selection
         self.mock_ctx.views.prompts.ask_menu.return_value = None
 
         result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
         self.assertIsInstance(result, Skip)
         self.mock_ctx.views.prompts.ask_menu.assert_called_once()
+
+if __name__ == '__main__':
+    unittest.main()
 
