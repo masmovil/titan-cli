@@ -15,33 +15,9 @@ from ..ai.models import AIMessage
 from ..ai.exceptions import AIConfigurationError
 from ..core.models import AIConfig, AIProviderConfig # Added AIProviderConfig import
 from ..messages import msg
-from ..utils.claude_integration import ClaudeCodeLauncher
 from typing import Optional
 
 ai_app = typer.Typer(name="ai", help="Configure and manage AI providers.")
-
-@ai_app.command("chat")
-def chat(prompt: Optional[str] = None):
-    """Launch Claude Code for AI assistance."""
-    text = TextRenderer()
-
-    if not ClaudeCodeLauncher.is_available():
-        text.error(msg.Code.NOT_INSTALLED)
-        text.body(msg.Code.INSTALL_INSTRUCTIONS)
-        raise typer.Exit(1)
-
-    text.info(msg.Code.LAUNCHING)
-    if prompt:
-        text.body(msg.Code.INITIAL_PROMPT.format(prompt=prompt))
-    text.line()
-
-    exit_code = ClaudeCodeLauncher.launch(prompt=prompt)
-
-    text.line()
-    text.success(msg.Code.RETURNED)
-
-    if exit_code != 0:
-        raise typer.Exit(exit_code)
 
 @ai_app.command("list")
 def list_providers():

@@ -21,7 +21,7 @@ from titan_cli.commands.init import init_app
 from titan_cli.commands.projects import projects_app, list_projects
 from titan_cli.commands.ai import ai_app
 from titan_cli.commands.plugins import plugins_app
-from titan_cli.commands.code import code_app, launch_code
+from titan_cli.commands.cli import cli_app, launch_claude, launch_gemini
 from titan_cli.core.config import TitanConfig
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.errors import ConfigWriteError
@@ -54,7 +54,7 @@ app.add_typer(init_app)
 app.add_typer(projects_app)
 app.add_typer(ai_app)
 app.add_typer(plugins_app)
-app.add_typer(code_app)
+app.add_typer(cli_app)
 
 
 # --- Helper function for version retrieval ---
@@ -181,6 +181,27 @@ def _show_switch_project_menu(prompts: PromptsRenderer, text: TextRenderer, conf
             config.load()
         except ConfigWriteError as e:
             text.error(str(e))
+
+def _show_cli_submenu(prompts: PromptsRenderer, text: TextRenderer):
+    """Shows the submenu for launching external CLIs."""
+    while True:
+        submenu_builder = DynamicMenu(title="Launch External CLI", emoji="🚀")
+        action_category = submenu_builder.add_category("Available CLIs")
+        action_category.add_item("Claude CLI", "Launch Claude Code CLI", "claude")
+        action_category.add_item("Gemini CLI", "Launch Gemini CLI", "gemini")
+        submenu_builder.add_category("Back").add_item("Return to Main Menu", "", "back")
+
+        choice_item = prompts.ask_menu(submenu_builder.to_menu())
+        if not choice_item or choice_item.action == "back":
+            break
+
+        if choice_item.action == "claude":
+            launch_claude(prompt=None)
+        elif choice_item.action == "gemini":
+            launch_gemini(prompt=None)
+
+        prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+
 
 def _show_projects_submenu(prompts: PromptsRenderer, text: TextRenderer, config: TitanConfig):
     """Shows the submenu for project management."""
@@ -925,7 +946,7 @@ def show_interactive_menu():
         
         # Build and show the main menu
         menu_builder = DynamicMenu(title=msg.Interactive.MAIN_MENU_TITLE, emoji="🚀")
-        menu_builder.add_top_level_item("Launch Claude Code", "Open an interactive session with Claude Code CLI.", "code")
+        menu_builder.add_top_level_item("Launch External CLI", "Open an interactive session with an external CLI.", "cli")
         menu_builder.add_top_level_item("Project Management", "List, configure, or initialize projects.", "projects")
 
         # Only show Workflows if there are enabled plugins
@@ -952,10 +973,8 @@ def show_interactive_menu():
         if choice_item:
             choice_action = choice_item.action
 
-        if choice_action == "code":
-            launch_code(prompt=None)
-            spacer.line()
-            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+        if choice_action == "cli":
+            _show_cli_submenu(prompts, text)
 
         elif choice_action == "projects":
             _show_projects_submenu(prompts, text, config)

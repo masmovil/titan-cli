@@ -13,7 +13,7 @@ import json # Moved this import to the top
 from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error, Skip, WorkflowResult
-from titan_cli.utils.claude_integration import ClaudeCodeLauncher
+from titan_cli.utils.cli_launcher import CLILauncher
 from titan_cli.messages import msg # Added msg import
 
 
@@ -26,7 +26,7 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
         prompt_template: str - Template for the prompt (use {context} placeholder)
         ask_confirmation: bool - Whether to ask user before launching (default: True)
         fail_on_decline: bool - If True, return Error when user declines (default: False)
-        cli_preference: str - Which CLI to use: "claude-code", "auto" (default: "auto")
+        cli_preference: str - Which CLI to use: "claude", "gemini", "auto" (default: "auto")
 
     Example workflow usage:
         - id: ai-help
@@ -92,16 +92,26 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
     launcher = None
     cli_name = None
 
-    if cli_preference in ("claude-code", "auto"):
-        if ClaudeCodeLauncher.is_available():
-            launcher = ClaudeCodeLauncher
-            cli_name = "Claude Code"
+    preferred_clis = []
+    if cli_preference == "auto":
+        preferred_clis = ["claude", "gemini"]
+    else:
+        preferred_clis = [cli_preference]
 
-    # TODO: Add support for other CLIs (Cursor, Windsurf, etc.) when configured
+    for cli in preferred_clis:
+        temp_launcher = CLILauncher(cli)
+        if temp_launcher.is_available():
+            if cli == "claude":
+                launcher = CLILauncher("claude", "Install: npm install -g @anthropic/claude-code")
+                cli_name = "Claude CLI"
+            elif cli == "gemini":
+                launcher = CLILauncher("gemini")
+                cli_name = "Gemini CLI"
+            # Add other CLIs here in the future
+            break
 
     if not launcher:
         ctx.ui.text.warning(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
-        ctx.ui.text.body(msg.Code.INSTALL_INSTRUCTIONS, style="dim")
         return Skip(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
 
     # Launch the CLI

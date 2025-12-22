@@ -309,14 +309,14 @@ class Messages:
     # ═══════════════════════════════════════════════════════════════
     # Code
     # ═══════════════════════════════════════════════════════════════
-    class Code:
-        """Claude Code CLI integration messages"""
-        HELP_TEXT = "Launch Claude Code CLI from anywhere in Titan."
-        NOT_INSTALLED = "Claude Code not installed"
-        INSTALL_INSTRUCTIONS = "Install: npm install -g @anthropic/claude-code"
-        LAUNCHING = "🤖 Launching Claude Code..."
+    class ExternalCLI:
+        """Generic messages for launching external CLIs."""
+        HELP_TEXT = "Launch an external CLI tool like Claude Code or Gemini CLI."
+        NOT_INSTALLED = "{cli_name} not installed"
+        INSTALL_INSTRUCTIONS = "See documentation for installation instructions for {cli_name}."
+        LAUNCHING = "🤖 Launching {cli_name}..."
         INITIAL_PROMPT = "Initial prompt: {prompt}"
-        INTERRUPTED = "\nClaude Code interrupted"
+        INTERRUPTED = "\n{cli_name} interrupted"
         RETURNED = "✓ Back in Titan CLI"
 
     # ═══════════════════════════════════════════════════════════════
