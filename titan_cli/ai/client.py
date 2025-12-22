@@ -6,9 +6,9 @@ from typing import Optional, List
 
 from titan_cli.core.models import AIConfig
 from titan_cli.core.secrets import SecretManager
+from .exceptions import AIConfigurationError
 from .models import AIMessage, AIRequest, AIResponse
 from .providers import AIProvider, AnthropicProvider, GeminiProvider
-from .exceptions import AIConfigurationError
 
 # A mapping from provider names to classes
 PROVIDER_CLASSES = {

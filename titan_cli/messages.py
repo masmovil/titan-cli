@@ -298,6 +298,7 @@ class Messages:
         INVALID_PROMPT_TEMPLATE = "Invalid prompt_template: missing placeholder {e}"
         FAILED_TO_BUILD_PROMPT = "Failed to build prompt: {e}"
         CONFIRM_LAUNCH_ASSISTANT = "Would you like AI assistance to help fix these issues?"
+        SELECT_ASSISTANT_CLI = "Select which AI assistant to use"
         DECLINED_ASSISTANCE_STOPPED = "User declined AI assistance - workflow stopped"
         DECLINED_ASSISTANCE_SKIPPED = "User declined AI assistance"
         NO_ASSISTANT_CLI_FOUND = "No AI coding assistant CLI found"

@@ -15,6 +15,7 @@ from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error, Skip, WorkflowResult
 from titan_cli.utils.cli_launcher import CLILauncher
 from titan_cli.messages import msg # Added msg import
+from titan_cli.ui.views.menu_components.dynamic_menu import DynamicMenu
 
 
 def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> WorkflowResult:
@@ -89,30 +90,47 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
             return Skip(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
 
     # Determine which CLI to use
-    launcher = None
-    cli_name = None
+    cli_to_launch = None
 
     preferred_clis = []
     if cli_preference == "auto":
         preferred_clis = ["claude", "gemini"]
     else:
         preferred_clis = [cli_preference]
-
+    
+    available_clis = []
     for cli in preferred_clis:
-        temp_launcher = CLILauncher(cli)
-        if temp_launcher.is_available():
-            if cli == "claude":
-                launcher = CLILauncher("claude", "Install: npm install -g @anthropic/claude-code")
-                cli_name = "Claude CLI"
-            elif cli == "gemini":
-                launcher = CLILauncher("gemini")
-                cli_name = "Gemini CLI"
-            # Add other CLIs here in the future
-            break
+        if CLILauncher(cli).is_available():
+            available_clis.append(cli)
 
-    if not launcher:
+    if not available_clis:
         ctx.ui.text.warning(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
         return Skip(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
+    
+    if len(available_clis) == 1:
+        cli_to_launch = available_clis[0]
+    else:
+        menu = DynamicMenu(title=msg.AIAssistant.SELECT_ASSISTANT_CLI)
+        cat = menu.add_category("Available CLIs")
+        for cli in available_clis:
+            cat.add_item(f"{cli.capitalize()} CLI", f"Launch {cli.capitalize()} CLI", cli)
+        
+        choice = ctx.views.prompts.ask_menu(menu.to_menu())
+        if not choice:
+            return Skip(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
+        cli_to_launch = choice.action
+
+    # Get launcher and cli_name
+    if cli_to_launch == "claude":
+        launcher = CLILauncher("claude", "Install: npm install -g @anthropic/claude-code")
+        cli_name = "Claude CLI"
+    elif cli_to_launch == "gemini":
+        launcher = CLILauncher("gemini")
+        cli_name = "Gemini CLI"
+    else:
+        # Should not happen
+        return Error(f"Unknown CLI to launch: {cli_to_launch}")
+
 
     # Launch the CLI
     ctx.ui.spacer.small()

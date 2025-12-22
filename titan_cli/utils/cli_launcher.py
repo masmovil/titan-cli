@@ -29,7 +29,10 @@ class CLILauncher:
         cmd = [self.cli_name]
 
         if prompt:
-            cmd.append(prompt)
+            if self.cli_name == "gemini":
+                cmd.extend(["-i", prompt])
+            else:
+                cmd.append(prompt)
 
         result = subprocess.run(
             cmd,
