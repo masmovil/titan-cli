@@ -734,111 +734,103 @@ def _show_ai_config_submenu(prompts: PromptsRenderer, text: TextRenderer, config
 
 def _handle_run_workflow_action(config: TitanConfig, text: TextRenderer, spacer: SpacerRenderer, prompts: PromptsRenderer):
     """Handle the 'run workflow' menu action."""
-    text.title("Run a Workflow")
-    spacer.line()
-
-    # Reload config to ensure latest changes (e.g., GitHub repo settings) are picked up
-    config.load()
-    available_workflows = config.workflows.discover()
-    if not available_workflows:
-        text.info("No workflows found.")
+    while True:
+        text.title("Run a Workflow")
         spacer.line()
-        prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-        return
 
-    workflow_menu_builder = DynamicMenu(title="Select a workflow to run", emoji="⚡")
-    workflow_cat_idx = workflow_menu_builder.add_category("Available Workflows")
-    for wf_info in available_workflows:
-        workflow_cat_idx.add_item(wf_info.name, f"({wf_info.source}) {wf_info.description}", wf_info.name)
-    workflow_menu_builder.add_category("Cancel").add_item("Back to Main Menu", "Return without running a workflow.", "cancel")
+        # Reload config to ensure latest changes are picked up
+        config.load()
+        available_workflows = config.workflows.discover()
+        if not available_workflows:
+            text.info("No workflows found.")
+            spacer.line()
+            prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+            return
 
-    workflow_menu = workflow_menu_builder.to_menu()
+        workflow_menu_builder = DynamicMenu(title="Select a workflow to run", emoji="⚡")
+        workflow_cat_idx = workflow_menu_builder.add_category("Available Workflows")
+        for wf_info in available_workflows:
+            workflow_cat_idx.add_item(wf_info.name, f"({wf_info.source}) {wf_info.description}", wf_info.name)
+        workflow_menu_builder.add_category("Cancel").add_item("Back to Main Menu", "Return without running a workflow.", "cancel")
 
-    try:
-        chosen_workflow_item = prompts.ask_menu(workflow_menu, allow_quit=False)
-    except (KeyboardInterrupt, EOFError):
-        chosen_workflow_item = None
-
-    spacer.line()
-
-    if chosen_workflow_item and chosen_workflow_item.action != "cancel":
-        selected_workflow_name = chosen_workflow_item.action
-        original_cwd = os.getcwd() # Moved assignment before the try block
+        workflow_menu = workflow_menu_builder.to_menu()
 
         try:
-            parsed_workflow = config.workflows.get_workflow(selected_workflow_name)
-            if not parsed_workflow:
-                text.error(f"Failed to load workflow '{selected_workflow_name}'.")
-                spacer.line()
-                prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-                return
+            chosen_workflow_item = prompts.ask_menu(workflow_menu, allow_quit=False)
+        except (KeyboardInterrupt, EOFError):
+            chosen_workflow_item = None
 
-            # Show workflow info panel and ask for confirmation
-            panel = PanelRenderer()
-            if not _show_workflow_info_panel(parsed_workflow, panel, spacer, prompts):
-                spacer.line()
-                prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
-                return
+        spacer.line()
 
-            spacer.line()
-            text.info("✨ Executing workflow...")
-            spacer.small()
-
-            # Change to active project directory for workflow execution
-            if config.active_project_path:
-                os.chdir(config.active_project_path)
-                text.body(f"Working directory: {config.active_project_path}", style="dim")
-                spacer.small()
-
-            # Build execution context
-            secrets = SecretManager(project_path=config.active_project_path or config.project_root)
-
-            ui = UIComponents(
-                text=text,
-                panel=panel,
-                table=TableRenderer(),
-                spacer=spacer
-            )
-
-            ctx_builder = WorkflowContextBuilder(
-                plugin_registry=config.registry,
-                secrets=secrets,
-                ai_config=config.config.ai
-            )
-            ctx_builder.with_ui(ui=ui)
-            ctx_builder.with_ai()  # Initialize AI client
-
-            # Add registered plugins to context
-            for plugin_name in config.registry.list_installed():
-                plugin = config.registry.get_plugin(plugin_name)
-                if plugin:
-                    client = plugin.get_client()
-                    if hasattr(ctx_builder, f"with_{plugin_name}"):
-                        getattr(ctx_builder, f"with_{plugin_name}")(client)
-
-            execution_context = ctx_builder.build()
-            executor = WorkflowExecutor(config.registry, config.workflows)
+        if chosen_workflow_item and chosen_workflow_item.action != "cancel":
+            selected_workflow_name = chosen_workflow_item.action
+            original_cwd = os.getcwd()
 
             try:
-                # Execute workflow (steps handle their own UI)
+                parsed_workflow = config.workflows.get_workflow(selected_workflow_name)
+                if not parsed_workflow:
+                    text.error(f"Failed to load workflow '{selected_workflow_name}'.")
+                    continue # Loop back to menu
+
+                # Show workflow info panel and ask for confirmation
+                if not _show_workflow_info_panel(parsed_workflow, PanelRenderer(), spacer, prompts):
+                    continue # Loop back to menu if user cancels
+
+                spacer.line()
+                text.info("✨ Executing workflow...")
+                spacer.small()
+
+                if config.active_project_path:
+                    os.chdir(config.active_project_path)
+                    text.body(f"Working directory: {config.active_project_path}", style="dim")
+                    spacer.small()
+
+                secrets = SecretManager(project_path=config.active_project_path or config.project_root)
+                
+                ui_components = UIComponents(
+                    text=text,
+                    panel=PanelRenderer(),
+                    table=TableRenderer(),
+                    spacer=spacer
+                )
+                
+                ctx_builder = WorkflowContextBuilder(
+                    plugin_registry=config.registry,
+                    secrets=secrets,
+                    ai_config=config.config.ai
+                )
+                ctx_builder.with_ui(ui=ui_components)
+                ctx_builder.with_ai()
+                
+                # Add registered plugins to context
+                for plugin_name in config.registry.list_installed():
+                    plugin = config.registry.get_plugin(plugin_name)
+                    if plugin and hasattr(ctx_builder, f"with_{plugin_name}"):
+                        try:
+                            client = plugin.get_client()
+                            getattr(ctx_builder, f"with_{plugin_name}")(client)
+                        except Exception:
+                            # Silently ignore if client fails, executor will handle it
+                            pass
+
+                execution_context = ctx_builder.build()
+                executor = WorkflowExecutor(config.registry, config.workflows)
+
                 executor.execute(parsed_workflow, execution_context)
+
+            except (WorkflowNotFoundError, WorkflowExecutionError) as e:
+                text.error(str(e))
+            except Exception as e:
+                text.error(f"An unexpected error occurred: {type(e).__name__} - {e}")
             finally:
-                # Always restore original working directory
-                os.chdir(original_cwd)
+                os.chdir(original_cwd) # Always restore
 
-        except (WorkflowNotFoundError, WorkflowExecutionError) as e:
-            text.error(str(e))
-            # Restore directory on error too
-            if config.active_project_path:
-                os.chdir(original_cwd)
-        except Exception as e:
-            text.error(f"An unexpected error occurred: {type(e).__name__} - {e}")
-            # Restore directory on error too
-            if config.active_project_path:
-                os.chdir(original_cwd)
-
-    spacer.line()
-    prompts.ask_confirm(msg.Interactive.RETURN_TO_MENU_PROMPT_CONFIRM, default=True)
+            spacer.line()
+            text.info("Workflow execution finished. Returning to workflow list...")
+            spacer.line()
+        else:
+            # User chose to cancel or exited prompt
+            break
 
 
 def _show_workflow_info_panel(workflow, panel: PanelRenderer, spacer: SpacerRenderer, prompts: PromptsRenderer) -> bool:
