@@ -1,7 +1,7 @@
 # titan_cli/commands/cli.py
 import typer
 from typing import Optional
-from titan_cli.utils.launch_helper import launch_cli_tool
+from titan_cli.external_cli.helper import launch_cli_tool
 from titan_cli.messages import msg
 
 cli_app = typer.Typer(name="cli", help=msg.ExternalCLI.HELP_TEXT)

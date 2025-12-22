@@ -1,8 +1,8 @@
-# titan_cli/utils/launch_helper.py
+# titan_cli/external_cli/helper.py
 import typer
 from typing import Optional
-from titan_cli.utils.cli_launcher import CLILauncher
-from titan_cli.utils.cli_configs import CLI_REGISTRY
+from titan_cli.external_cli.launcher import CLILauncher
+from titan_cli.external_cli.configs import CLI_REGISTRY
 from titan_cli.ui.components.typography import TextRenderer
 from titan_cli.messages import msg
 

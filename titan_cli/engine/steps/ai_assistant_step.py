@@ -13,8 +13,8 @@ import json
 from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error, Skip, WorkflowResult
-from titan_cli.utils.cli_launcher import CLILauncher
-from titan_cli.utils.cli_configs import CLI_REGISTRY
+from titan_cli.external_cli.launcher import CLILauncher
+from titan_cli.external_cli.configs import CLI_REGISTRY
 from titan_cli.messages import msg
 from titan_cli.ui.views.menu_components.dynamic_menu import DynamicMenu
 

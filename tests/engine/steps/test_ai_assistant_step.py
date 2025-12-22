@@ -1,7 +1,9 @@
 # tests/engine/steps/test_ai_assistant_step.py
 import unittest
 from unittest.mock import patch, MagicMock
-from titan_cli.utils.cli_launcher import CLILauncher
+from titan_cli.external_cli.launcher import CLILauncher
+from titan_cli.engine.results import Skip, Success
+from titan_cli.engine.steps.ai_assistant_step import execute_ai_assistant_step
 
 class TestCLILauncher(unittest.TestCase):
 
@@ -53,9 +55,6 @@ class TestCLILauncher(unittest.TestCase):
             cwd=None
         )
 
-from titan_cli.engine.results import Skip, Success
-from titan_cli.engine.steps.ai_assistant_step import execute_ai_assistant_step
-
 class TestExecuteAIAssistantStep(unittest.TestCase):
 
     def setUp(self):
@@ -71,7 +70,7 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         self.mock_ctx.ui.text.warning.assert_called_with("No AI coding assistant CLI found")
 
     @patch('shutil.which', side_effect=lambda cli: '/usr/bin/claude' if cli == 'claude' else None)
-    @patch('titan_cli.utils.cli_launcher.CLILauncher.launch', return_value=0)
+    @patch('titan_cli.external_cli.launcher.CLILauncher.launch', return_value=0)
     def test_one_cli_available(self, mock_launch, mock_which):
         result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
         self.assertIsInstance(result, Success)
@@ -80,7 +79,7 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
 
 
     @patch('shutil.which', return_value='/usr/bin/some_cli')
-    @patch('titan_cli.utils.cli_launcher.CLILauncher.launch', return_value=0)
+    @patch('titan_cli.external_cli.launcher.CLILauncher.launch', return_value=0)
     def test_multiple_clis_available_select_one(self, mock_launch, mock_which):
         # Mock user selection
         mock_choice = MagicMock()
@@ -112,4 +111,3 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
