@@ -15,14 +15,33 @@ This plugin is installed automatically with Titan CLI when configured with JIRA 
 
 ## Configuration
 
-Configure in `.titan/config.toml`:
+### Global Configuration (Required)
+
+Configure your JIRA credentials in `~/.titan/config.toml` (user-level):
 
 ```toml
-[jira]
+[plugins.jira]
+enabled = true
+
+[plugins.jira.config]
 base_url = "https://your-domain.atlassian.net"
 email = "your-email@example.com"
-api_token = "your-api-token"
-default_project = "PROJECT"
+```
+
+**API Token** must be stored in secrets (secure storage):
+- Use `titan configure jira` to set up securely
+- Or set environment variable `JIRA_API_TOKEN`
+
+### Project Configuration (Optional)
+
+Override project-specific settings in `.titan/config.toml`:
+
+```toml
+[plugins.jira]
+enabled = true
+
+[plugins.jira.config]
+default_project = "ECAPP"  # Project-specific default
 ```
 
 ## Usage

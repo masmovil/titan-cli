@@ -27,13 +27,18 @@ class GitHubPluginConfig(BaseModel):
 
 
 class JiraPluginConfig(BaseModel):
-    """Configuration for JIRA plugin."""
-    base_url: str = Field(..., description="JIRA instance URL (e.g., 'https://jira.company.com')")
-    email: str = Field(..., description="User email for authentication")
+    """
+    Configuration for JIRA plugin.
+
+    Credentials (base_url, email, api_token) should be configured at global level (~/.titan/config.toml).
+    Project-specific settings (default_project) can override at project level (.titan/config.toml).
+    """
+    base_url: Optional[str] = Field(None, description="JIRA instance URL (e.g., 'https://jira.company.com')")
+    email: Optional[str] = Field(None, description="User email for authentication")
     # api_token is stored in secrets, not in config.toml
     # It appears in the JSON schema for interactive configuration but is optional in the model
     api_token: Optional[str] = Field(None, description="JIRA API token (Personal Access Token)", json_schema_extra={"format": "password", "required_in_schema": True})
-    default_project: str = Field(..., description="Default JIRA project key (e.g., 'ECAPP', 'PROJ')")
+    default_project: Optional[str] = Field(None, description="Default JIRA project key (e.g., 'ECAPP', 'PROJ')")
     timeout: int = Field(30, description="Request timeout in seconds")
     enable_cache: bool = Field(True, description="Enable caching for API responses")
     cache_ttl: int = Field(300, description="Cache time-to-live in seconds")

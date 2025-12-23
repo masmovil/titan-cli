@@ -25,6 +25,4 @@ auto_assign_prs = false
 enabled = true
 
 [plugins.jira.config]
-base_url = "https://jiranext.masorange.es"
-email = "alejandro.lopezr@masmovil.com"
 default_project = "ECAPP"

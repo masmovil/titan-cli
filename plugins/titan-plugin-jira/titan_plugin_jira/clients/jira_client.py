@@ -66,7 +66,7 @@ class JiraClient:
             raise JiraAPIError("JIRA user email not provided")
 
         self.session = requests.Session()
-        # Use Bearer Auth for JIRA Server/Next with Personal Access Token
+        # Use Bearer Token Authentication (OAuth 2.0) for JIRA API
         self.session.headers.update({
             "Accept": "application/json",
             "Authorization": f"Bearer {self.api_token}"
@@ -615,7 +615,16 @@ class JiraClient:
 
         Returns:
             Created subtask
+
+        Raises:
+            JiraAPIError: If no default project is configured
         """
+        if not self.project_key:
+            raise JiraAPIError(
+                "No default project configured. "
+                "Please set default_project in JIRA plugin configuration."
+            )
+
         # Get subtask issue type
         issue_types = self.get_issue_types()
         subtask_type = next((it for it in issue_types if it.subtask), None)
