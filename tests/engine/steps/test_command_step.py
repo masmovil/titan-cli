@@ -125,8 +125,8 @@ def test_execute_command_step_parameter_substitution(mock_context, mock_popen):
     mock_context.ui.text.body.assert_called_with("substituted_value\n")
 
 def test_execute_command_step_no_command_template(mock_context, mock_popen):
-    """Tests when command attribute is missing."""
-    step_model = WorkflowStepModel(id="test_no_cmd", name="No Command")
+    """Tests when command attribute is empty."""
+    step_model = WorkflowStepModel(id="test_no_cmd", name="No Command", command="")
     result = execute_command_step(step_model, mock_context)
     assert isinstance(result, Error)
     assert "Command step is missing the 'command' attribute." in result.message

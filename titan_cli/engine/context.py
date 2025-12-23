@@ -2,7 +2,7 @@
 WorkflowContext - Dependency injection container for workflows.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 
 from titan_cli.core.secrets import SecretManager
@@ -55,6 +55,9 @@ class WorkflowContext:
     # Shared data storage between steps
     data: Dict[str, Any] = field(default_factory=dict)
 
+    # Internal state for workflow execution
+    _workflow_stack: List[str] = field(default_factory=list)
+
     def set(self, key: str, value: Any) -> None:
         """Set shared data."""
         self.data[key] = value
@@ -66,3 +69,20 @@ class WorkflowContext:
     def has(self, key: str) -> bool:
         """Check if key exists in shared data."""
         return key in self.data
+
+    def enter_workflow(self, workflow_name: str):
+        """
+        Track entering a workflow execution to prevent circular dependencies.
+        """
+        if workflow_name in self._workflow_stack:
+            raise ValueError(
+                f"Circular workflow dependency detected: {' -> '.join(self._workflow_stack)} -> {workflow_name}"
+            )
+        self._workflow_stack.append(workflow_name)
+
+    def exit_workflow(self, workflow_name: str):
+        """
+        Track exiting a workflow execution.
+        """
+        if self._workflow_stack and self._workflow_stack[-1] == workflow_name:
+            self._workflow_stack.pop()

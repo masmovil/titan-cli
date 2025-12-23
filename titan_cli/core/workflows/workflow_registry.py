@@ -69,10 +69,10 @@ class WorkflowRegistry:
 
         # Workflow sources are listed in order of precedence (highest to lowest).
         self._sources: List[WorkflowSource] = [
-            ProjectWorkflowSource(project_root / ".titan" / "workflows"),
-            UserWorkflowSource(Path.home() / ".titan" / "workflows"),
-            SystemWorkflowSource(system_workflows_path),
-            PluginWorkflowSource(plugin_registry),
+            ProjectWorkflowSource(project_root / ".titan" / "workflows", plugin_registry),
+            UserWorkflowSource(Path.home() / ".titan" / "workflows", plugin_registry),
+            SystemWorkflowSource(system_workflows_path, plugin_registry),
+            PluginWorkflowSource(plugin_registry), # PluginWorkflowSource takes plugin_registry once
         ]
 
         # Cache for fully parsed workflows (similar to PluginRegistry._plugins).
@@ -83,14 +83,15 @@ class WorkflowRegistry:
 
     def discover(self) -> List[WorkflowInfo]:
         """
-        Discovers all available workflows from all registered sources.
+        Discovers all available workflows from all registered sources,
+        filtering out those with unmet plugin dependencies.
         
         This method respects precedence; if a workflow with the same name
         exists in multiple sources, only the one from the highest-precedence
         source is included.
         
         Returns:
-            A list of WorkflowInfo objects for all unique, discoverable workflows.
+            A list of WorkflowInfo objects for all unique, executable workflows.
         """
         # Return from cache if already discovered
         if self._discovered is not None:
@@ -98,13 +99,16 @@ class WorkflowRegistry:
 
         workflows: List[WorkflowInfo] = []
         seen_names = set()
+        installed_plugins = set(self.plugin_registry.list_installed())
 
         for source in self._sources:
             try:
                 for workflow_info in source.discover():
                     if workflow_info.name not in seen_names:
-                        workflows.append(workflow_info)
-                        seen_names.add(workflow_info.name)
+                        # Check if all required plugins for this workflow are installed
+                        if workflow_info.required_plugins.issubset(installed_plugins):
+                            workflows.append(workflow_info)
+                            seen_names.add(workflow_info.name)
             except Exception: # Catch all exceptions from source discovery
                 pass # Log internally if a logging system is set up, but do not print or fail discovery
 

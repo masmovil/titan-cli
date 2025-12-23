@@ -1,0 +1,40 @@
+name: "Commit with AI, Linter and Tests"
+description: "Create a commit with AI-generated message, with linting and testing."
+
+extends: "plugin:git/commit-ai"  # Extends the new base workflow
+
+hooks:
+  before_commit:  # Inject your custom steps
+    - id: ruff-lint
+      name: "Run Ruff Linter"
+      plugin: project
+      step: ruff_linter
+      on_error: continue
+
+    - id: ai-help-lint
+      name: "AI Help - Linting"
+      plugin: core
+      step: ai_code_assistant
+      params:
+        context_key: "step_output"
+        prompt_template: "Help me fix these linting issues:\n\n{context}"
+        ask_confirmation: true
+        fail_on_decline: false
+      on_error: continue
+
+    - id: run-tests
+      name: "Run Tests"
+      plugin: project
+      step: test_runner
+      on_error: continue
+
+    - id: ai-help-tests
+      name: "AI Help - Tests"
+      plugin: core
+      step: ai_code_assistant
+      params:
+        context_key: "step_output"
+        prompt_template: "Help me fix these failing tests:\n\n{context}"
+        ask_confirmation: true
+        fail_on_decline: true
+      on_error: fail

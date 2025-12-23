@@ -19,7 +19,7 @@ repo_name = "titan-cli"
 default_branch = "master"
 default_reviewers = []
 pr_template_path = ""
-auto_assign_prs = false
+auto_assign_prs = true
 
 [plugins.jira]
 enabled = true

@@ -1,0 +1,28 @@
+name: "Commit with AI"
+description: "Create a commit with AI-generated message"
+
+hooks:
+  - before_commit  # Hook for linting/testing
+
+steps:
+  - hook: before_commit  # This is where injected steps will run
+
+  - id: git_status
+    name: "Check Git Status"
+    plugin: git
+    step: get_status
+
+  - id: ai_commit_message
+    name: "AI Commit Message"
+    plugin: git
+    step: ai_generate_commit_message
+
+  - id: create_commit
+    name: "Create Commit"
+    plugin: git
+    step: create_commit
+  
+  - id: push
+    name: "Push changes to remote"
+    plugin: git
+    step: push

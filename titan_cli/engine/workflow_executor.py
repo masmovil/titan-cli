@@ -31,14 +31,6 @@ class WorkflowExecutor:
     def execute(self, workflow: ParsedWorkflow, ctx: WorkflowContext, params_override: Optional[Dict[str, Any]] = None) -> WorkflowResult:
         """
         Executes the given ParsedWorkflow.
-
-        Args:
-            workflow: The ParsedWorkflow object to execute.
-            ctx: The WorkflowContext for the execution.
-            params_override: Optional dictionary to override workflow params.
-
-        Returns:
-            A WorkflowResult indicating the overall outcome.
         """
         # Merge workflow params into ctx.data with optional overrides
         effective_params = {**workflow.params}
@@ -50,65 +42,119 @@ class WorkflowExecutor:
 
         # Inject workflow metadata into context
         ctx.workflow_name = workflow.name
-        # Only count actual steps, not hook placeholders
-        ctx.total_steps = len([s for s in workflow.steps if not (s.get("hook") and len(s) == 1)])
+        ctx.total_steps = len([s for s in workflow.steps if not s.get("hook")])
 
-        ctx.ui.text.styled_text(("Starting workflow: ", "info"), (workflow.name, "info bold"))
-        ctx.ui.text.body(workflow.description, style="dim")
-        ctx.ui.spacer.small()
+        if ctx.ui:
+            # Show workflow banner
+            ctx.ui.spacer.line()
+            ctx.ui.text.styled_text(("═" * 60, "bold cyan"))
+            ctx.ui.text.styled_text((f"  🚀 {workflow.name}", "bold cyan"))
+            if workflow.description:
+                ctx.ui.text.styled_text((f"  {workflow.description}", "dim"))
+            if workflow.source:
+                ctx.ui.text.styled_text((f"  Source: {workflow.source}", "dim italic"))
+            ctx.ui.text.styled_text(("═" * 60, "bold cyan"))
+            ctx.ui.spacer.small()
 
-        step_index = 0
-        for step_config_dict in workflow.steps: # Renamed step_config to step_config_dict to clarify it's a dict
-            # If the step is just a hook placeholder, skip it.
-            # The registry has already handled merging.
-            if step_config_dict.get("hook") and len(step_config_dict) == 1:
-                continue
+        ctx.enter_workflow(workflow.name)
+        try:
+            step_index = 0
+            for step_data in workflow.steps:
+                # Hooks are resolved by the registry, so we just skip the placeholder.
+                if step_data.get("hook") and len(step_data) == 1:
+                    continue
 
-            # Inject current step number into context
-            step_index += 1
-            ctx.current_step = step_index
+                step_index += 1
+                ctx.current_step = step_index
+                
+                step_config = WorkflowStepModel(**step_data)
 
-            # Parse the dictionary into a WorkflowStepModel for better type safety
-            step_config = WorkflowStepModel(**step_config_dict)
+                step_id = step_config.id
+                step_name = step_config.name or step_id
+                
+                try:
+                    if step_config.workflow:
+                        step_result = self._execute_workflow_step(step_config, ctx)
+                    elif step_config.plugin and step_config.step:
+                        step_result = self._execute_plugin_step(step_config, ctx)
+                    elif step_config.command:
+                        step_result = self._execute_command_step(step_config, ctx)
+                    else:
+                        # This should be caught by model validation, but as a safeguard:
+                        step_result = Error(f"Invalid step configuration for '{step_id}'.")
+                except Exception as e:
+                    step_result = Error(f"An unexpected error occurred in step '{step_name}': {e}", e)
 
-            step_id = step_config.id if step_config.id else "anonymous_step"
-            step_name = step_config.name if step_config.name else step_id
-            on_error = step_config.on_error # Default is "fail" in model
+                # Handle step result
+                if is_error(step_result):
+                    if ctx.ui:
+                        # Show error panel for the failed step
+                        ctx.ui.spacer.small()
+                        ctx.ui.panel.print(
+                            f"Step failed: {step_result.message}",
+                            panel_type="error",
+                            title=f"❌ {step_name}"
+                        )
+                        ctx.ui.spacer.small()
 
-            step_result: WorkflowResult = Success("Step not executed (default)", {}) # Default result
+                    if step_config.on_error == "fail":
+                        if ctx.ui:
+                            # Show workflow failure banner
+                            ctx.ui.spacer.small()
+                            ctx.ui.text.styled_text(("═" * 60, "bold red"))
+                            ctx.ui.text.styled_text((f"  ❌ Workflow Failed: {workflow.name}", "bold red"))
+                            ctx.ui.text.styled_text((f"  Failed at step: {step_name}", "red"))
+                            if step_result.message:
+                                ctx.ui.text.styled_text((f"  Error: {step_result.message}", "dim"))
+                            ctx.ui.text.styled_text(("═" * 60, "bold red"))
+                            ctx.ui.spacer.line()
+                        return Error(f"Workflow failed at step '{step_name}'", step_result.exception)
+                    else:
+                        # on_error == "continue" - show warning but continue
+                        if ctx.ui:
+                            ctx.ui.text.styled_text(("  ⚠️  Continuing despite error (on_error: continue)", "yellow"))
+                            ctx.ui.spacer.small()
+                elif is_skip(step_result):
+                    if step_result.metadata:
+                        ctx.data.update(step_result.metadata)
+                else: # Success
+                    if step_result.metadata:
+                        ctx.data.update(step_result.metadata)
 
-            try:
-                if step_config.plugin and step_config.step:
-                    # Execute plugin step
-                    step_result = self._execute_plugin_step(step_config, ctx)
-                elif step_config.command:
-                    # Execute shell command using our new function
-                    step_result = self._execute_command_step(step_config, ctx)
-                else:
-                    step_result = Error(f"Invalid step configuration for '{step_id}': Missing 'plugin/step' or 'command'.", WorkflowExecutionError("Invalid step config"))
+        finally:
+            ctx.exit_workflow(workflow.name)
 
-            except Exception as e:
-                step_result = Error(f"An unexpected error occurred in step '{step_name}': {e}", e)
-
-            # Handle step result
-            if is_error(step_result):
-                # Steps may not show their own errors, so show it here
-                ctx.ui.text.error(f"Step '{step_name}' failed: {step_result.message}")
-                if on_error == "fail":
-                    ctx.ui.text.error(f"Workflow '{workflow.name}' stopped due to step failure.")
-                    return Error(f"Workflow failed at step '{step_name}'", step_result.exception)
-            elif is_skip(step_result):
-                # Skip result - step should handle its own UI
-                # Just merge metadata into workflow context data
-                if step_result.metadata:
-                    ctx.data.update(step_result.metadata)
-            else:
-                # Success case - merge step metadata into workflow context data
-                if step_result.metadata:
-                    ctx.data.update(step_result.metadata)
-
-        ctx.ui.text.success(f"Workflow '{workflow.name}' completed successfully.")
+        if ctx.ui:
+            ctx.ui.spacer.small()
+            ctx.ui.text.styled_text(("═" * 60, "bold green"))
+            ctx.ui.text.styled_text((f"  ✅ Workflow Completed: {workflow.name}", "bold green"))
+            ctx.ui.text.styled_text(("═" * 60, "bold green"))
+            ctx.ui.spacer.line()
         return Success(f"Workflow '{workflow.name}' finished.", {})
+
+    def _execute_workflow_step(self, step_config: WorkflowStepModel, ctx: WorkflowContext) -> WorkflowResult:
+        """Executes a nested workflow as a step."""
+        workflow_name = step_config.workflow
+        if not workflow_name:
+            return Error("Workflow step is missing the 'workflow' name.")
+
+        try:
+            sub_workflow = self._workflow_registry.get_workflow(workflow_name)
+            if not sub_workflow:
+                return Error(f"Nested workflow '{workflow_name}' not found.")
+        except Exception as e:
+            return Error(f"Failed to load workflow '{workflow_name}': {e}", e)
+
+        if ctx.ui:
+            # Add indentation based on workflow nesting depth
+            indent = "  " * len(ctx._workflow_stack)
+            ctx.ui.text.info(f"{indent}→ Running nested workflow: {sub_workflow.name}")
+
+        # We recursively call the main execute method.
+        # Pass a copy of the context data to isolate it if needed, but for now, we share it.
+        # The `enter_workflow` check will prevent infinite recursion.
+        return self.execute(sub_workflow, ctx, params_override=step_config.params)
+
 
     def _execute_plugin_step(self, step_config: WorkflowStepModel, ctx: WorkflowContext) -> WorkflowResult:
         plugin_name = step_config.plugin

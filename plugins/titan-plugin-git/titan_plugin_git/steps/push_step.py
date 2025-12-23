@@ -24,7 +24,11 @@ def create_git_push_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     # Show step header
     if ctx.views:
-        ctx.views.step_header("push", ctx.current_step, ctx.total_steps)
+        ctx.views.step_header(
+            name="Push to Remote",
+            step_type="plugin",
+            step_detail="git.push"
+        )
 
     if not ctx.git:
         return Error(msg.Steps.Push.GIT_CLIENT_NOT_AVAILABLE)

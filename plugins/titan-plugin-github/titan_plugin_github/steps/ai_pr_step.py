@@ -42,7 +42,11 @@ def ai_suggest_pr_description(ctx: WorkflowContext) -> WorkflowResult:
     """
     # Show step header
     if ctx.views:
-        ctx.views.step_header("ai_pr_description", ctx.current_step, ctx.total_steps)
+        ctx.views.step_header(
+            name="AI Generate PR Description",
+            step_type="plugin",
+            step_detail="github.ai_suggest_pr_description"
+        )
 
     # Check if AI is configured
     if not ctx.ai or not ctx.ai.is_available():

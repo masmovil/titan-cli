@@ -27,29 +27,40 @@ class UIViews:
     menu: MenuRenderer
     ui: UIComponents
 
-    def step_header(self, name: str, current: Optional[int] = None, total: Optional[int] = None) -> None:
+    def step_header(self, name: str, step_type: Optional[str] = None, step_detail: Optional[str] = None) -> None:
         """
         Display a standardized step header (composition view).
 
-        Composes text and spacer components to show a consistent
-        step header across all workflow steps.
-
         Args:
             name: Step name
-            current: Current step number (1-indexed)
-            total: Total number of steps
+            step_type: Type of step (plugin, command, workflow, hook)
+            step_detail: Additional detail (e.g., "git.get_status", "workflow:commit-ai")
 
         Examples:
-            >>> ctx.views.step_header("git_status", ctx.current_step, ctx.total_steps)
-            [2/7] git_status
+            >>> ctx.views.step_header("Check Git Status", step_type="plugin", step_detail="git.get_status")
 
-            >>> ctx.views.step_header("my_step")
-            ⚙️ my_step
+            🔧 Check Git Status
+               git.get_status
+            ─────────────────────────────────────────────────────────────
         """
-        if current is not None and total is not None:
-            self.ui.text.body(f"[{current}/{total}] {name}")
-        else:
-            self.ui.text.body(f"⚙️ {name}")
+        # Determine icon based on step type
+        icon_map = {
+            "plugin": "🔧",
+            "command": "💻",
+            "workflow": "🔄",
+            "hook": "⚡",
+        }
+        icon = icon_map.get(step_type, "⚙️")
+
+        # Show step name with icon (bold)
+        self.ui.text.styled_text((f"{icon} {name}", "bold cyan"))
+
+        # Show detail if provided (dimmed, indented)
+        if step_detail:
+            self.ui.text.styled_text((f"   {step_detail}", "dim"))
+
+        # Separator line
+        self.ui.text.styled_text(("─" * 60, "dim"))
         self.ui.spacer.small()
 
     @classmethod

@@ -18,7 +18,11 @@ def get_current_branch_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     # Show step header
     if ctx.views:
-        ctx.views.step_header("get_head_branch", ctx.current_step, ctx.total_steps)
+        ctx.views.step_header(
+            name="Get Current Branch",
+            step_type="plugin",
+            step_detail="git.get_current_branch"
+        )
 
     if not ctx.git:
         error_msg = msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE

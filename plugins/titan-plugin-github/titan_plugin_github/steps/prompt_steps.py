@@ -27,7 +27,11 @@ def prompt_for_pr_title_step(ctx: WorkflowContext) -> WorkflowResult:
     try:
         # Show step header
         if ctx.views:
-            ctx.views.step_header("prompt_pr_title", ctx.current_step, ctx.total_steps)
+            ctx.views.step_header(
+                name="Prompt for PR Title",
+                step_type="plugin",
+                step_detail="github.prompt_for_pr_title"
+            )
         title = ctx.views.prompts.ask_text(msg.Prompts.ENTER_PR_TITLE)
         if not title:
             return Error("PR title cannot be empty.")
@@ -62,7 +66,11 @@ def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
     try:
         # Show step header
         if ctx.views:
-            ctx.views.step_header("prompt_pr_body", ctx.current_step, ctx.total_steps)
+            ctx.views.step_header(
+                name="Prompt for PR Body",
+                step_type="plugin",
+                step_detail="github.prompt_for_pr_body"
+            )
         body = ctx.views.prompts.ask_multiline(msg.Prompts.ENTER_PR_BODY)
         # Body can be empty
         return Success("PR body captured", metadata={"pr_body": body})

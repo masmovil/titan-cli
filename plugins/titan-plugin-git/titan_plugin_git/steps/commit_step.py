@@ -29,7 +29,11 @@ def create_git_commit_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     # Show step header
     if ctx.views:
-        ctx.views.step_header("create_commit", ctx.current_step, ctx.total_steps)
+        ctx.views.step_header(
+            name="Create Commit",
+            step_type="plugin",
+            step_detail="git.create_commit"
+        )
 
     # Skip if there's nothing to commit
     git_status = ctx.data.get("git_status")

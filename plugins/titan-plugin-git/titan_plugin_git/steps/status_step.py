@@ -25,7 +25,11 @@ def get_git_status_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     # Show step header
     if ctx.views:
-        ctx.views.step_header("git_status", ctx.current_step, ctx.total_steps)
+        ctx.views.step_header(
+            name="Check Git Status",
+            step_type="plugin",
+            step_detail="git.get_status"
+        )
 
     if not ctx.git:
         return Error(msg.Steps.Status.GIT_CLIENT_NOT_AVAILABLE)

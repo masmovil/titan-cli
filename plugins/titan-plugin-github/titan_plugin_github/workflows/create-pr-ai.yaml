@@ -5,31 +5,15 @@ params:
   draft: false
 
 steps:
-  # Run hooks first (linter/tests may modify files)
-  - hook: before_commit
-
-  # Capture git status AFTER hook modifications
-  - id: git_status
-    name: "Check Git Status"
-    plugin: git
-    step: get_status
+  # Use the commit-ai workflow (respects project override for linting/testing)
+  - id: commit_changes
+    name: "Commit changes with AI"
+    workflow: "commit-ai"
 
   - id: get_head_branch
     name: "Get Head Branch"
     plugin: git
     step: get_current_branch
-
-  # AI generates commit message for uncommitted changes
-  - id: ai_commit_message
-    name: "AI Commit Message"
-    plugin: git
-    step: ai_generate_commit_message
-
-  # Create commit with AI-generated message
-  - id: create_commit
-    name: "Create Commit"
-    plugin: git
-    step: create_commit
 
   # AI generates PR title and description from branch commits
   - id: ai_pr_description
@@ -38,11 +22,6 @@ steps:
     step: ai_suggest_pr_description
 
   - hook: before_push
-
-  - id: push
-    name: "Push to Remote"
-    plugin: git
-    step: push
 
   # Fallback to manual prompts if AI was rejected
   - id: prompt_pr_title
