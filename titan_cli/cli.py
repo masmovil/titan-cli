@@ -182,10 +182,7 @@ def _show_switch_project_menu(prompts: PromptsRenderer, text: TextRenderer, conf
         except ConfigWriteError as e:
             text.error(str(e))
 
-from titan_cli.commands.cli import cli_app
-from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
-#...
+
 def _show_cli_submenu(prompts: PromptsRenderer, text: TextRenderer):
     """Shows the submenu for launching external CLIs."""
     from titan_cli.utils.cli_configs import CLI_REGISTRY
