@@ -1,0 +1,92 @@
+[agent]
+name = "JiraAgent"
+description = "AI agent specialized in JIRA issue analysis for iOS, Android, and BFF development"
+version = "1.0.0"
+
+[agent.capabilities]
+issue_analysis = true
+requirements_extraction = true
+subtask_generation = true
+description_enhancement = true
+label_suggestion = true           
+risk_scoring = true               
+gherkin_generation = true         
+
+[agent.limits]
+max_description_length = 8000
+max_subtasks = 6
+max_comments_to_analyze = 8
+max_linked_issues = 5
+temperature = 0.3             
+max_tokens = 2000                      
+
+[agent.prompts.requirements_analysis]
+system = """You are a technical analyst. Extract requirements from JIRA issues.
+CRITICAL: You MUST follow the exact format specified in the user prompt.
+Do not add extra sections or change the format."""
+[agent.prompts.description_enhancement]
+system = """You are a Technical Writer and QA Specialist. 
+Structure:
+- **Overview**: What and Why.
+- **Technical Context**: Specifics for iOS, Android, or BFF.
+- **Acceptance Criteria**: Using [ ] checkboxes.
+- **Gherkin Scenarios**: 
+  Generate Given/When/Then scenarios for the main success path and at least one edge case.
+  Use code blocks:
+  Scenario: [Name]
+    Given [context]
+    When [action]
+    Then [outcome]
+"""
+
+[agent.prompts.subtask_suggestion]
+system = """You are a Tech Lead. Suggest subtasks ONLY for iOS, Android, or BFF.
+Include always:
+- 1 subtask for Implementation.
+- 1 subtask for QA/Gherkin validation.
+- 1 subtask for Documentation/Code Review.
+Complexity: (XS, S, M, L, XL).
+"""
+
+[agent.prompts.smart_labeling]
+system = """You are a classification bot. STRICTLY use only these labels. DO NOT create new ones:
+- Platforms: [iOS, Android, BFF]
+- Types: [bug, feature, tech-debt, spike, refactor]
+- Priority: [blocker, high-impact, low-priority]
+
+If the issue does not fit any platform, flag it as 'Needs Triage'.
+Output: comma-separated list only."""
+
+[agent.prompts.comment_generation]
+system = """You are an experienced software engineer providing technical guidance.
+Your task is to generate helpful comments for JIRA issues.
+
+Guidelines:
+1. Be constructive and helpful
+2. Provide technical insights specific to iOS, Android, or BFF
+3. Suggest solutions or alternatives
+4. Ask clarifying questions when needed
+5. Reference related issues when relevant
+6. Keep it concise but informative
+7. Consider multi-platform implications
+"""
+
+[agent.features]
+enable_requirement_extraction = true
+enable_subtasks = true
+enable_gherkin_tests = true
+enable_strict_labeling = true
+enable_token_saving = true
+enable_debug_output = true
+
+[agent.formatting]
+# Optional: Specify a Jinja2 template for formatting analysis output
+# If not set or template not found, uses built-in Python formatter
+# Template must be in config/templates/ directory
+template = "issue_analysis.md.j2"
+
+[agent.metadata]
+author = "Titan CLI Team"
+updated = "2024-12-22"
+stack = ["iOS", "Android", "BFF"]
+testing_framework = "Gherkin/Cucumber"

@@ -278,11 +278,17 @@ def test_workflow_step_4_ai_analysis(workflow_context, mock_ai_client):
     # Assertions
     assert isinstance(result, Success)
     assert workflow_context.get("ai_analysis") is not None
-    assert "Issue Overview" in workflow_context.get("ai_analysis")
-    assert "Requirements Breakdown" in workflow_context.get("ai_analysis")
 
-    # Verify AI was called
-    mock_ai_client.generate.assert_called_once()
+    # Verify template was used (should contain template header)
+    ai_analysis = workflow_context.get("ai_analysis")
+    assert "# JIRA Issue Analysis" in ai_analysis
+
+    # Verify structured data was saved
+    structured = workflow_context.get("ai_analysis_structured")
+    assert structured is not None
+    assert "functional_requirements" in structured
+    assert "acceptance_criteria" in structured
+    assert "technical_approach" in structured
 
 
 def test_workflow_full_execution(workflow_context, mock_jira_client, mock_ai_client):
@@ -317,6 +323,8 @@ def test_workflow_full_execution(workflow_context, mock_jira_client, mock_ai_cli
     # Verify final state
     assert workflow_context.get("ai_analysis") is not None
     assert workflow_context.get("jira_issue").key == "ECAPP-123"
+    # Verify template header is present
+    assert "# JIRA Issue Analysis" in workflow_context.get("ai_analysis")
 
 
 def test_workflow_ai_not_available(workflow_context):
@@ -374,3 +382,83 @@ def test_workflow_invalid_issue_selection(workflow_context):
 
     # Should return error when no issue selected
     assert isinstance(result, Error)
+
+
+def test_formatter_with_template():
+    """Test that formatter uses Jinja2 template when available."""
+    from titan_plugin_jira.formatters import IssueAnalysisMarkdownFormatter
+    from titan_plugin_jira.agents.jira_agent import IssueAnalysis
+
+    # Create formatter with template
+    formatter = IssueAnalysisMarkdownFormatter(template_path="issue_analysis.md.j2")
+    assert formatter.template is not None
+
+    # Create sample analysis
+    analysis = IssueAnalysis(
+        functional_requirements=["FR1: User authentication", "FR2: Password reset"],
+        acceptance_criteria=["User can login", "User can reset password"],
+        technical_approach="Use JWT tokens for auth",
+        complexity_score="medium",
+        estimated_effort="3-5 days"
+    )
+
+    # Format the analysis
+    output = formatter.format(analysis)
+
+    # Verify template was used (contains template header)
+    assert "# JIRA Issue Analysis" in output
+    # Verify content is present
+    assert "FR1: User authentication" in output
+    assert "User can login" in output
+    assert "JWT tokens" in output
+
+
+def test_formatter_without_template():
+    """Test that formatter falls back to built-in when template not found."""
+    from titan_plugin_jira.formatters import IssueAnalysisMarkdownFormatter
+    from titan_plugin_jira.agents.jira_agent import IssueAnalysis
+
+    # Create formatter without template (will use fallback)
+    formatter = IssueAnalysisMarkdownFormatter(template_path="nonexistent.md.j2")
+    assert formatter.template is None  # Template should fail to load
+
+    # Create sample analysis
+    analysis = IssueAnalysis(
+        functional_requirements=["FR1: User authentication"],
+        acceptance_criteria=["User can login"],
+        technical_approach="Use JWT tokens",
+        complexity_score="medium"
+    )
+
+    # Format the analysis
+    output = formatter.format(analysis)
+
+    # Verify built-in formatter was used (uses ## headers, not # header)
+    assert output.startswith("\n## 1. Requirements Breakdown") or "## 1. Requirements Breakdown" in output
+    # Verify content is present with built-in format
+    assert "Requirements Breakdown" in output
+    assert "FR1: User authentication" in output
+    assert "Acceptance Criteria" in output
+
+
+def test_formatter_no_template_specified():
+    """Test that formatter uses built-in when no template specified."""
+    from titan_plugin_jira.formatters import IssueAnalysisMarkdownFormatter
+    from titan_plugin_jira.agents.jira_agent import IssueAnalysis
+
+    # Create formatter with no template
+    formatter = IssueAnalysisMarkdownFormatter()
+    assert formatter.template is None
+
+    # Create sample analysis
+    analysis = IssueAnalysis(
+        functional_requirements=["FR1: Test requirement"],
+        complexity_score="low"
+    )
+
+    # Format the analysis
+    output = formatter.format(analysis)
+
+    # Verify built-in formatter was used
+    assert "Requirements Breakdown" in output
+    assert "FR1: Test requirement" in output
