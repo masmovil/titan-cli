@@ -5,6 +5,8 @@ AI-powered JIRA issue analysis step
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from rich.markdown import Markdown
 from ..messages import msg
+from ..agents import JiraAgent
+from ..formatters import IssueAnalysisMarkdownFormatter
 
 
 def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
@@ -43,65 +45,24 @@ def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
             ctx.ui.panel.print(msg.Steps.AIIssue.NO_ISSUE_FOUND, panel_type="error")
         return Error(msg.Steps.AIIssue.NO_ISSUE_FOUND)
 
-    # Build context for AI
-    issue_context = f"""# JIRA Issue Analysis Request
-
-**Issue Key:** {issue.key}
-**Type:** {issue.issue_type}
-**Status:** {issue.status}
-**Priority:** {issue.priority}
-**Assignee:** {issue.assignee or "Unassigned"}
-
-**Summary:**
-{issue.summary}
-
-**Description:**
-{issue.description or "No description provided"}
-
-**Labels:** {', '.join(issue.labels) if issue.labels else "None"}
-**Components:** {', '.join(issue.components) if issue.components else "None"}
-"""
-
-    # Build AI prompt
-    prompt = f"""{issue_context}
-
-Please provide a comprehensive analysis of this JIRA issue with the following sections:
-
-## 1. Issue Overview
-Provide a brief summary of what this issue is asking for.
-
-## 2. Requirements Breakdown
-List the specific requirements and acceptance criteria (extract or infer from description).
-
-## 3. Technical Considerations
-Identify technical aspects, technologies, or systems involved.
-
-## 4. Potential Challenges
-List possible challenges, risks, or blockers.
-
-## 5. Implementation Approach
-Suggest a high-level implementation approach or steps.
-
-## 6. Missing Information
-Identify any critical information that's missing from the issue description.
-
-## 7. Estimated Complexity
-Rate the complexity (Low/Medium/High) and explain why.
-
-Format your response in clear markdown with proper headers and bullet points.
-"""
-
     if ctx.ui:
         ctx.ui.text.info(msg.Steps.AIIssue.ANALYZING)
         ctx.ui.spacer.small()
 
-    # Generate AI analysis
-    from titan_cli.ai.models import AIMessage
+    # Create JiraAgent instance and analyze issue
+    jira_agent = JiraAgent(ctx.ai, ctx.jira)
+    analysis = jira_agent.analyze_issue(
+        issue_key=issue.key,
+        include_subtasks=True,
+        include_comments=False,
+        include_linked_issues=False
+    )
 
-    messages = [AIMessage(role="user", content=prompt)]
-    response = ctx.ai.generate(messages, max_tokens=2000, temperature=0.7)
-
-    ai_analysis = response.content
+    # Build formatted analysis for display
+    # Use template from config if specified, otherwise use built-in formatter
+    template_name = jira_agent.config.template if jira_agent.config.template else None
+    formatter = IssueAnalysisMarkdownFormatter(template_path=template_name)
+    ai_analysis = formatter.format(analysis)
 
     # Display analysis
     if ctx.ui:
@@ -118,11 +79,32 @@ Format your response in clear markdown with proper headers and bullet points.
         ctx.ui.panel.print(Markdown(ai_analysis), title=None, panel_type="default")
         ctx.ui.spacer.small()
 
+        # Show token usage
+        if analysis.total_tokens_used > 0:
+            ctx.ui.text.body(f"Tokens used: {analysis.total_tokens_used}", style="dim")
+
+    # Save structured analysis to context
+    ctx.set("ai_analysis_structured", {
+        "functional_requirements": analysis.functional_requirements,
+        "non_functional_requirements": analysis.non_functional_requirements,
+        "acceptance_criteria": analysis.acceptance_criteria,
+        "technical_approach": analysis.technical_approach,
+        "dependencies": analysis.dependencies,
+        "risks": analysis.risks,
+        "edge_cases": analysis.edge_cases,
+        "suggested_subtasks": analysis.suggested_subtasks,
+        "complexity_score": analysis.complexity_score,
+        "estimated_effort": analysis.estimated_effort
+    })
+
     return Success(
         "AI analysis completed",
         metadata={
             "ai_analysis": ai_analysis,
-            "analyzed_issue_key": issue.key
+            "analyzed_issue_key": issue.key,
+            "tokens_used": analysis.total_tokens_used,
+            "complexity": analysis.complexity_score,
+            "effort": analysis.estimated_effort
         }
     )
 

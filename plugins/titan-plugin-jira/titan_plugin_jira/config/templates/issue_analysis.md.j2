@@ -1,0 +1,78 @@
+# JIRA Issue Analysis
+
+{% if functional_requirements or non_functional_requirements %}
+## 1. Requirements Breakdown
+
+{% if functional_requirements %}
+**Functional Requirements:**
+{% for req in functional_requirements %}
+- {{ req }}
+{% endfor %}
+{% endif %}
+
+{% if non_functional_requirements %}
+**Non-Functional Requirements:**
+{% for req in non_functional_requirements %}
+- {{ req }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if acceptance_criteria %}
+## 2. Acceptance Criteria
+
+{% for criterion in acceptance_criteria %}
+- [ ] {{ criterion }}
+{% endfor %}
+{% endif %}
+
+{% if technical_approach %}
+## 3. Technical Approach
+
+{{ technical_approach }}
+{% endif %}
+
+{% if dependencies %}
+## 4. Dependencies
+
+{% for dep in dependencies %}
+- {{ dep }}
+{% endfor %}
+{% endif %}
+
+{% if risks %}
+## 5. Potential Risks
+
+{% for risk in risks %}
+- ⚠️ {{ risk }}
+{% endfor %}
+{% endif %}
+
+{% if edge_cases %}
+## 6. Edge Cases to Consider
+
+{% for edge_case in edge_cases %}
+- {{ edge_case }}
+{% endfor %}
+{% endif %}
+
+{% if suggested_subtasks %}
+## 7. Suggested Subtasks
+
+{% for subtask in suggested_subtasks %}
+**{{ loop.index }}. {{ subtask.summary }}**
+{{ subtask.description }}
+
+{% endfor %}
+{% endif %}
+
+{% if complexity_score or estimated_effort %}
+## 8. Complexity Assessment
+
+{% if complexity_score %}
+**Complexity:** {{ complexity_score|title }}
+{% endif %}
+{% if estimated_effort %}
+**Estimated Effort:** {{ estimated_effort }}
+{% endif %}
+{% endif %}
