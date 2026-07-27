@@ -725,6 +725,35 @@ def test_oauth_manager_reads_legacy_secret_key(monkeypatch, tmp_path) -> None:
     assert credential.source == "keyring:demo_legacy_access_token"
 
 
+@pytest.mark.parametrize(
+    ("scope", "expected_source"),
+    [
+        ("env", "env:DEMO_LEGACY_ACCESS_TOKEN"),
+        ("project", "project:demo_legacy_access_token"),
+    ],
+)
+def test_oauth_manager_reports_legacy_secret_source_scope(
+    monkeypatch,
+    tmp_path,
+    scope,
+    expected_source,
+) -> None:
+    monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
+    secrets = FakeSecretManager()
+    secrets.scoped_values[
+        (scope, "titan", "demo_legacy_access_token")
+    ] = " legacy-token "
+    sink = CollectingOAuthEventSink()
+    manager = _manager(secrets, tmp_path)
+
+    credential = asyncio.run(manager.get_credential(_request(), sink=sink))
+
+    assert credential.access_token == "legacy-token"
+    assert credential.source == expected_source
+    assert sink.events[-1].type == "oauth.resolve.succeeded"
+    assert dict(sink.events[-1].metadata) == {"source": expected_source}
+
+
 def test_oauth_manager_respects_legacy_secret_key_precedence(
     monkeypatch,
     tmp_path,

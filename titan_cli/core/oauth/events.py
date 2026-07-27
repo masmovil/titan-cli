@@ -231,8 +231,10 @@ def _is_safe_source_value(value: Any) -> bool:
         return False
     if value in {"oauth-cache", "oauth-refresh", "oauth-login"}:
         return True
-    if value.startswith("keyring:"):
-        label = value.removeprefix("keyring:")
+    for prefix in ("env:", "project:", "keyring:"):
+        if not value.startswith(prefix):
+            continue
+        label = value.removeprefix(prefix)
         return _is_safe_identifier(label)
     return _is_env_var_name(value)
 

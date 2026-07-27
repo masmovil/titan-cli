@@ -425,7 +425,7 @@ def test_set_user_scope_raises_when_keyring_write_fails(mock_keyring, tmp_projec
     assert not (tmp_project_path / ".titan" / "secrets.env").exists()
 
 
-def test_set_project_scope_new_secret(tmp_project_path):
+def test_set_project_scope_new_secret(tmp_project_path, mock_env):
     sm = SecretManager(project_path=tmp_project_path)
     sm.set("my_project_secret", "project_value", scope="project")
 
@@ -436,7 +436,7 @@ def test_set_project_scope_new_secret(tmp_project_path):
     assert "MY_PROJECT_SECRET='project_value'" in content
 
 
-def test_set_project_scope_update_secret(tmp_project_path):
+def test_set_project_scope_update_secret(tmp_project_path, mock_env):
     secrets_file = tmp_project_path / ".titan" / "secrets.env"
     secrets_file.write_text("EXISTING_SECRET='old_value'\nOTHER_KEY='other_value'\n")
 
@@ -450,7 +450,7 @@ def test_set_project_scope_update_secret(tmp_project_path):
     assert "EXISTING_SECRET='old_value'" not in content
 
 
-def test_set_project_scope_creates_dir_if_not_exists(tmp_path):
+def test_set_project_scope_creates_dir_if_not_exists(tmp_path, mock_env):
     project_path = tmp_path / "new_project"
     sm = SecretManager(project_path=project_path)
     sm.set("new_secret", "value", scope="project")
@@ -471,7 +471,7 @@ def test_delete_user_scope(mock_keyring):
     mock_keyring[2].assert_called_once_with("titan", "to_delete")
 
 
-def test_delete_project_scope(tmp_project_path):
+def test_delete_project_scope(tmp_project_path, mock_env):
     secrets_file = tmp_project_path / ".titan" / "secrets.env"
     secrets_file.write_text("TO_DELETE='value'\nOTHER_KEY='other_value'\n")
 
@@ -484,7 +484,7 @@ def test_delete_project_scope(tmp_project_path):
     assert "OTHER_KEY='other_value'" in content
 
 
-def test_delete_project_scope_secret_not_found(tmp_project_path):
+def test_delete_project_scope_secret_not_found(tmp_project_path, mock_env):
     secrets_file = tmp_project_path / ".titan" / "secrets.env"
     secrets_file.write_text("OTHER_KEY='other_value'\n")
 

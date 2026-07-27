@@ -60,6 +60,15 @@ def _validate_refresh_margin_seconds(refresh_margin_seconds: object) -> int:
     return refresh_margin_seconds
 
 
+def _legacy_secret_source(secret_key: str, scope: ScopeType) -> str:
+    """Build a non-secret source label for a resolved legacy credential."""
+    if scope == "env":
+        return f"env:{secret_key.upper()}"
+    if scope == "project":
+        return f"project:{secret_key}"
+    return f"keyring:{secret_key}"
+
+
 class OAuthManager:
     """Resolves OAuth credentials through env, storage, legacy keys, and providers."""
 
@@ -513,16 +522,16 @@ class OAuthManager:
         credential_key: str,
     ) -> OAuthCredential | None:
         for secret_key in request.legacy_secret_keys:
-            token = self.secrets.get(secret_key)
-            if token and token.strip():
+            resolved_secret = self.secrets.get_with_scope(secret_key)
+            if resolved_secret and resolved_secret.value.strip():
                 return OAuthCredential(
-                    access_token=token.strip(),
+                    access_token=resolved_secret.value.strip(),
                     token_type="Bearer",
                     scopes=request.scopes,
                     provider=request.provider,
                     connection_id=request.connection_id,
                     credential_key=credential_key,
-                    source=f"keyring:{secret_key}",
+                    source=_legacy_secret_source(secret_key, resolved_secret.scope),
                 )
         return None
 
