@@ -19,6 +19,28 @@ def _normalize_optional(value: Any, *, field_name: str = "value") -> str | None:
     return stripped or None
 
 
+def _normalize_optional_int(value: Any, *, field_name: str = "value") -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a non-boolean integer when present.")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError(
+                f"{field_name} must be a non-boolean integer when present."
+            )
+        try:
+            return int(stripped, 10)
+        except ValueError as exc:
+            raise ValueError(
+                f"{field_name} must be a non-boolean integer when present."
+            ) from exc
+    raise ValueError(f"{field_name} must be a non-boolean integer when present.")
+
+
 def _normalize_values(
     values: Sequence[str] | str | None,
     *,
@@ -128,6 +150,11 @@ class OAuthTokenSet:
             "refresh_token",
             _normalize_optional(self.refresh_token, field_name="refresh_token"),
         )
+        object.__setattr__(
+            self,
+            "expires_at",
+            _normalize_optional_int(self.expires_at, field_name="expires_at"),
+        )
         object.__setattr__(self, "token_type", self.token_type.strip() or "Bearer")
         object.__setattr__(
             self,
@@ -168,8 +195,10 @@ class OAuthTokenSet:
         if not isinstance(access_token, str) or not access_token.strip():
             raise ValueError("Stored OAuth token set is missing access_token.")
 
-        expires_at_raw = payload.get("expires_at")
-        expires_at = int(expires_at_raw) if expires_at_raw is not None else None
+        expires_at = _normalize_optional_int(
+            payload.get("expires_at"),
+            field_name="Stored OAuth token set expires_at",
+        )
 
         refresh_token = _normalize_optional(
             payload.get("refresh_token"),

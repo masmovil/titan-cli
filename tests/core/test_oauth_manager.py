@@ -246,6 +246,16 @@ def test_oauth_token_set_normalizes_scalar_scope() -> None:
     assert token_set.scopes == ("openid",)
 
 
+def test_oauth_token_set_normalizes_string_expires_at() -> None:
+    token_set = OAuthTokenSet(
+        access_token="access-token",
+        expires_at="9999999999",
+    )
+
+    assert token_set.expires_at == 9999999999
+    assert token_set.is_valid(now=0, refresh_margin_seconds=0)
+
+
 @pytest.mark.parametrize("access_token", ["", "   "])
 def test_oauth_token_set_rejects_empty_access_token(access_token: str) -> None:
     with pytest.raises(ValueError, match="access_token"):
@@ -255,6 +265,15 @@ def test_oauth_token_set_rejects_empty_access_token(access_token: str) -> None:
 def test_oauth_token_set_rejects_non_string_access_token() -> None:
     with pytest.raises(ValueError, match="access_token"):
         OAuthTokenSet(access_token=123)
+
+
+@pytest.mark.parametrize(
+    "expires_at",
+    [True, False, 123.45, "123.45", "", "   ", object()],
+)
+def test_oauth_token_set_rejects_invalid_expires_at(expires_at: object) -> None:
+    with pytest.raises(ValueError, match="expires_at"):
+        OAuthTokenSet(access_token="access-token", expires_at=expires_at)
 
 
 def test_oauth_token_set_from_dict_rejects_non_string_refresh_token() -> None:
@@ -273,6 +292,30 @@ def test_oauth_token_set_from_dict_rejects_non_string_scope_element() -> None:
             {
                 "access_token": "access-token",
                 "scopes": ["openid", 123],
+            }
+        )
+
+
+def test_oauth_token_set_from_dict_normalizes_string_expires_at() -> None:
+    token_set = OAuthTokenSet.from_dict(
+        {
+            "access_token": "access-token",
+            "expires_at": "9999999999",
+        }
+    )
+
+    assert token_set.expires_at == 9999999999
+
+
+@pytest.mark.parametrize("expires_at", [True, False, 123.45, "123.45"])
+def test_oauth_token_set_from_dict_rejects_invalid_expires_at(
+    expires_at: object,
+) -> None:
+    with pytest.raises(ValueError, match="expires_at"):
+        OAuthTokenSet.from_dict(
+            {
+                "access_token": "access-token",
+                "expires_at": expires_at,
             }
         )
 
