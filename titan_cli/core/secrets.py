@@ -14,8 +14,8 @@ from dotenv import dotenv_values, load_dotenv
 
 ScopeType = Literal["env", "project", "user"]
 
-_PROJECT_ENV_KEYS_LOCK = threading.Lock()
-_PROJECT_ENV_VALUES_BY_PATH: dict[Path, dict[str, str]] = {}
+_PROJECT_ENV_INJECTIONS_LOCK = threading.Lock()
+_PROJECT_ENV_INJECTIONS: dict[str, "_ProjectEnvInjection"] = {}
 _PROJECT_SECRET_FILE_LOCKS_GUARD = threading.Lock()
 _PROJECT_SECRET_FILE_LOCKS_BY_PATH: dict[Path, threading.Lock] = {}
 
@@ -26,6 +26,14 @@ class ResolvedSecret:
 
     value: str
     scope: ScopeType
+
+
+@dataclass(frozen=True)
+class _ProjectEnvInjection:
+    """Process-wide ownership for a project secret injected into os.environ."""
+
+    project_path: Path
+    value: str
 
 
 class _ProjectSecretsFileLock:
@@ -129,7 +137,6 @@ class SecretManager:
             strict=False
         )
         self._project_secret_values: dict[str, str] = {}
-        self._project_env_values = self._shared_project_env_values(self.project_path)
         self._load_project_secrets()
 
     def _load_project_secrets(self):
@@ -173,17 +180,19 @@ class SecretManager:
         project_value = self._project_secret_values.get(env_key)
 
         if env_value is not None:
-            injected_project_value = self._project_env_value(env_key)
-            if injected_project_value is not None and project_value is not None:
-                if env_value == injected_project_value:
+            project_injection = self._current_project_env_injection(env_key)
+            if project_injection is None:
+                return ResolvedSecret(env_value, "env")
+
+            if project_value is not None:
+                if project_injection.project_path == self.project_path:
                     os.environ[env_key] = project_value
                     self._mark_project_env_key(env_key, project_value)
-                    return ResolvedSecret(project_value, "project")
-                self._discard_project_env_key(env_key)
-                return ResolvedSecret(env_value, "env")
-            if injected_project_value is not None:
-                self._discard_project_env_key(env_key)
-            return ResolvedSecret(env_value, "env")
+                return ResolvedSecret(project_value, "project")
+
+            if project_injection.project_path == self.project_path:
+                os.environ.pop(env_key, None)
+                self._discard_project_env_key(env_key, project_path=self.project_path)
 
         if project_value is not None:
             return ResolvedSecret(project_value, "project")
@@ -245,12 +254,16 @@ class SecretManager:
                 secrets_file.parent.mkdir(parents=True, exist_ok=True)
                 key_upper = key.upper()
                 self._refresh_project_secret_values()
+                project_injection = self._current_project_env_injection(key_upper)
                 should_update_env = (
-                    self._is_project_env_key_current(key_upper)
+                    project_injection is not None
                     or key_upper not in os.environ
                 )
                 if key_upper in os.environ and not should_update_env:
-                    self._discard_project_env_key(key_upper)
+                    self._discard_project_env_key(
+                        key_upper,
+                        project_path=self.project_path,
+                    )
 
                 existing_lines = self._read_project_secret_lines(secrets_file)
 
@@ -300,9 +313,16 @@ class SecretManager:
 
                 self._write_project_secret_lines_atomic(secrets_file, filtered)
                 self._refresh_project_secret_values()
-                if self._is_project_env_key_current(key_upper):
+                project_injection = self._current_project_env_injection(key_upper)
+                if (
+                    project_injection
+                    and project_injection.project_path == self.project_path
+                ):
                     os.environ.pop(key_upper, None)
-                self._discard_project_env_key(key_upper)
+                    self._discard_project_env_key(
+                        key_upper,
+                        project_path=self.project_path,
+                    )
 
     def _read_project_secrets_file(self) -> dict[str, str]:
         """Read project secrets without consulting process environment."""
@@ -357,33 +377,52 @@ class SecretManager:
             if temp_path and temp_path.exists():
                 temp_path.unlink()
 
-    @staticmethod
-    def _shared_project_env_values(project_path: Path) -> dict[str, str]:
-        """Return project-injected env values shared by process/project."""
-        with _PROJECT_ENV_KEYS_LOCK:
-            return _PROJECT_ENV_VALUES_BY_PATH.setdefault(project_path, {})
-
     def _refresh_project_secret_values(self) -> None:
         """Refresh project secret values from disk without mutating env."""
         self._project_secret_values = self._read_project_secrets_file()
 
-    def _is_project_env_key_current(self, key: str) -> bool:
-        with _PROJECT_ENV_KEYS_LOCK:
-            project_value = self._project_env_values.get(key)
-        return project_value is not None and os.environ.get(key) == project_value
-
-    def _project_env_value(self, key: str) -> str | None:
-        with _PROJECT_ENV_KEYS_LOCK:
-            return self._project_env_values.get(key)
+    def _current_project_env_injection(
+        self,
+        key: str,
+    ) -> _ProjectEnvInjection | None:
+        """Return current Titan-owned env injection, discarding stale entries."""
+        with _PROJECT_ENV_INJECTIONS_LOCK:
+            injection = _PROJECT_ENV_INJECTIONS.get(key)
+        if injection is None:
+            return None
+        if os.environ.get(key) == injection.value:
+            return injection
+        self._discard_project_env_key(key, injection=injection)
+        return None
 
     def _mark_project_env_key(self, key: str, value: str) -> None:
-        with _PROJECT_ENV_KEYS_LOCK:
-            self._project_env_values[key] = value
+        with _PROJECT_ENV_INJECTIONS_LOCK:
+            _PROJECT_ENV_INJECTIONS[key] = _ProjectEnvInjection(
+                project_path=self.project_path,
+                value=value,
+            )
 
     def _mark_project_env_values(self, values: Mapping[str, str]) -> None:
-        with _PROJECT_ENV_KEYS_LOCK:
-            self._project_env_values.update(values)
+        with _PROJECT_ENV_INJECTIONS_LOCK:
+            for key, value in values.items():
+                _PROJECT_ENV_INJECTIONS[key] = _ProjectEnvInjection(
+                    project_path=self.project_path,
+                    value=value,
+                )
 
-    def _discard_project_env_key(self, key: str) -> None:
-        with _PROJECT_ENV_KEYS_LOCK:
-            self._project_env_values.pop(key, None)
+    def _discard_project_env_key(
+        self,
+        key: str,
+        *,
+        project_path: Path | None = None,
+        injection: _ProjectEnvInjection | None = None,
+    ) -> None:
+        with _PROJECT_ENV_INJECTIONS_LOCK:
+            current = _PROJECT_ENV_INJECTIONS.get(key)
+            if current is None:
+                return
+            if project_path is not None and current.project_path != project_path:
+                return
+            if injection is not None and current != injection:
+                return
+            _PROJECT_ENV_INJECTIONS.pop(key, None)

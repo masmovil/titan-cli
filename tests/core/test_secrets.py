@@ -207,6 +207,67 @@ def test_project_scope_updates_stay_coherent_across_instances(
     assert second_resolved.scope == "project"
 
 
+def test_project_env_injection_does_not_leak_between_projects(
+    tmp_path,
+    mock_env,
+):
+    first_project = tmp_path / "first"
+    second_project = tmp_path / "second"
+    (first_project / ".titan").mkdir(parents=True)
+    (second_project / ".titan").mkdir(parents=True)
+    (first_project / ".titan" / "secrets.env").write_text(
+        "SHARED_TOKEN='first_value'\n"
+    )
+    (second_project / ".titan" / "secrets.env").write_text(
+        "SHARED_TOKEN='second_value'\n"
+    )
+
+    first = SecretManager(project_path=first_project)
+    assert os.environ["SHARED_TOKEN"] == "first_value"
+    second = SecretManager(project_path=second_project)
+
+    first_resolved = first.get_with_scope("shared_token")
+    second_resolved = second.get_with_scope("shared_token")
+
+    assert first_resolved is not None
+    assert first_resolved.value == "first_value"
+    assert first_resolved.scope == "project"
+    assert second_resolved is not None
+    assert second_resolved.value == "second_value"
+    assert second_resolved.scope == "project"
+
+
+def test_project_scope_update_does_not_make_other_project_read_wrong_secret(
+    tmp_path,
+    mock_env,
+):
+    first_project = tmp_path / "first"
+    second_project = tmp_path / "second"
+    (first_project / ".titan").mkdir(parents=True)
+    (second_project / ".titan").mkdir(parents=True)
+    (first_project / ".titan" / "secrets.env").write_text(
+        "SHARED_TOKEN='first_value'\n"
+    )
+    (second_project / ".titan" / "secrets.env").write_text(
+        "SHARED_TOKEN='second_value'\n"
+    )
+
+    first = SecretManager(project_path=first_project)
+    second = SecretManager(project_path=second_project)
+
+    second.set("shared_token", "second_updated", scope="project")
+    first_resolved = first.get_with_scope("shared_token")
+    second_resolved = second.get_with_scope("shared_token")
+
+    assert os.environ["SHARED_TOKEN"] == "second_updated"
+    assert first_resolved is not None
+    assert first_resolved.value == "first_value"
+    assert first_resolved.scope == "project"
+    assert second_resolved is not None
+    assert second_resolved.value == "second_updated"
+    assert second_resolved.scope == "project"
+
+
 def test_project_scope_writes_are_serialized_across_instances(
     tmp_project_path,
     mock_env,

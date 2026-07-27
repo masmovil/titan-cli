@@ -10,6 +10,40 @@ from types import MappingProxyType
 from typing import Any, Protocol
 
 REDACTED_METADATA_VALUE = "<redacted>"
+SAFE_EVENT_MESSAGES = frozenset(
+    {
+        "",
+        "Resolving OAuth credential.",
+        "OAuth credential resolved.",
+        "OAuth refresh provider is not registered.",
+        "OAuth authorization provider is not registered.",
+        "OAuth authentication is required.",
+        "OAuth credential lock acquired.",
+        "Refreshing OAuth credential.",
+        "OAuth refresh failed.",
+        "Stale OAuth credential could not be deleted.",
+        "Deleted stale OAuth credential after refresh failure.",
+        "OAuth refreshed credential could not be saved.",
+        "Starting OAuth authorization.",
+        "OAuth authorization failed.",
+        "OAuth authorized credential could not be saved.",
+        "OAuth credential could not be saved.",
+        "OAuth credential saved.",
+    }
+)
+SAFE_METADATA_KEYS = frozenset({"source", "phase", "secret_key"})
+SENSITIVE_METADATA_KEYS = frozenset(
+    {
+        "access_token",
+        "authorization",
+        "client_secret",
+        "credential",
+        "id_token",
+        "refresh_token",
+        "secret",
+        "token",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +62,28 @@ class OAuthEvent:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "type", _sanitize_event_text(self.type))
+        object.__setattr__(
+            self,
+            "operation_id",
+            _sanitize_event_text(self.operation_id),
+        )
+        object.__setattr__(
+            self,
+            "credential_key",
+            _sanitize_optional_event_text(self.credential_key),
+        )
+        object.__setattr__(
+            self,
+            "provider",
+            _sanitize_optional_event_text(self.provider),
+        )
+        object.__setattr__(
+            self,
+            "connection_id",
+            _sanitize_optional_event_text(self.connection_id),
+        )
+        object.__setattr__(self, "message", _sanitize_event_message(self.message))
         object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
 
 
@@ -110,34 +166,99 @@ def _freeze_metadata(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
     """Return an immutable metadata snapshot for emitted events."""
     if not value:
         return MappingProxyType({})
-    return MappingProxyType(
-        {
-            key: REDACTED_METADATA_VALUE
-            if _is_sensitive_metadata_key(key)
-            else _freeze_value(item)
-            for key, item in value.items()
-        }
+    if not isinstance(value, Mapping):
+        raise ValueError("OAuth event metadata must be a mapping.")
+
+    safe_metadata = {}
+    for key, item in value.items():
+        key_label = str(key)
+        if key_label in SAFE_METADATA_KEYS:
+            safe_metadata[key_label] = _freeze_safe_metadata_value(key_label, item)
+            continue
+        if _is_sensitive_metadata_key(key_label):
+            safe_metadata[key_label] = REDACTED_METADATA_VALUE
+            continue
+    return MappingProxyType(safe_metadata)
+
+
+def _freeze_safe_metadata_value(key: str, value: Any) -> Any:
+    """Freeze a whitelisted metadata value after key-specific validation."""
+    if key == "source":
+        return value if _is_safe_source_value(value) else REDACTED_METADATA_VALUE
+    if key == "phase":
+        return value if value == "storage" else REDACTED_METADATA_VALUE
+    if key == "secret_key":
+        return value if _is_safe_secret_key_value(value) else REDACTED_METADATA_VALUE
+    return REDACTED_METADATA_VALUE
+
+
+def _sanitize_event_message(value: Any) -> str:
+    """Return a lifecycle-safe event message."""
+    if not isinstance(value, str):
+        raise ValueError("OAuth event message must be a string.")
+    stripped = value.strip()
+    if stripped in SAFE_EVENT_MESSAGES:
+        return stripped
+    return REDACTED_METADATA_VALUE
+
+
+def _sanitize_optional_event_text(value: Any) -> str | None:
+    """Sanitize an optional event field."""
+    if value is None:
+        return None
+    return _sanitize_event_text(value)
+
+
+def _sanitize_event_text(value: Any) -> str:
+    """Sanitize a required event field."""
+    if not isinstance(value, str):
+        raise ValueError("OAuth event fields must be strings.")
+    stripped = value.strip()
+    if _contains_sensitive_text(stripped):
+        return REDACTED_METADATA_VALUE
+    return stripped
+
+
+def _contains_sensitive_text(value: str) -> bool:
+    """Return whether text advertises token or authorization material."""
+    lowered = value.lower()
+    return any(marker in lowered for marker in SENSITIVE_METADATA_KEYS)
+
+
+def _is_safe_source_value(value: Any) -> bool:
+    """Return whether a source metadata value is a non-secret source label."""
+    if not isinstance(value, str):
+        return False
+    if value in {"oauth-cache", "oauth-refresh", "oauth-login"}:
+        return True
+    if value.startswith("keyring:"):
+        label = value.removeprefix("keyring:")
+        return _is_safe_identifier(label)
+    return _is_env_var_name(value)
+
+
+def _is_safe_secret_key_value(value: Any) -> bool:
+    """Return whether a stored secret key label is safe to expose."""
+    return isinstance(value, str) and value.startswith("oauth_") and _is_safe_identifier(
+        value
     )
 
 
-def _freeze_value(value: Any) -> Any:
-    """Recursively freeze common mutable containers."""
-    if isinstance(value, Mapping):
-        return MappingProxyType(
-            {
-                key: REDACTED_METADATA_VALUE
-                if _is_sensitive_metadata_key(key)
-                else _freeze_value(item)
-                for key, item in value.items()
-            }
-        )
-    if isinstance(value, list | tuple):
-        return tuple(_freeze_value(item) for item in value)
-    if isinstance(value, set | frozenset):
-        return frozenset(_freeze_value(item) for item in value)
-    return value
+def _is_env_var_name(value: str) -> bool:
+    """Return whether a value looks like an environment variable name."""
+    return bool(value) and all(
+        char.isupper() or char.isdigit() or char == "_" for char in value
+    )
+
+
+def _is_safe_identifier(value: str) -> bool:
+    """Return whether a label contains only non-structural identifier characters."""
+    return bool(value) and all(
+        char.isalnum() or char in {"_", "-", ".", ":"} for char in value
+    )
 
 
 def _is_sensitive_metadata_key(key: object) -> bool:
     """Return whether a metadata key may carry OAuth token material."""
-    return "token" in str(key).lower()
+    lowered = str(key).lower()
+    return any(marker in lowered for marker in SENSITIVE_METADATA_KEYS)

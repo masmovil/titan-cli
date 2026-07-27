@@ -1014,14 +1014,20 @@ def test_oauth_manager_invalid_token_delete_failure_emits_storage_failure(
     assert isinstance(exc_info.value.__cause__, RuntimeError)
     assert secrets.delete_calls[-1] == (old_secret_key, "project")
     assert ("project", "titan", old_secret_key) in secrets.scoped_values
-    assert [event.type for event in sink.events] == [
-        "oauth.resolve.started",
-        "oauth.lock.acquired",
-        "oauth.refresh.started",
-        "oauth.refresh.failed",
-        "oauth.refresh.failed",
+    assert [
+        (event.type, event.message, dict(event.metadata)) for event in sink.events
+    ] == [
+        ("oauth.resolve.started", "Resolving OAuth credential.", {}),
+        ("oauth.lock.acquired", "OAuth credential lock acquired.", {}),
+        ("oauth.refresh.started", "Refreshing OAuth credential.", {}),
+        ("oauth.refresh.failed", "OAuth refresh failed.", {}),
+        (
+            "oauth.refresh.failed",
+            "Stale OAuth credential could not be deleted.",
+            {"phase": "storage"},
+        ),
     ]
-    assert dict(sink.events[-1].metadata) == {"phase": "storage"}
+    assert "oauth.refresh.stale_deleted" not in [event.type for event in sink.events]
 
 
 def test_oauth_manager_invalid_token_delete_must_remove_before_stale_deleted(
@@ -1774,10 +1780,13 @@ def test_file_lock_timeout_zero_times_out_after_contended_attempt(tmp_path) -> N
 
     lock._try_acquire_once = try_acquire_once
 
+    started_at = time.monotonic()
     with pytest.raises(OAuthLockTimeout):
         lock.acquire()
+    elapsed = time.monotonic() - started_at
 
     assert attempts == 1
+    assert elapsed < 0.05
     assert lock._handle is None
 
 
@@ -1914,22 +1923,22 @@ def test_oauth_event_metadata_is_immutable_snapshot() -> None:
 
     assert event.metadata == {
         "source": "oauth-cache",
-        "nested": {"safe": "value"},
-        "items": ("first",),
     }
     assert "token" not in event.metadata
+    assert "nested" not in event.metadata
+    assert "items" not in event.metadata
     with pytest.raises(TypeError):
         event.metadata["token"] = "secret"
-    with pytest.raises(TypeError):
-        event.metadata["nested"]["safe"] = "mutated"
 
 
-def test_oauth_event_metadata_redacts_token_fields_recursively() -> None:
+def test_oauth_event_metadata_redacts_sensitive_fields_and_drops_unknowns() -> None:
     event = OAuthEvent(
         type="oauth.provider.debug",
         operation_id="op-1",
         metadata={
             "access_token": "raw-access-token",
+            "authorization": "Bearer raw-access-token",
+            "client_secret": "raw-client-secret",
             "nested": {
                 "refresh_token": "raw-refresh-token",
                 "safe": "value",
@@ -1951,13 +1960,52 @@ def test_oauth_event_metadata_redacts_token_fields_recursively() -> None:
     )
 
     assert event.metadata["access_token"] == "<redacted>"
-    assert event.metadata["nested"]["refresh_token"] == "<redacted>"
-    assert event.metadata["nested"]["safe"] == "value"
-    assert event.metadata["items"][0]["token"] == "<redacted>"
-    assert event.metadata["items"][0]["label"] == "kept"
-    assert event.metadata["tuple_items"][0]["id_token"] == "<redacted>"
-    assert event.metadata["tuple_items"][0]["audience"] == "kept"
-    assert event.metadata["set_items"] == frozenset({"safe"})
+    assert event.metadata["authorization"] == "<redacted>"
+    assert event.metadata["client_secret"] == "<redacted>"
+    assert "nested" not in event.metadata
+    assert "items" not in event.metadata
+    assert "tuple_items" not in event.metadata
+    assert "set_items" not in event.metadata
+
+
+def test_oauth_event_sanitizes_external_message_and_authorization_metadata() -> None:
+    raw_token = "raw-access-token"
+
+    event = OAuthEvent(
+        type="oauth.provider.debug",
+        operation_id="op-1",
+        message=raw_token,
+        metadata={
+            "authorization": raw_token,
+            "debug": raw_token,
+            "source": raw_token,
+        },
+    )
+
+    assert event.message == "<redacted>"
+    assert event.metadata["authorization"] == "<redacted>"
+    assert event.metadata["source"] == "<redacted>"
+    assert "debug" not in event.metadata
+
+
+def test_oauth_event_preserves_safe_lifecycle_message_and_metadata() -> None:
+    event = OAuthEvent(
+        type="oauth.resolve.succeeded",
+        operation_id="op-1",
+        message="OAuth credential resolved.",
+        metadata={
+            "source": "OAUTH_ACCESS_TOKEN",
+            "phase": "storage",
+            "secret_key": "oauth_google_demo_access_token",
+        },
+    )
+
+    assert event.message == "OAuth credential resolved."
+    assert event.metadata == {
+        "source": "OAUTH_ACCESS_TOKEN",
+        "phase": "storage",
+        "secret_key": "oauth_google_demo_access_token",
+    }
 
 
 def test_queued_oauth_event_sink_drops_new_events_when_full() -> None:
