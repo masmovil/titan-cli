@@ -23,6 +23,7 @@ def _normalize_values(
     values: Sequence[str] | str | None,
     *,
     field_name: str = "values",
+    sort: bool = True,
 ) -> tuple[str, ...]:
     if values is None:
         return ()
@@ -38,7 +39,10 @@ def _normalize_values(
         stripped = value.strip()
         if stripped:
             normalized_values.append(stripped)
-    return tuple(sorted(set(normalized_values)))
+    deduplicated_values = tuple(dict.fromkeys(normalized_values))
+    if sort:
+        return tuple(sorted(deduplicated_values))
+    return deduplicated_values
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,7 @@ class OAuthRequest:
             _normalize_values(
                 self.legacy_secret_keys,
                 field_name="legacy_secret_keys",
+                sort=False,
             ),
         )
         object.__setattr__(

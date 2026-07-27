@@ -176,6 +176,25 @@ def test_oauth_request_normalizes_scalar_scope_and_legacy_secret_key() -> None:
     assert request.legacy_secret_keys == ("legacy_access_token",)
 
 
+def test_oauth_request_sorts_scopes_but_preserves_legacy_secret_key_order() -> None:
+    request = OAuthRequest(
+        provider="google",
+        connection_id="sample:demo",
+        scopes=["z.scope", "a.scope", "z.scope"],
+        legacy_secret_keys=[
+            " z_primary_access_token ",
+            "a_fallback_access_token",
+            "z_primary_access_token",
+        ],
+    )
+
+    assert request.scopes == ("a.scope", "z.scope")
+    assert request.legacy_secret_keys == (
+        "z_primary_access_token",
+        "a_fallback_access_token",
+    )
+
+
 def test_oauth_request_normalizes_storage_context() -> None:
     request = OAuthRequest(
         provider="google",
@@ -623,6 +642,33 @@ def test_oauth_manager_reads_legacy_secret_key(monkeypatch, tmp_path) -> None:
 
     assert credential.access_token == "legacy-token"
     assert credential.source == "keyring:demo_legacy_access_token"
+
+
+def test_oauth_manager_respects_legacy_secret_key_precedence(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
+    request = _request(
+        legacy_secret_keys=[
+            "z_primary_access_token",
+            "a_fallback_access_token",
+        ],
+    )
+    manager = _manager(
+        FakeSecretManager(
+            {
+                "z_primary_access_token": "primary-token",
+                "a_fallback_access_token": "fallback-token",
+            }
+        ),
+        tmp_path,
+    )
+
+    credential = asyncio.run(manager.get_credential(request))
+
+    assert credential.access_token == "primary-token"
+    assert credential.source == "keyring:z_primary_access_token"
 
 
 def test_oauth_manager_interactive_uses_legacy_before_authorization(
