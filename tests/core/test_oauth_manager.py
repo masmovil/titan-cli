@@ -267,6 +267,18 @@ def test_oauth_token_set_rejects_non_string_access_token() -> None:
         OAuthTokenSet(access_token=123)
 
 
+@pytest.mark.parametrize("token_type", [None, True, 123, object()])
+def test_oauth_token_set_rejects_non_string_token_type(token_type: object) -> None:
+    with pytest.raises(ValueError, match="token_type"):
+        OAuthTokenSet(access_token="access-token", token_type=token_type)
+
+
+@pytest.mark.parametrize("metadata", ["bad", [("source", "provider")], 123])
+def test_oauth_token_set_rejects_non_mapping_metadata(metadata: object) -> None:
+    with pytest.raises(ValueError, match="metadata"):
+        OAuthTokenSet(access_token="access-token", metadata=metadata)
+
+
 @pytest.mark.parametrize(
     "expires_at",
     [True, False, 123.45, "123.45", "", "   ", object()],
@@ -292,6 +304,32 @@ def test_oauth_token_set_from_dict_rejects_non_string_scope_element() -> None:
             {
                 "access_token": "access-token",
                 "scopes": ["openid", 123],
+            }
+        )
+
+
+@pytest.mark.parametrize("token_type", [None, True, 123, object()])
+def test_oauth_token_set_from_dict_rejects_non_string_token_type(
+    token_type: object,
+) -> None:
+    with pytest.raises(ValueError, match="token_type"):
+        OAuthTokenSet.from_dict(
+            {
+                "access_token": "access-token",
+                "token_type": token_type,
+            }
+        )
+
+
+@pytest.mark.parametrize("metadata", [None, "bad", [("source", "provider")], 123])
+def test_oauth_token_set_from_dict_rejects_non_mapping_metadata(
+    metadata: object,
+) -> None:
+    with pytest.raises(ValueError, match="metadata"):
+        OAuthTokenSet.from_dict(
+            {
+                "access_token": "access-token",
+                "metadata": metadata,
             }
         )
 

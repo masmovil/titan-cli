@@ -19,6 +19,12 @@ def _normalize_optional(value: Any, *, field_name: str = "value") -> str | None:
     return stripped or None
 
 
+def _normalize_token_type(value: Any, *, field_name: str = "token_type") -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string.")
+    return value.strip() or "Bearer"
+
+
 def _normalize_optional_int(value: Any, *, field_name: str = "value") -> int | None:
     if value is None:
         return None
@@ -65,6 +71,19 @@ def _normalize_values(
     if sort:
         return tuple(sorted(deduplicated_values))
     return deduplicated_values
+
+
+def _normalize_mapping(
+    value: Any,
+    *,
+    field_name: str = "metadata",
+    allow_none: bool = True,
+) -> dict[str, Any]:
+    if value is None and allow_none:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field_name} must be a mapping when present.")
+    return dict(value)
 
 
 @dataclass(frozen=True)
@@ -155,13 +174,21 @@ class OAuthTokenSet:
             "expires_at",
             _normalize_optional_int(self.expires_at, field_name="expires_at"),
         )
-        object.__setattr__(self, "token_type", self.token_type.strip() or "Bearer")
+        object.__setattr__(
+            self,
+            "token_type",
+            _normalize_token_type(self.token_type, field_name="token_type"),
+        )
         object.__setattr__(
             self,
             "scopes",
             _normalize_values(self.scopes, field_name="scopes"),
         )
-        object.__setattr__(self, "metadata", dict(self.metadata or {}))
+        object.__setattr__(
+            self,
+            "metadata",
+            _normalize_mapping(self.metadata, field_name="metadata"),
+        )
 
     def is_valid(
         self,
@@ -213,14 +240,26 @@ class OAuthTokenSet:
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
 
-        metadata_raw = payload.get("metadata")
-        metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
+        metadata = {}
+        if "metadata" in payload:
+            metadata = _normalize_mapping(
+                payload["metadata"],
+                field_name="Stored OAuth token set metadata",
+                allow_none=False,
+            )
+
+        token_type = "Bearer"
+        if "token_type" in payload:
+            token_type = _normalize_token_type(
+                payload["token_type"],
+                field_name="Stored OAuth token set token_type",
+            )
 
         return cls(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_at=expires_at,
-            token_type=str(payload.get("token_type") or "Bearer"),
+            token_type=token_type,
             scopes=scopes,
             metadata=metadata,
         )
