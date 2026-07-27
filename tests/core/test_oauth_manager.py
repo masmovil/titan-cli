@@ -341,6 +341,7 @@ def test_oauth_manager_refresh_preserves_omitted_refresh_token(
             refresh_token="stable-refresh-token",
             expires_at=int(time.time()) + 120,
             scopes=("resource.read",),
+            metadata={"subject": "demo-user"},
         ),
     )
 
@@ -369,6 +370,61 @@ def test_oauth_manager_refresh_preserves_omitted_refresh_token(
     stored_payload = json.loads(secrets.values[secret_key])
     assert stored_payload["refresh_token"] == "stable-refresh-token"
     assert stored_payload["scopes"] == ["resource.read"]
+    assert stored_payload["metadata"] == {"subject": "demo-user"}
+
+
+def test_oauth_manager_refresh_merges_metadata_with_refreshed_precedence(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
+    secrets = FakeSecretManager()
+    request = _request()
+    store = OAuthTokenStore(secrets)
+    secret_key = store.write(
+        request,
+        OAuthTokenSet(
+            access_token="almost-expired-token",
+            refresh_token="stable-refresh-token",
+            expires_at=int(time.time()) + 120,
+            metadata={
+                "subject": "old-user",
+                "tenant": "masmovil",
+            },
+        ),
+    )
+
+    class RefreshProvider:
+        async def refresh(self, request, token_set, sink):
+            return OAuthTokenSet(
+                access_token="fresh-token",
+                expires_at=int(time.time()) + 3600,
+                metadata={
+                    "subject": "new-user",
+                    "issuer": "google",
+                },
+            )
+
+        async def authorize(self, request, sink):
+            raise AssertionError("authorize should not run")
+
+    manager = OAuthManager(
+        secrets,
+        providers={"google": RefreshProvider()},
+        token_store=store,
+        lock_manager=OAuthLockManager(lock_dir=tmp_path, enable_file_locks=False),
+        refresh_margin_seconds=300,
+    )
+
+    credential = asyncio.run(manager.get_credential(request))
+
+    assert credential.access_token == "fresh-token"
+    stored_payload = json.loads(secrets.values[secret_key])
+    assert stored_payload["metadata"] == {
+        "subject": "new-user",
+        "tenant": "masmovil",
+        "issuer": "google",
+    }
 
 
 @pytest.mark.parametrize(

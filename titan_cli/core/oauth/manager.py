@@ -200,16 +200,6 @@ class OAuthManager:
                         credential_key,
                         "OAuth refresh failed.",
                     )
-                    if not request.interactive:
-                        legacy_credential = self._legacy_after_refresh_failure(
-                            event_sink,
-                            operation_id,
-                            request,
-                            credential_key,
-                        )
-                        if legacy_credential:
-                            return legacy_credential
-                        raise
                     self.token_store.delete(request, scope=storage_scope)
                     reauthorize_storage_scope = storage_scope
                     self._emit(
@@ -220,6 +210,16 @@ class OAuthManager:
                         credential_key,
                         "Deleted stale OAuth credential after refresh failure.",
                     )
+                    if not request.interactive:
+                        legacy_credential = self._legacy_after_refresh_failure(
+                            event_sink,
+                            operation_id,
+                            request,
+                            credential_key,
+                        )
+                        if legacy_credential:
+                            return legacy_credential
+                        raise
                 except OAuthError:
                     self._emit(
                         event_sink,
@@ -583,7 +583,7 @@ class OAuthManager:
             expires_at=refreshed.expires_at,
             token_type=refreshed.token_type,
             scopes=refreshed.scopes or previous.scopes,
-            metadata=refreshed.metadata,
+            metadata={**previous.metadata, **refreshed.metadata},
         )
 
     def _validate_provider_token_set(
