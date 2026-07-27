@@ -22,6 +22,7 @@ from titan_cli.core.oauth import (
     OAuthTokenSet,
     OAuthTokenStore,
     QueuedOAuthEventSink,
+    build_oauth_credential_key,
 )
 from titan_cli.core.secrets import ResolvedSecret
 
@@ -49,6 +50,14 @@ class FakeSecretManager:
             if scoped_key in self.scoped_values:
                 return ResolvedSecret(self.scoped_values[scoped_key], scope)
         return None
+
+    def get_from_scope(
+        self,
+        key: str,
+        namespace: str = "titan",
+        scope: str = "user",
+    ) -> str | None:
+        return self.scoped_values.get((scope, namespace, key))
 
     def set(
         self,
@@ -84,6 +93,11 @@ class FailingDeleteSecretManager(FakeSecretManager):
     def delete(self, key: str, namespace: str = "titan", scope: str = "user") -> None:
         self.delete_calls.append((key, scope))
         raise RuntimeError("project secrets unavailable")
+
+
+class SwallowingDeleteSecretManager(FakeSecretManager):
+    def delete(self, key: str, namespace: str = "titan", scope: str = "user") -> None:
+        self.delete_calls.append((key, scope))
 
 
 def _manager(
@@ -160,6 +174,51 @@ def test_oauth_request_normalizes_scalar_scope_and_legacy_secret_key() -> None:
 
     assert request.scopes == ("openid",)
     assert request.legacy_secret_keys == ("legacy_access_token",)
+
+
+def test_oauth_request_normalizes_storage_context() -> None:
+    request = OAuthRequest(
+        provider="google",
+        connection_id="sample:demo",
+        storage_context="  /workspace/ragnarok-ios  ",
+    )
+
+    assert request.storage_context == "/workspace/ragnarok-ios"
+
+
+def test_oauth_storage_context_partitions_credential_key() -> None:
+    global_request = _request(storage_context=None)
+    ragnarok_request = _request(storage_context="/workspace/ragnarok-ios")
+    other_project_request = _request(storage_context="/workspace/other-ios")
+
+    global_key = build_oauth_credential_key(global_request)
+    ragnarok_key = build_oauth_credential_key(ragnarok_request)
+    other_project_key = build_oauth_credential_key(other_project_request)
+
+    assert global_key != ragnarok_key
+    assert ragnarok_key != other_project_key
+
+
+def test_oauth_storage_context_partitions_user_scope_storage() -> None:
+    secrets = FakeSecretManager()
+    store = OAuthTokenStore(secrets)
+    ragnarok_request = _request(storage_context="/workspace/ragnarok-ios")
+    other_project_request = _request(storage_context="/workspace/other-ios")
+
+    ragnarok_key = store.write(
+        ragnarok_request,
+        OAuthTokenSet(access_token="ragnarok-token"),
+        scope="user",
+    )
+    other_project_key = store.write(
+        other_project_request,
+        OAuthTokenSet(access_token="other-token"),
+        scope="user",
+    )
+
+    assert ragnarok_key != other_project_key
+    assert json.loads(secrets.values[ragnarok_key])["access_token"] == "ragnarok-token"
+    assert json.loads(secrets.values[other_project_key])["access_token"] == "other-token"
 
 
 def test_oauth_token_set_normalizes_scalar_scope() -> None:
@@ -838,6 +897,56 @@ def test_oauth_manager_invalid_token_delete_failure_emits_storage_failure(
     assert dict(sink.events[-1].metadata) == {"phase": "storage"}
 
 
+def test_oauth_manager_invalid_token_delete_must_remove_before_stale_deleted(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
+    secrets = SwallowingDeleteSecretManager(
+        {"demo_legacy_access_token": " legacy-token "},
+    )
+    request = _request(interactive=False)
+    store = OAuthTokenStore(secrets)
+    old_secret_key = store.write(
+        request,
+        OAuthTokenSet(
+            access_token="expired-oauth-token",
+            refresh_token="revoked-refresh-token",
+            expires_at=1,
+        ),
+        scope="user",
+    )
+
+    class InvalidTokenProvider:
+        async def refresh(self, request, token_set, sink):
+            raise OAuthTokenInvalidError("refresh token revoked")
+
+        async def authorize(self, request, sink):
+            raise AssertionError("authorize should not run")
+
+    sink = CollectingOAuthEventSink()
+    manager = OAuthManager(
+        secrets,
+        providers={"google": InvalidTokenProvider()},
+        token_store=store,
+        lock_manager=OAuthLockManager(lock_dir=tmp_path, enable_file_locks=False),
+    )
+
+    with pytest.raises(OAuthStorageError, match="was not deleted"):
+        asyncio.run(manager.get_credential(request, sink=sink))
+
+    assert secrets.delete_calls[-1] == (old_secret_key, "user")
+    assert ("user", "titan", old_secret_key) in secrets.scoped_values
+    assert [event.type for event in sink.events] == [
+        "oauth.resolve.started",
+        "oauth.lock.acquired",
+        "oauth.refresh.started",
+        "oauth.refresh.failed",
+        "oauth.refresh.failed",
+    ]
+    assert dict(sink.events[-1].metadata) == {"phase": "storage"}
+
+
 def test_oauth_manager_raises_when_no_credential(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
     manager = _manager(FakeSecretManager(), tmp_path)
@@ -1401,6 +1510,23 @@ def test_oauth_token_store_wraps_secret_delete_errors() -> None:
     assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
+def test_oauth_token_store_requires_delete_postcondition() -> None:
+    secrets = SwallowingDeleteSecretManager()
+    store = OAuthTokenStore(secrets)
+    request = _request()
+    secret_key = store.write(
+        request,
+        OAuthTokenSet(access_token="manual-token"),
+        scope="user",
+    )
+
+    with pytest.raises(OAuthStorageError, match="was not deleted"):
+        store.delete(request, scope="user")
+
+    assert secrets.delete_calls[-1] == (secret_key, "user")
+    assert ("user", "titan", secret_key) in secrets.scoped_values
+
+
 def test_oauth_token_store_wraps_invalid_scope_without_writing() -> None:
     secrets = FakeSecretManager()
     store = OAuthTokenStore(secrets)
@@ -1484,6 +1610,48 @@ def test_oauth_lock_file_lock_uses_remaining_timeout(
 
     assert captured_timeouts
     assert 0 < captured_timeouts[0] < 0.5
+
+
+def test_file_lock_timeout_zero_attempts_uncontended_lock_once(tmp_path) -> None:
+    lock = oauth_locks._FileLock(
+        tmp_path / "oauth.lock",
+        timeout_seconds=0,
+        poll_interval_seconds=0.1,
+    )
+    attempts = 0
+
+    def try_acquire_once() -> None:
+        nonlocal attempts
+        attempts += 1
+
+    lock._try_acquire_once = try_acquire_once
+
+    lock.acquire()
+
+    assert attempts == 1
+    lock.release()
+
+
+def test_file_lock_timeout_zero_times_out_after_contended_attempt(tmp_path) -> None:
+    lock = oauth_locks._FileLock(
+        tmp_path / "oauth.lock",
+        timeout_seconds=0,
+        poll_interval_seconds=0.1,
+    )
+    attempts = 0
+
+    def try_acquire_once() -> None:
+        nonlocal attempts
+        attempts += 1
+        raise BlockingIOError(errno.EAGAIN, "resource temporarily unavailable")
+
+    lock._try_acquire_once = try_acquire_once
+
+    with pytest.raises(OAuthLockTimeout):
+        lock.acquire()
+
+    assert attempts == 1
+    assert lock._handle is None
 
 
 def test_file_lock_retries_lock_contention_error(tmp_path) -> None:

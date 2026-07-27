@@ -94,6 +94,9 @@ class OAuthTokenStore:
         try:
             scope = _validate_scope(scope)
             self._delete_secret(secret_key, scope=scope)
+            self._verify_secret_deleted(secret_key, scope=scope)
+        except OAuthStorageError:
+            raise
         except Exception as exc:
             raise OAuthStorageError(
                 f"OAuth credential '{secret_key}' could not be deleted."
@@ -129,6 +132,26 @@ class OAuthTokenStore:
             self.secrets.delete(key, scope=scope)
             return
         self.secrets.delete(key, namespace=self.namespace, scope=scope)
+
+    def _verify_secret_deleted(self, key: str, *, scope: ScopeType) -> None:
+        """Verify that a scoped credential is gone after deletion."""
+        scoped_value = self._get_secret_from_scope(key, scope=scope)
+        if scoped_value is not None:
+            raise OAuthStorageError(
+                f"OAuth credential '{key}' was not deleted from {scope} storage."
+            )
+
+    def _get_secret_from_scope(self, key: str, *, scope: ScopeType) -> str | None:
+        get_from_scope = getattr(self.secrets, "get_from_scope", None)
+        if get_from_scope:
+            if self.namespace == "titan":
+                return get_from_scope(key, scope=scope)
+            return get_from_scope(key, namespace=self.namespace, scope=scope)
+
+        resolved_secret = self._get_secret_with_scope(key)
+        if resolved_secret and resolved_secret.scope == scope:
+            return resolved_secret.value
+        return None
 
 
 def _normalize_resolved_secret(value: object) -> ResolvedSecret | None:

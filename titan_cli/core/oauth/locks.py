@@ -46,16 +46,18 @@ class _FileLock:
             raise
         start = time.monotonic()
 
+        has_attempted = False
         while True:
             if cancel_event and cancel_event.is_set():
                 self._close_handle()
                 raise _OAuthLockAcquisitionCancelled
-            if self._timed_out(start):
+            if has_attempted and self._timed_out(start):
                 self._close_handle()
                 raise OAuthLockTimeout(
                     f"Timed out waiting for OAuth lock '{self.path.name}'."
                 )
             try:
+                has_attempted = True
                 self._try_acquire_once()
                 self._acquired = True
                 return
@@ -63,6 +65,11 @@ class _FileLock:
                 if not self._is_lock_contention(exc):
                     self._close_handle()
                     raise
+                if self._timed_out(start):
+                    self._close_handle()
+                    raise OAuthLockTimeout(
+                        f"Timed out waiting for OAuth lock '{self.path.name}'."
+                    ) from exc
                 time.sleep(self._next_sleep_interval(start))
 
     def release(self) -> None:

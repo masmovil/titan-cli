@@ -130,6 +130,23 @@ def test_get_with_scope_keeps_real_env_when_value_matches_project_secret(
     assert resolved.scope == "env"
 
 
+def test_get_from_scope_reads_exact_scope(
+    tmp_project_path,
+    mock_env,
+    mock_keyring,
+):
+    os.environ["PROJECT_TOKEN"] = "env_value"
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("PROJECT_TOKEN='project_value'\n")
+    mock_keyring[0].return_value = "user_value"
+
+    sm = SecretManager(project_path=tmp_project_path)
+
+    assert sm.get_from_scope("project_token", scope="env") == "env_value"
+    assert sm.get_from_scope("project_token", scope="project") == "project_value"
+    assert sm.get_from_scope("project_token", scope="user") == "user_value"
+
+
 def test_project_scope_updates_process_env_when_it_mirrors_project(
     tmp_project_path,
     mock_env,

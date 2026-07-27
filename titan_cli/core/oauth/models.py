@@ -52,6 +52,7 @@ class OAuthRequest:
     access_token_env_var: str | None = None
     legacy_secret_keys: Sequence[str] = field(default_factory=tuple)
     subject: str | None = None
+    storage_context: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -82,6 +83,14 @@ class OAuthRequest:
             self,
             "subject",
             _normalize_optional(self.subject, field_name="subject"),
+        )
+        object.__setattr__(
+            self,
+            "storage_context",
+            _normalize_optional(
+                self.storage_context,
+                field_name="storage_context",
+            ),
         )
         object.__setattr__(self, "metadata", dict(self.metadata or {}))
 
@@ -208,6 +217,7 @@ def build_oauth_credential_key(request: OAuthRequest) -> str:
         "connection_id": request.connection_id,
         "scopes": list(request.scopes),
         "subject": request.subject,
+        "storage_context": request.storage_context,
     }
     encoded = json.dumps(
         material,

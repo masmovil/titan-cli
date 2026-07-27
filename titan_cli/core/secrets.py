@@ -187,6 +187,22 @@ class SecretManager:
 
         return None
 
+    def get_from_scope(
+        self,
+        key: str,
+        namespace: str = "titan",
+        scope: ScopeType = "user",
+    ) -> Optional[str]:
+        """Get a secret only from one storage scope."""
+        if scope == "env":
+            return os.environ.get(key.upper())
+        if scope == "project":
+            self._refresh_project_secret_values()
+            return self._project_secret_values.get(key.upper())
+        if scope == "user":
+            return keyring.get_password(namespace, key)
+        raise ValueError(f"Unknown secret scope: {scope}")
+
     def set(
         self, key: str, value: str, namespace: str = "titan", scope: ScopeType = "user"
     ):
