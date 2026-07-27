@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 import keyring
 from pathlib import Path
+import tempfile
 import threading
 from typing import Literal, Optional
 
@@ -15,6 +16,8 @@ ScopeType = Literal["env", "project", "user"]
 
 _PROJECT_ENV_KEYS_LOCK = threading.Lock()
 _PROJECT_ENV_KEYS_BY_PATH: dict[Path, set[str]] = {}
+_PROJECT_SECRET_FILE_LOCKS_GUARD = threading.Lock()
+_PROJECT_SECRET_FILE_LOCKS_BY_PATH: dict[Path, threading.Lock] = {}
 
 
 @dataclass(frozen=True)
@@ -23,6 +26,93 @@ class ResolvedSecret:
 
     value: str
     scope: ScopeType
+
+
+class _ProjectSecretsFileLock:
+    """Cross-process lock for one project's shared secrets file."""
+
+    def __init__(self, lock_path: Path) -> None:
+        self.lock_path = lock_path
+        self._thread_lock: threading.Lock | None = None
+        self._handle = None
+
+    def __enter__(self) -> "_ProjectSecretsFileLock":
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self._thread_lock = _shared_project_secret_file_lock(self.lock_path)
+        self._thread_lock.acquire()
+        try:
+            self._handle = self.lock_path.open("a+", encoding="utf-8")
+            self._ensure_windows_lock_byte()
+            self._lock_file()
+        except Exception:
+            self._close_handle()
+            self._thread_lock.release()
+            self._thread_lock = None
+            raise
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        try:
+            self._unlock_file()
+        finally:
+            self._close_handle()
+            if self._thread_lock:
+                self._thread_lock.release()
+                self._thread_lock = None
+        return False
+
+    def _lock_file(self) -> None:
+        if not self._handle:
+            raise RuntimeError("Project secrets lock handle is not open.")
+        if os.name == "nt":
+            import msvcrt
+
+            self._handle.seek(0)
+            msvcrt.locking(self._handle.fileno(), msvcrt.LK_LOCK, 1)
+            return
+
+        import fcntl
+
+        fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX)
+
+    def _unlock_file(self) -> None:
+        if not self._handle:
+            return
+        if os.name == "nt":
+            import msvcrt
+
+            self._handle.seek(0)
+            msvcrt.locking(self._handle.fileno(), msvcrt.LK_UNLCK, 1)
+            return
+
+        import fcntl
+
+        fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+
+    def _ensure_windows_lock_byte(self) -> None:
+        if os.name != "nt" or not self._handle:
+            return
+        self._handle.seek(0, os.SEEK_END)
+        if self._handle.tell() > 0:
+            self._handle.seek(0)
+            return
+        self._handle.write("0")
+        self._handle.flush()
+        self._handle.seek(0)
+
+    def _close_handle(self) -> None:
+        if self._handle:
+            self._handle.close()
+            self._handle = None
+
+
+def _shared_project_secret_file_lock(lock_path: Path) -> threading.Lock:
+    """Return the process-wide thread lock for a project secrets lock file."""
+    with _PROJECT_SECRET_FILE_LOCKS_GUARD:
+        return _PROJECT_SECRET_FILE_LOCKS_BY_PATH.setdefault(
+            lock_path,
+            threading.Lock(),
+        )
 
 
 class SecretManager:
@@ -124,38 +214,36 @@ class SecretManager:
 
         elif scope == "project":
             # Store in .titan/secrets.env
-            secrets_file = self.project_path / ".titan" / "secrets.env"
-            secrets_file.parent.mkdir(parents=True, exist_ok=True)
-            key_upper = key.upper()
-            self._refresh_project_secret_values()
-            should_update_env = (
-                self._is_project_env_key(key_upper) or key_upper not in os.environ
-            )
+            secrets_file = self._project_secrets_file()
+            with self._lock_project_secrets_file():
+                secrets_file.parent.mkdir(parents=True, exist_ok=True)
+                key_upper = key.upper()
+                self._refresh_project_secret_values()
+                should_update_env = (
+                    self._is_project_env_key(key_upper)
+                    or key_upper not in os.environ
+                )
 
-            # Read existing content
-            existing_lines = []
-            if secrets_file.exists():
-                with open(secrets_file, "r") as f:
-                    existing_lines = f.readlines()
+                existing_lines = self._read_project_secret_lines(secrets_file)
 
-            # Update or append
-            updated = False
-            for i, line in enumerate(existing_lines):
-                if line.startswith(f"{key_upper}="):
-                    existing_lines[i] = f"{key_upper}='{value}'\n"
-                    updated = True
-                    break
+                updated = False
+                for i, line in enumerate(existing_lines):
+                    if line.startswith(f"{key_upper}="):
+                        existing_lines[i] = f"{key_upper}='{value}'\n"
+                        updated = True
+                        break
 
-            if not updated:
-                existing_lines.append(f"{key_upper}='{value}'\n")
+                if not updated:
+                    existing_lines.append(f"{key_upper}='{value}'\n")
 
-            # Write back
-            with open(secrets_file, "w") as f:
-                f.writelines(existing_lines)
-            self._project_secret_values[key_upper] = value
-            if should_update_env:
-                os.environ[key_upper] = value
-                self._mark_project_env_key(key_upper)
+                self._write_project_secret_lines_atomic(
+                    secrets_file,
+                    existing_lines,
+                )
+                self._refresh_project_secret_values()
+                if should_update_env:
+                    os.environ[key_upper] = value
+                    self._mark_project_env_key(key_upper)
 
     def delete(self, key: str, namespace: str = "titan", scope: ScopeType = "user"):
         """Delete secret from specified scope"""
@@ -171,34 +259,75 @@ class SecretManager:
                 pass  # Keyring might not be available
 
         elif scope == "project":
-            secrets_file = self.project_path / ".titan" / "secrets.env"
-            if not secrets_file.exists():
-                return
-            key_upper = key.upper()
-            self._project_secret_values.pop(key_upper, None)
+            secrets_file = self._project_secrets_file()
+            with self._lock_project_secrets_file():
+                if not secrets_file.exists():
+                    return
+                key_upper = key.upper()
 
-            # Read and filter
-            with open(secrets_file, "r") as f:
-                lines = f.readlines()
+                lines = self._read_project_secret_lines(secrets_file)
+                filtered = [
+                    line for line in lines if not line.startswith(f"{key_upper}=")
+                ]
 
-            filtered = [line for line in lines if not line.startswith(f"{key_upper}=")]
-
-            # Write back
-            with open(secrets_file, "w") as f:
-                f.writelines(filtered)
-            if self._is_project_env_key(key_upper):
-                os.environ.pop(key_upper, None)
-                self._discard_project_env_key(key_upper)
+                self._write_project_secret_lines_atomic(secrets_file, filtered)
+                self._refresh_project_secret_values()
+                if self._is_project_env_key(key_upper):
+                    os.environ.pop(key_upper, None)
+                    self._discard_project_env_key(key_upper)
 
     def _read_project_secrets_file(self) -> dict[str, str]:
         """Read project secrets without consulting process environment."""
-        secrets_file = self.project_path / ".titan" / "secrets.env"
+        secrets_file = self._project_secrets_file()
         if not secrets_file.exists():
             return {}
         values = dotenv_values(secrets_file)
         return {
             key.upper(): value for key, value in values.items() if value is not None
         }
+
+    def _project_secrets_file(self) -> Path:
+        """Return the project-scoped secrets file path."""
+        return self.project_path / ".titan" / "secrets.env"
+
+    def _lock_project_secrets_file(self) -> _ProjectSecretsFileLock:
+        """Return a cross-process lock for project-scoped secrets writes."""
+        secrets_file = self._project_secrets_file()
+        return _ProjectSecretsFileLock(
+            secrets_file.with_name(f"{secrets_file.name}.lock"),
+        )
+
+    def _read_project_secret_lines(self, secrets_file: Path) -> list[str]:
+        """Read the project secrets file as raw lines."""
+        if not secrets_file.exists():
+            return []
+        with secrets_file.open("r", encoding="utf-8") as f:
+            return f.readlines()
+
+    def _write_project_secret_lines_atomic(
+        self,
+        secrets_file: Path,
+        lines: list[str],
+    ) -> None:
+        """Atomically replace the project secrets file with raw lines."""
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=secrets_file.parent,
+                prefix=f".{secrets_file.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as f:
+                temp_path = Path(f.name)
+                f.writelines(lines)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, secrets_file)
+        finally:
+            if temp_path and temp_path.exists():
+                temp_path.unlink()
 
     @staticmethod
     def _shared_project_env_keys(project_path: Path) -> set[str]:

@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import patch
 import os
+import threading
+import time
 
 from titan_cli.core.secrets import SecretManager
 
@@ -167,6 +169,74 @@ def test_project_scope_updates_stay_coherent_across_instances(
     assert second_resolved is not None
     assert second_resolved.value == "final_value"
     assert second_resolved.scope == "project"
+
+
+def test_project_scope_writes_are_serialized_across_instances(
+    tmp_project_path,
+    mock_env,
+    monkeypatch,
+):
+    first = SecretManager(project_path=tmp_project_path)
+    second = SecretManager(project_path=tmp_project_path)
+    first_write_entered = threading.Event()
+    release_first_write = threading.Event()
+    second_write_started = threading.Event()
+    errors: list[BaseException] = []
+    original_write = SecretManager._write_project_secret_lines_atomic
+
+    def delayed_first_write(self, secrets_file, lines):
+        if (
+            not first_write_entered.is_set()
+            and any(line.startswith("FIRST_TOKEN=") for line in lines)
+        ):
+            first_write_entered.set()
+            release_first_write.wait(timeout=2)
+        return original_write(self, secrets_file, lines)
+
+    def record_errors(action):
+        try:
+            action()
+        except BaseException as exc:
+            errors.append(exc)
+
+    monkeypatch.setattr(
+        SecretManager,
+        "_write_project_secret_lines_atomic",
+        delayed_first_write,
+    )
+
+    first_thread = threading.Thread(
+        target=lambda: record_errors(
+            lambda: first.set("first_token", "first_value", scope="project"),
+        ),
+    )
+    first_thread.start()
+    assert first_write_entered.wait(timeout=2)
+
+    def write_second_secret():
+        second_write_started.set()
+        second.set("second_token", "second_value", scope="project")
+
+    second_thread = threading.Thread(
+        target=lambda: record_errors(write_second_secret),
+    )
+    second_thread.start()
+    assert second_write_started.wait(timeout=2)
+    time.sleep(0.05)
+    assert second_thread.is_alive()
+    release_first_write.set()
+
+    first_thread.join(timeout=2)
+    second_thread.join(timeout=2)
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert errors == []
+
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    content = secrets_file.read_text()
+    assert "FIRST_TOKEN='first_value'" in content
+    assert "SECOND_TOKEN='second_value'" in content
 
 
 def test_project_scope_does_not_update_real_env_even_when_values_match(
