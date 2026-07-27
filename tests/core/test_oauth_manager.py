@@ -80,6 +80,12 @@ class FailingSecretManager(FakeSecretManager):
         raise RuntimeError("keyring unavailable")
 
 
+class FailingDeleteSecretManager(FakeSecretManager):
+    def delete(self, key: str, namespace: str = "titan", scope: str = "user") -> None:
+        self.delete_calls.append((key, scope))
+        raise RuntimeError("project secrets unavailable")
+
+
 def _manager(
     secrets: FakeSecretManager,
     tmp_path,
@@ -781,6 +787,57 @@ def test_oauth_manager_noninteractive_invalid_token_deletes_before_error(
     ]
 
 
+def test_oauth_manager_invalid_token_delete_failure_emits_storage_failure(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
+    secrets = FailingDeleteSecretManager(
+        {"demo_legacy_access_token": " legacy-token "},
+    )
+    request = _request(interactive=False)
+    store = OAuthTokenStore(secrets)
+    old_secret_key = store.write(
+        request,
+        OAuthTokenSet(
+            access_token="expired-oauth-token",
+            refresh_token="revoked-refresh-token",
+            expires_at=1,
+        ),
+        scope="project",
+    )
+
+    class InvalidTokenProvider:
+        async def refresh(self, request, token_set, sink):
+            raise OAuthTokenInvalidError("refresh token revoked")
+
+        async def authorize(self, request, sink):
+            raise AssertionError("authorize should not run")
+
+    sink = CollectingOAuthEventSink()
+    manager = OAuthManager(
+        secrets,
+        providers={"google": InvalidTokenProvider()},
+        token_store=store,
+        lock_manager=OAuthLockManager(lock_dir=tmp_path, enable_file_locks=False),
+    )
+
+    with pytest.raises(OAuthStorageError) as exc_info:
+        asyncio.run(manager.get_credential(request, sink=sink))
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert secrets.delete_calls[-1] == (old_secret_key, "project")
+    assert ("project", "titan", old_secret_key) in secrets.scoped_values
+    assert [event.type for event in sink.events] == [
+        "oauth.resolve.started",
+        "oauth.lock.acquired",
+        "oauth.refresh.started",
+        "oauth.refresh.failed",
+        "oauth.refresh.failed",
+    ]
+    assert dict(sink.events[-1].metadata) == {"phase": "storage"}
+
+
 def test_oauth_manager_raises_when_no_credential(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
     manager = _manager(FakeSecretManager(), tmp_path)
@@ -1331,6 +1388,15 @@ def test_oauth_token_store_wraps_secret_write_errors() -> None:
 
     with pytest.raises(OAuthStorageError) as exc_info:
         store.write(_request(), OAuthTokenSet(access_token="manual-token"))
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
+def test_oauth_token_store_wraps_secret_delete_errors() -> None:
+    store = OAuthTokenStore(FailingDeleteSecretManager())
+
+    with pytest.raises(OAuthStorageError) as exc_info:
+        store.delete(_request(), scope="project")
 
     assert isinstance(exc_info.value.__cause__, RuntimeError)
 

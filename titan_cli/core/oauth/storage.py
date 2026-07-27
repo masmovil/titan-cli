@@ -90,8 +90,14 @@ class OAuthTokenStore:
 
     def delete(self, request: OAuthRequest, *, scope: ScopeType = "user") -> None:
         """Delete a stored token set."""
-        scope = _validate_scope(scope)
-        self._delete_secret(self.build_secret_key(request), scope=scope)
+        secret_key = self.build_secret_key(request)
+        try:
+            scope = _validate_scope(scope)
+            self._delete_secret(secret_key, scope=scope)
+        except Exception as exc:
+            raise OAuthStorageError(
+                f"OAuth credential '{secret_key}' could not be deleted."
+            ) from exc
 
     def _get_secret_with_scope(self, key: str) -> ResolvedSecret | None:
         get_with_scope = getattr(self.secrets, "get_with_scope", None)

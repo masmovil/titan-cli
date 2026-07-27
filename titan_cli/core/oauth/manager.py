@@ -214,7 +214,15 @@ class OAuthManager:
                         credential_key,
                         "OAuth refresh failed.",
                     )
-                    self.token_store.delete(request, scope=storage_scope)
+                    self._delete_token_set_or_emit_failure(
+                        request,
+                        scope=storage_scope,
+                        sink=event_sink,
+                        operation_id=operation_id,
+                        credential_key=credential_key,
+                        failure_event_type="oauth.refresh.failed",
+                        failure_message="Stale OAuth credential could not be deleted.",
+                    )
                     reauthorize_storage_scope = storage_scope
                     self._emit(
                         event_sink,
@@ -554,6 +562,32 @@ class OAuthManager:
         """Persist token data while preserving OAuth lifecycle semantics."""
         try:
             return self.token_store.write(request, token_set, scope=scope)
+        except OAuthStorageError:
+            self._emit(
+                sink,
+                failure_event_type,
+                operation_id,
+                request,
+                credential_key,
+                failure_message,
+                metadata={"phase": "storage"},
+            )
+            raise
+
+    def _delete_token_set_or_emit_failure(
+        self,
+        request: OAuthRequest,
+        *,
+        scope: ScopeType,
+        sink: OAuthEventSink,
+        operation_id: str,
+        credential_key: str,
+        failure_event_type: str,
+        failure_message: str,
+    ) -> None:
+        """Delete token data while preserving OAuth lifecycle semantics."""
+        try:
+            self.token_store.delete(request, scope=scope)
         except OAuthStorageError:
             self._emit(
                 sink,
