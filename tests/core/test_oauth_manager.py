@@ -193,6 +193,26 @@ def test_oauth_token_set_from_dict_rejects_non_string_scope_element() -> None:
         )
 
 
+@pytest.mark.parametrize("refresh_margin_seconds", [-1, 1.5, "300", True])
+def test_oauth_manager_rejects_invalid_refresh_margin_seconds(
+    refresh_margin_seconds: object,
+) -> None:
+    with pytest.raises(ValueError, match="refresh_margin_seconds"):
+        OAuthManager(
+            FakeSecretManager(),
+            refresh_margin_seconds=refresh_margin_seconds,
+        )
+
+
+def test_oauth_manager_accepts_zero_refresh_margin_seconds() -> None:
+    manager = OAuthManager(
+        FakeSecretManager(),
+        refresh_margin_seconds=0,
+    )
+
+    assert manager.refresh_margin_seconds == 0
+
+
 def test_oauth_manager_prefers_environment_token(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("OAUTH_ACCESS_TOKEN", "env-token")
     manager = _manager(

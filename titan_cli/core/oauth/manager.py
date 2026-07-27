@@ -48,6 +48,18 @@ class OAuthProvider(Protocol):
         """Run an interactive authorization flow."""
 
 
+def _validate_refresh_margin_seconds(refresh_margin_seconds: object) -> int:
+    """Validate token refresh margin configuration."""
+    if not isinstance(refresh_margin_seconds, int) or isinstance(
+        refresh_margin_seconds,
+        bool,
+    ):
+        raise ValueError("OAuth refresh_margin_seconds must be a non-negative integer.")
+    if refresh_margin_seconds < 0:
+        raise ValueError("OAuth refresh_margin_seconds must be a non-negative integer.")
+    return refresh_margin_seconds
+
+
 class OAuthManager:
     """Resolves OAuth credentials through env, storage, legacy keys, and providers."""
 
@@ -64,7 +76,9 @@ class OAuthManager:
         self.providers = providers or {}
         self.token_store = token_store or OAuthTokenStore(secrets)
         self.lock_manager = lock_manager or OAuthLockManager()
-        self.refresh_margin_seconds = refresh_margin_seconds
+        self.refresh_margin_seconds = _validate_refresh_margin_seconds(
+            refresh_margin_seconds,
+        )
 
     async def get_credential(
         self,
