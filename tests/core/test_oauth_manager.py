@@ -1184,6 +1184,28 @@ def test_oauth_manager_save_token_set_write_failure_emits_storage_failure(
     assert dict(sink.events[0].metadata) == {"phase": "storage"}
 
 
+def test_oauth_manager_save_token_set_rejects_invalid_scope_without_saved_event(
+    tmp_path,
+) -> None:
+    secrets = FakeSecretManager()
+    manager = _manager(secrets, tmp_path)
+    sink = CollectingOAuthEventSink()
+
+    with pytest.raises(OAuthStorageError) as exc_info:
+        manager.save_token_set_blocking(
+            _request(),
+            OAuthTokenSet(access_token="manual-token"),
+            scope="invalid",
+            sink=sink,
+        )
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert "OAuth storage scope must be one of" in str(exc_info.value.__cause__)
+    assert secrets.set_calls == []
+    assert [event.type for event in sink.events] == ["oauth.storage.failed"]
+    assert dict(sink.events[0].metadata) == {"phase": "storage"}
+
+
 def test_oauth_manager_refresh_write_failure_emits_refresh_failure(
     monkeypatch,
     tmp_path,
@@ -1291,6 +1313,21 @@ def test_oauth_token_store_wraps_secret_write_errors() -> None:
         store.write(_request(), OAuthTokenSet(access_token="manual-token"))
 
     assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
+def test_oauth_token_store_wraps_invalid_scope_without_writing() -> None:
+    secrets = FakeSecretManager()
+    store = OAuthTokenStore(secrets)
+
+    with pytest.raises(OAuthStorageError) as exc_info:
+        store.write(
+            _request(),
+            OAuthTokenSet(access_token="manual-token"),
+            scope="invalid",
+        )
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert secrets.set_calls == []
 
 
 def test_oauth_lock_async_acquire_cancellation_does_not_leak_lock(tmp_path) -> None:

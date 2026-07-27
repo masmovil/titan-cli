@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Final, cast
 
 from titan_cli.core.secrets import ResolvedSecret, ScopeType, SecretManager
 
 from .exceptions import OAuthStorageError
 from .models import OAuthRequest, OAuthTokenSet, build_oauth_credential_key
+
+_VALID_STORAGE_SCOPES: Final[frozenset[str]] = frozenset({"env", "project", "user"})
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,7 @@ class OAuthTokenStore:
         """Write a token set and return the SecretManager key used."""
         secret_key = self.build_secret_key(request)
         try:
+            scope = _validate_scope(scope)
             payload = json.dumps(
                 token_set.to_dict(),
                 sort_keys=True,
@@ -86,6 +90,7 @@ class OAuthTokenStore:
 
     def delete(self, request: OAuthRequest, *, scope: ScopeType = "user") -> None:
         """Delete a stored token set."""
+        scope = _validate_scope(scope)
         self._delete_secret(self.build_secret_key(request), scope=scope)
 
     def _get_secret_with_scope(self, key: str) -> ResolvedSecret | None:
@@ -129,3 +134,11 @@ def _normalize_resolved_secret(value: object) -> ResolvedSecret | None:
     if isinstance(secret_value, str) and secret_scope in {"env", "project", "user"}:
         return ResolvedSecret(secret_value, secret_scope)
     return None
+
+
+def _validate_scope(scope: object) -> ScopeType:
+    """Validate runtime storage scopes before delegating to SecretManager."""
+    if scope not in _VALID_STORAGE_SCOPES:
+        allowed = ", ".join(sorted(_VALID_STORAGE_SCOPES))
+        raise ValueError(f"OAuth storage scope must be one of: {allowed}.")
+    return cast(ScopeType, scope)
