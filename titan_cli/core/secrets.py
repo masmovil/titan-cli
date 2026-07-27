@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 # titan_cli/core/secrets.py
-from collections.abc import Iterable
-import os
+from collections.abc import Mapping
 from dataclasses import dataclass
+import os
 import keyring
 from pathlib import Path
 import tempfile
@@ -15,7 +15,7 @@ from dotenv import dotenv_values, load_dotenv
 ScopeType = Literal["env", "project", "user"]
 
 _PROJECT_ENV_KEYS_LOCK = threading.Lock()
-_PROJECT_ENV_KEYS_BY_PATH: dict[Path, set[str]] = {}
+_PROJECT_ENV_VALUES_BY_PATH: dict[Path, dict[str, str]] = {}
 _PROJECT_SECRET_FILE_LOCKS_GUARD = threading.Lock()
 _PROJECT_SECRET_FILE_LOCKS_BY_PATH: dict[Path, threading.Lock] = {}
 
@@ -129,7 +129,7 @@ class SecretManager:
             strict=False
         )
         self._project_secret_values: dict[str, str] = {}
-        self._project_env_keys = self._shared_project_env_keys(self.project_path)
+        self._project_env_values = self._shared_project_env_values(self.project_path)
         self._load_project_secrets()
 
     def _load_project_secrets(self):
@@ -137,8 +137,12 @@ class SecretManager:
         secrets_file = self.project_path / ".titan" / "secrets.env"
         if secrets_file.exists():
             self._project_secret_values = self._read_project_secrets_file()
-            self._mark_project_env_keys(
-                key for key in self._project_secret_values if key not in os.environ
+            self._mark_project_env_values(
+                {
+                    key: value
+                    for key, value in self._project_secret_values.items()
+                    if key not in os.environ
+                }
             )
             load_dotenv(secrets_file)
 
@@ -169,10 +173,16 @@ class SecretManager:
         project_value = self._project_secret_values.get(env_key)
 
         if env_value is not None:
-            if self._is_project_env_key(env_key) and project_value is not None:
-                if env_value != project_value:
+            injected_project_value = self._project_env_value(env_key)
+            if injected_project_value is not None and project_value is not None:
+                if env_value == injected_project_value:
                     os.environ[env_key] = project_value
-                return ResolvedSecret(project_value, "project")
+                    self._mark_project_env_key(env_key, project_value)
+                    return ResolvedSecret(project_value, "project")
+                self._discard_project_env_key(env_key)
+                return ResolvedSecret(env_value, "env")
+            if injected_project_value is not None:
+                self._discard_project_env_key(env_key)
             return ResolvedSecret(env_value, "env")
 
         if project_value is not None:
@@ -236,9 +246,11 @@ class SecretManager:
                 key_upper = key.upper()
                 self._refresh_project_secret_values()
                 should_update_env = (
-                    self._is_project_env_key(key_upper)
+                    self._is_project_env_key_current(key_upper)
                     or key_upper not in os.environ
                 )
+                if key_upper in os.environ and not should_update_env:
+                    self._discard_project_env_key(key_upper)
 
                 existing_lines = self._read_project_secret_lines(secrets_file)
 
@@ -259,7 +271,7 @@ class SecretManager:
                 self._refresh_project_secret_values()
                 if should_update_env:
                     os.environ[key_upper] = value
-                    self._mark_project_env_key(key_upper)
+                    self._mark_project_env_key(key_upper, value)
 
     def delete(self, key: str, namespace: str = "titan", scope: ScopeType = "user"):
         """Delete secret from specified scope"""
@@ -288,9 +300,9 @@ class SecretManager:
 
                 self._write_project_secret_lines_atomic(secrets_file, filtered)
                 self._refresh_project_secret_values()
-                if self._is_project_env_key(key_upper):
+                if self._is_project_env_key_current(key_upper):
                     os.environ.pop(key_upper, None)
-                    self._discard_project_env_key(key_upper)
+                self._discard_project_env_key(key_upper)
 
     def _read_project_secrets_file(self) -> dict[str, str]:
         """Read project secrets without consulting process environment."""
@@ -346,27 +358,32 @@ class SecretManager:
                 temp_path.unlink()
 
     @staticmethod
-    def _shared_project_env_keys(project_path: Path) -> set[str]:
-        """Return the process-wide project-injected env key set for a project."""
+    def _shared_project_env_values(project_path: Path) -> dict[str, str]:
+        """Return project-injected env values shared by process/project."""
         with _PROJECT_ENV_KEYS_LOCK:
-            return _PROJECT_ENV_KEYS_BY_PATH.setdefault(project_path, set())
+            return _PROJECT_ENV_VALUES_BY_PATH.setdefault(project_path, {})
 
     def _refresh_project_secret_values(self) -> None:
         """Refresh project secret values from disk without mutating env."""
         self._project_secret_values = self._read_project_secrets_file()
 
-    def _is_project_env_key(self, key: str) -> bool:
+    def _is_project_env_key_current(self, key: str) -> bool:
         with _PROJECT_ENV_KEYS_LOCK:
-            return key in self._project_env_keys
+            project_value = self._project_env_values.get(key)
+        return project_value is not None and os.environ.get(key) == project_value
 
-    def _mark_project_env_key(self, key: str) -> None:
+    def _project_env_value(self, key: str) -> str | None:
         with _PROJECT_ENV_KEYS_LOCK:
-            self._project_env_keys.add(key)
+            return self._project_env_values.get(key)
 
-    def _mark_project_env_keys(self, keys: Iterable[str]) -> None:
+    def _mark_project_env_key(self, key: str, value: str) -> None:
         with _PROJECT_ENV_KEYS_LOCK:
-            self._project_env_keys.update(keys)
+            self._project_env_values[key] = value
+
+    def _mark_project_env_values(self, values: Mapping[str, str]) -> None:
+        with _PROJECT_ENV_KEYS_LOCK:
+            self._project_env_values.update(values)
 
     def _discard_project_env_key(self, key: str) -> None:
         with _PROJECT_ENV_KEYS_LOCK:
-            self._project_env_keys.discard(key)
+            self._project_env_values.pop(key, None)

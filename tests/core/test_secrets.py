@@ -130,6 +130,25 @@ def test_get_with_scope_keeps_real_env_when_value_matches_project_secret(
     assert resolved.scope == "env"
 
 
+def test_get_with_scope_keeps_runtime_env_override_after_project_injection(
+    tmp_project_path,
+    mock_env,
+):
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("PROJECT_TOKEN='project_value'\n")
+
+    sm = SecretManager(project_path=tmp_project_path)
+    assert os.environ["PROJECT_TOKEN"] == "project_value"
+
+    os.environ["PROJECT_TOKEN"] = "cli_value"
+    resolved = sm.get_with_scope("project_token")
+
+    assert os.environ["PROJECT_TOKEN"] == "cli_value"
+    assert resolved is not None
+    assert resolved.value == "cli_value"
+    assert resolved.scope == "env"
+
+
 def test_get_from_scope_reads_exact_scope(
     tmp_project_path,
     mock_env,
@@ -271,6 +290,27 @@ def test_project_scope_does_not_update_real_env_even_when_values_match(
     resolved = sm.get_with_scope("project_token")
     assert resolved is not None
     assert resolved.value == "same_value"
+    assert resolved.scope == "env"
+
+
+def test_project_scope_update_keeps_runtime_env_override_after_project_injection(
+    tmp_project_path,
+    mock_env,
+):
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("PROJECT_TOKEN='project_value'\n")
+
+    sm = SecretManager(project_path=tmp_project_path)
+    assert os.environ["PROJECT_TOKEN"] == "project_value"
+
+    os.environ["PROJECT_TOKEN"] = "cli_value"
+    sm.set("project_token", "new_project_value", scope="project")
+
+    assert os.environ["PROJECT_TOKEN"] == "cli_value"
+    assert "PROJECT_TOKEN='new_project_value'" in secrets_file.read_text()
+    resolved = sm.get_with_scope("project_token")
+    assert resolved is not None
+    assert resolved.value == "cli_value"
     assert resolved.scope == "env"
 
 
