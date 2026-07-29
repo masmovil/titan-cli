@@ -716,7 +716,7 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
     # Fetch diff. For fork PRs, gh pr diff is the source of truth because the
     # head branch usually does not exist under the local origin remote.
     with ctx.textual.loading(f"Fetching PR #{pr_number} diff..."):
-        diff_result = _get_review_diff(ctx, pr_number, pr, all_files_with_stats)
+        diff_result, diff_is_github_source = _get_review_diff(ctx, pr_number, pr, all_files_with_stats)
 
     # Validate diff — fallback to per-file patches if PR is too large
     match diff_result:
@@ -751,6 +751,9 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
             match patches_result:
                 case ClientSuccess(data=patches_diff) if patches_diff:
                     diff = patches_diff
+                    # Files-API patches ARE GitHub's diff hunks — valid as the
+                    # publishable-lines source.
+                    diff_is_github_source = True
                 case _:
                     ctx.textual.end_step("error")
                     return Error("Could not fetch file patches for large PR")
@@ -770,6 +773,26 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
     # Display file changes summary
     formatted_files, formatted_summary = compute_diff_stat(diff)
     diff_manager = get_or_create_diff_manager(diff, ctx.data)
+
+    # Attach GitHub's own diff as the publishable-lines source (D-008). The review diff
+    # may be a local `git diff -U20` whose extra context lines GitHub rejects for inline
+    # comments; publish validation must use GitHub's hunks. When unavailable, the manager
+    # falls back to added-lines-only, which GitHub always accepts.
+    github_diff = diff if diff_is_github_source else None
+    if github_diff is None:
+        github_diff_result = ctx.github.get_pr_diff(pr_number)
+        match github_diff_result:
+            case ClientSuccess(data=gh_diff) if gh_diff and gh_diff.strip():
+                github_diff = gh_diff
+            case _:
+                logger.warning(
+                    "github_diff_unavailable_for_publish_validation",
+                    pr_number=pr_number,
+                    fallback="added_lines_only",
+                )
+    if github_diff:
+        diff_manager.attach_github_diff(github_diff)
+
     ctx.textual.show_diff_stat(formatted_files, formatted_summary, title="Files affected:")
 
     # Fetch inline review threads and general comments separately
@@ -830,7 +853,14 @@ def _get_review_diff(
     pr: UIPullRequest,
     all_files_with_stats: list,
 ):
-    """Resolve the most trustworthy diff source for a PR review."""
+    """
+    Resolve the most trustworthy diff source for a PR review.
+
+    Returns:
+        Tuple of (diff ClientResult, is_github_source). ``is_github_source`` is True when
+        the diff came from GitHub itself (``gh pr diff``) — that diff can then double as
+        the publishable-lines source without a second fetch.
+    """
     if pr.is_cross_repository:
         logger.info(
             "review_diff_using_github",
@@ -838,11 +868,11 @@ def _get_review_diff(
             reason="cross_repository_pr",
             head_repository_owner=pr.head_repository_owner,
         )
-        return ctx.github.get_pr_diff(pr_number)
+        return ctx.github.get_pr_diff(pr_number), True
 
     if not ctx.git:
         logger.debug("Git plugin not available; using gh pr diff")
-        return ctx.github.get_pr_diff(pr_number)
+        return ctx.github.get_pr_diff(pr_number), True
 
     fetch_result = ctx.git.fetch(all=True)
     match fetch_result:
@@ -860,7 +890,7 @@ def _get_review_diff(
 
     match git_diff_result:
         case ClientSuccess(data=diff) if diff and diff.strip():
-            return git_diff_result
+            return git_diff_result, False
         case ClientSuccess(data=_):
             if all_files_with_stats:
                 logger.warning(
@@ -870,8 +900,8 @@ def _get_review_diff(
                     head_ref=pr.head_ref,
                     files_changed=len(all_files_with_stats),
                 )
-                return ctx.github.get_pr_diff(pr_number)
-            return git_diff_result
+                return ctx.github.get_pr_diff(pr_number), True
+            return git_diff_result, False
         case ClientError(error_message=err):
             logger.warning(
                 "git_diff_failed_falling_back_to_github",
@@ -880,7 +910,7 @@ def _get_review_diff(
                 head_ref=pr.head_ref,
                 error=err,
             )
-            return ctx.github.get_pr_diff(pr_number)
+            return ctx.github.get_pr_diff(pr_number), True
 
 
 def _resolve_headless_adapter(cli_preference: str):

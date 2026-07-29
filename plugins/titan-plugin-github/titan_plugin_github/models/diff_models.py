@@ -25,6 +25,9 @@ class ParsedHunk:
         new_line_count: Number of new-file lines in this hunk
         valid_review_lines: New-file line numbers valid for inline comments
                             (added '+' and context ' ' lines only, not deleted '-')
+        added_lines: New-file line numbers of added ('+') lines only. Added lines
+                     exist identically in any diff of the same change regardless of
+                     context width, so they are always safe inline targets for GitHub.
     """
     header: str
     content: str
@@ -34,6 +37,7 @@ class ParsedHunk:
     new_line_start: int
     new_line_count: int
     valid_review_lines: frozenset = field(default_factory=frozenset)
+    added_lines: frozenset = field(default_factory=frozenset)
 
     @property
     def new_line_end(self) -> int:
@@ -72,6 +76,14 @@ class ParsedFileDiff:
         result: set[int] = set()
         for hunk in self.hunks:
             result.update(hunk.valid_review_lines)
+        return frozenset(result)
+
+    @property
+    def added_lines(self) -> frozenset:
+        """Union of added-line numbers across all hunks."""
+        result: set[int] = set()
+        for hunk in self.hunks:
+            result.update(hunk.added_lines)
         return frozenset(result)
 
 

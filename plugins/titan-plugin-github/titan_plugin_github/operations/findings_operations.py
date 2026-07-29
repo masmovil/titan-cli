@@ -7,7 +7,7 @@ from titan_cli.core.result import ClientError, ClientResult, ClientSuccess
 
 from ..models.review_models import Finding, FocusContextBatch, ReviewChecklistItem
 from .ai_response_parsing_operations import extract_json_payload
-from .prompt_formatting_operations import comment_context_to_json
+from .prompt_formatting_operations import comment_context_to_json, extract_pr_intent_line
 
 
 def build_findings_prompt_parts(batch: FocusContextBatch) -> dict[str, str]:
@@ -72,15 +72,35 @@ def _pr_context_to_text(batch: FocusContextBatch) -> str:
     if not batch.pr_manifest:
         return f"Batch {batch.batch_id}"
     pr = batch.pr_manifest
+    # One-line intent only (cap 200 chars ≈ 50 tokens): this block repeats once per
+    # batch, so it must stay minimal (D-002 token mandate). The fuller trimmed
+    # description goes to the single-call plan phase instead.
+    intent = extract_pr_intent_line(pr.description)
     return (
         f"PR #{pr.number}: {_short_title(pr.title)}\n"
-        f"{pr.base} -> {pr.head}\n"
+        + (f"Intent: {intent}\n" if intent else "")
+        + f"{pr.base} -> {pr.head}\n"
         f"Batch: {batch.batch_id}"
     )
 
 
+_CHECKLIST_DESCRIPTION_CAP = 200
+"""Hard cap per checklist description in the findings prompt (D-002 token mandate:
+~590 chars ≈ 150 tokens per batch for 4 real items — measured on ragnarok's checklist)."""
+
+
 def _checklist_to_json(checklist: list[ReviewChecklistItem]) -> str:
-    return json.dumps([str(item.id) for item in checklist[:4]], indent=2)
+    return json.dumps(
+        [
+            {
+                "id": str(item.id),
+                "name": item.name,
+                "description": item.description[:_CHECKLIST_DESCRIPTION_CAP],
+            }
+            for item in checklist[:4]
+        ],
+        indent=2,
+    )
 def _files_context_to_text(files_context: dict) -> str:
     if not files_context:
         return "(no files to review)\n"

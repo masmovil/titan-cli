@@ -42,6 +42,10 @@ class DiffContextManager:
 
     def __init__(self, parsed: ParsedDiff) -> None:
         self._parsed = parsed
+        # GitHub's own diff (3 context lines), when attached. The context diff above may be
+        # generated with extended context (-U20) for AI quality; GitHub validates inline
+        # comment lines against ITS diff only, so publishable lines must come from here.
+        self._github_parsed: Optional[ParsedDiff] = None
 
     # ------------------------------------------------------------------
     # Construction
@@ -186,6 +190,64 @@ class DiffContextManager:
                 return hunk
         logger.debug(f"get_hunk_for_old_line: path={path}, old_line={line} → fallback to last hunk ({hunks[-1].old_line_start}-{hunks[-1].old_line_end})")
         return hunks[-1]
+
+    # ------------------------------------------------------------------
+    # GitHub diff attachment (publishable-lines source)
+    # ------------------------------------------------------------------
+
+    def attach_github_diff(self, diff: str) -> None:
+        """
+        Attach GitHub's own PR diff (from ``gh pr diff`` or files-API ``patch`` sections).
+
+        Once attached, ``get_publishable_lines`` validates inline placement against
+        GitHub's hunks instead of the (possibly wider-context) local diff. Attaching an
+        empty diff is a no-op — the added-lines-only fallback stays in effect.
+        """
+        if not diff or not diff.strip():
+            logger.debug("attach_github_diff: empty diff ignored")
+            return
+        self._github_parsed = _parse_diff(diff)
+        logger.debug(
+            "attach_github_diff: %s files, %s hunks",
+            len(self._github_parsed.files),
+            sum(len(f.hunks) for f in self._github_parsed.files.values()),
+        )
+
+    @property
+    def has_github_diff(self) -> bool:
+        """Return True when GitHub's own diff has been attached."""
+        return self._github_parsed is not None
+
+    def get_publishable_lines(self, path: str) -> frozenset:
+        """
+        Return new-file line numbers GitHub will accept for inline comments on ``path``.
+
+        Source precedence (never fails, only narrows):
+        1. GitHub's own diff when attached — added + context lines of ITS hunks.
+        2. Added ('+') lines from the context diff — these exist identically in any
+           diff of the same change, so GitHub always accepts them.
+        """
+        if self._github_parsed is not None:
+            file_diff = self._github_parsed.files.get(path)
+            lines = file_diff.valid_review_lines if file_diff else frozenset()
+            logger.debug(
+                "get_publishable_lines: path=%s source=github_diff count=%s", path, len(lines)
+            )
+            return lines
+
+        file_diff = self._parsed.files.get(path)
+        lines = file_diff.added_lines if file_diff else frozenset()
+        logger.debug(
+            "get_publishable_lines: path=%s source=added_lines_fallback count=%s", path, len(lines)
+        )
+        return lines
+
+    def get_all_publishable_lines(self) -> dict[str, frozenset]:
+        """Return ``{path: frozenset[line]}`` of publishable lines for every file."""
+        paths = set(self._parsed.files)
+        if self._github_parsed is not None:
+            paths |= set(self._github_parsed.files)
+        return {path: self.get_publishable_lines(path) for path in paths}
 
     # ------------------------------------------------------------------
     # Valid review lines
@@ -465,11 +527,13 @@ def _parse_hunk(path: str, content: str) -> Optional[ParsedHunk]:
     new_count = int(header_match.group(4)) if header_match.group(4) else 1
 
     valid_lines: set[int] = set()
+    added_lines: set[int] = set()
     current = new_start
 
     for line in lines[1:]:
         if line.startswith("+") and not line.startswith("+++"):
             valid_lines.add(current)
+            added_lines.add(current)
             current += 1
         elif line.startswith(" "):
             valid_lines.add(current)
@@ -485,6 +549,7 @@ def _parse_hunk(path: str, content: str) -> Optional[ParsedHunk]:
         new_line_start=new_start,
         new_line_count=new_count,
         valid_review_lines=frozenset(valid_lines),
+        added_lines=frozenset(added_lines),
     )
 
 

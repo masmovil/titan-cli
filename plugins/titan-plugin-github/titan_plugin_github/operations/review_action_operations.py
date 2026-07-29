@@ -85,8 +85,16 @@ def build_review_action_payload(
         Dict with keys: commit_id, comments (list), body (str, optional)
     """
     manager = diff_manager or (get_or_create_diff_manager(diff) if diff else None)
-    valid_lines = {p: set(ls) for p, ls in manager.get_all_valid_lines().items()} if manager else {}
-    logger.debug("build_review_payload_start", action_count=len(actions), files_in_diff=len(valid_lines))
+    # Publishable lines come from GitHub's own diff when attached (D-008): the local
+    # context diff may use extended context (-U20) whose extra context lines GitHub
+    # rejects with 422 "line could not be resolved".
+    valid_lines = {p: set(ls) for p, ls in manager.get_all_publishable_lines().items()} if manager else {}
+    logger.debug(
+        "build_review_payload_start",
+        action_count=len(actions),
+        files_in_diff=len(valid_lines),
+        publishable_source="github_diff" if manager and manager.has_github_diff else "added_lines_fallback",
+    )
     if valid_lines:
         for path, lines in valid_lines.items():  # Log TODOS los archivos
             sorted_lines = sorted(list(lines))[:10]  # First 10 lines
@@ -252,13 +260,15 @@ def resolve_action_anchors(
                 anchor_confidence = "low"
                 inline_reason = "context_match"
 
-            is_inline_safe_for_github = resolved_line in manager.get_valid_review_lines(action.path)
+            is_inline_safe_for_github = resolved_line in manager.get_publishable_lines(action.path)
             if is_inline_safe_for_github:
                 why_inline_allowed = (
-                    f"resolved via {resolution_source} to changed line {resolved_line} present in diff reviewable lines"
+                    f"resolved via {resolution_source} to line {resolved_line} present in GitHub-publishable lines"
                 )
             else:
-                why_inline_allowed = f"resolved via {resolution_source} but line {resolved_line} not in diff reviewable lines"
+                why_inline_allowed = (
+                    f"resolved via {resolution_source} but line {resolved_line} not in GitHub-publishable lines"
+                )
         else:
             is_inline_safe_for_github = False
             why_inline_allowed = "no resolved line could be inferred from snippet/evidence/AI line"

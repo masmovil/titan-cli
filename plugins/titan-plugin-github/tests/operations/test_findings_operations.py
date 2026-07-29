@@ -56,7 +56,10 @@ def test_build_findings_prompt_parts_compacts_axes_and_pr_context():
     parts = build_findings_prompt_parts(batch)
 
     assert '"functional_correctness"' in parts["review_axes"]
-    assert "Long description" not in parts["review_axes"]
+    # review-quality-001 (D-002 approved): applicable checklist items now include
+    # name + description (capped) so the findings model knows what each axis means.
+    assert "Long description that should not appear" in parts["review_axes"]
+    assert '"name": "Functional"' in parts["review_axes"]
     assert "Base" not in parts["pr_context"]
     assert "Batch: batch_1" in parts["pr_context"]
     assert "observable meaning of data, events, labels, classifications, or results" in parts["instructions"]
@@ -217,3 +220,110 @@ def test_parse_findings_response_structured_falls_back_to_error_on_prose():
     result = parse_findings_response("I refuse to call that tool.", structured=True)
 
     assert isinstance(result, ClientError)
+
+
+# ---------------------------------------------------------------------------
+# review-quality-001/002: checklist content cap + PR intent (D-002 token mandate)
+# ---------------------------------------------------------------------------
+
+def test_checklist_descriptions_are_hard_capped():
+    from titan_plugin_github.operations.findings_operations import _checklist_to_json
+
+    items = [
+        ReviewChecklistItem(
+            id=ChecklistCategory.SECURITY,
+            name="Security",
+            description="x" * 500,
+        )
+    ]
+
+    rendered = _checklist_to_json(items)
+
+    assert "x" * 200 in rendered
+    assert "x" * 201 not in rendered
+
+
+def test_pr_context_includes_one_line_intent():
+    batch = FocusContextBatch(
+        batch_id="batch_1",
+        files_context={"src/foo.py": FileContextEntry(path="src/foo.py", hunks=["@@ -1 +1 @@\n+x"])},
+        checklist_applicable=[],
+        pr_manifest=PullRequestManifest(
+            number=3597,
+            title="Marketplace token retry",
+            base="develop",
+            head="feat/marketplace-token-retry",
+            author="alex",
+            # Real-world shape (PR #3597): meme image first, then the actual intent.
+            description=(
+                "\n![Token Refresh Meme](https://media.giphy.com/media/abc/giphy.gif)\n\n"
+                "### PR's key points\n"
+                "This PR implements a robust token retry mechanism for Marketplace API calls "
+                "to handle scenarios where the local token expiration check is out of sync."
+            ),
+        ),
+    )
+
+    parts = build_findings_prompt_parts(batch)
+
+    # The short section heading ("PR's key points") is skipped in favor of the
+    # first substantive sentence.
+    assert "Intent: This PR implements a robust token retry mechanism" in parts["pr_context"]
+    assert "giphy" not in parts["pr_context"]
+    # single line, capped
+    intent_line = next(line for line in parts["pr_context"].splitlines() if line.startswith("Intent:"))
+    assert len(intent_line) <= 210
+
+
+def test_pr_context_omits_intent_when_description_is_only_noise():
+    batch = FocusContextBatch(
+        batch_id="batch_1",
+        files_context={"src/foo.py": FileContextEntry(path="src/foo.py", hunks=["@@ -1 +1 @@\n+x"])},
+        checklist_applicable=[],
+        pr_manifest=PullRequestManifest(
+            number=1,
+            title="T",
+            base="main",
+            head="f",
+            author="a",
+            description="<!-- template -->\n![img](https://x.com/i.png)\n- [ ] checkbox\n",
+        ),
+    )
+
+    parts = build_findings_prompt_parts(batch)
+
+    assert "Intent:" not in parts["pr_context"]
+
+
+def test_extract_pr_intent_strips_noise_and_caps():
+    from titan_plugin_github.operations.prompt_formatting_operations import extract_pr_intent
+
+    description = (
+        "<!-- PR template: fill everything -->\n"
+        "![badge](https://img.shields.io/badge.svg)\n"
+        "## Summary\n"
+        "Adds retry logic to the token refresh flow.\n"
+        "- [x] Tests added\n"
+        "- [ ] Docs updated\n"
+        "https://jira.example.com/TICKET-123\n"
+        "More prose here.\n"
+    )
+
+    result = extract_pr_intent(description, max_chars=800)
+
+    assert "Summary" in result
+    assert "Adds retry logic" in result
+    assert "More prose here." in result
+    assert "badge" not in result
+    assert "Tests added" not in result
+    assert "jira.example.com" not in result
+    assert "template" not in result
+
+
+def test_extract_pr_intent_line_returns_first_meaningful_line_capped():
+    from titan_plugin_github.operations.prompt_formatting_operations import extract_pr_intent_line
+
+    assert extract_pr_intent_line("") == ""
+    assert extract_pr_intent_line("A" * 500).startswith("A")
+    assert len(extract_pr_intent_line("A" * 500)) == 200
+    assert extract_pr_intent_line("![m](http://x.gif)\nReal intent sentence.") == "Real intent sentence."

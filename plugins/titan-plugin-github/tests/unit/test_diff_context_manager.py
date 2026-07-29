@@ -369,3 +369,108 @@ return route.toPath()
         result = _extract_best_anchor_from_text(text)
 
         assert result == "return route.toPath()"
+
+
+# ---------------------------------------------------------------------------
+# Publishable lines (D-008: GitHub diff as placement truth)
+# ---------------------------------------------------------------------------
+
+# Same change as WIDE_CONTEXT_DIFF below, but with GitHub's 3-line context:
+# only lines 17-23 exist in GitHub's hunk.
+GITHUB_U3_DIFF = """\
+diff --git a/src/foo.py b/src/foo.py
+index abc..def 100644
+--- a/src/foo.py
++++ b/src/foo.py
+@@ -17,6 +17,7 @@
+ line17
+ line18
+ line19
++line20_added
+ line21
+ line22
+ line23
+"""
+
+# The same change generated with extended context (-U20 style): the hunk covers
+# many more context lines (10-30) that GitHub does NOT accept for inline comments.
+WIDE_CONTEXT_DIFF = """\
+diff --git a/src/foo.py b/src/foo.py
+index abc..def 100644
+--- a/src/foo.py
++++ b/src/foo.py
+@@ -10,20 +10,21 @@
+ line10
+ line11
+ line12
+ line13
+ line14
+ line15
+ line16
+ line17
+ line18
+ line19
++line20_added
+ line21
+ line22
+ line23
+ line24
+ line25
+ line26
+ line27
+ line28
+ line29
+ line30
+"""
+
+
+class TestPublishableLines:
+    def test_added_lines_tracked_separately_from_context(self):
+        mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+
+        hunks = mgr.get_hunks("src/foo.py")
+        assert len(hunks) == 1
+        assert hunks[0].added_lines == frozenset({20})
+        # valid_review_lines keeps its historical added+context semantics
+        assert 20 in hunks[0].valid_review_lines
+        assert 10 in hunks[0].valid_review_lines
+
+    def test_fallback_without_github_diff_is_added_lines_only(self):
+        mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+
+        assert not mgr.has_github_diff
+        assert mgr.get_publishable_lines("src/foo.py") == frozenset({20})
+
+    def test_github_diff_widens_fallback_to_its_own_hunk_lines(self):
+        mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+        mgr.attach_github_diff(GITHUB_U3_DIFF)
+
+        publishable = mgr.get_publishable_lines("src/foo.py")
+        assert mgr.has_github_diff
+        # GitHub's hunk lines (17-23) are publishable...
+        assert publishable == frozenset({17, 18, 19, 20, 21, 22, 23})
+        # ...but the -U20-only context lines are not (the D-004 422 case: line 10)
+        assert 10 not in publishable
+        # while the context diff still considers them valid for anchoring/display
+        assert 10 in mgr.get_valid_review_lines("src/foo.py")
+
+    def test_attach_empty_github_diff_keeps_fallback(self):
+        mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+        mgr.attach_github_diff("")
+        mgr.attach_github_diff("   \n")
+
+        assert not mgr.has_github_diff
+        assert mgr.get_publishable_lines("src/foo.py") == frozenset({20})
+
+    def test_file_missing_from_github_diff_has_no_publishable_lines(self):
+        mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+        mgr.attach_github_diff(GITHUB_U3_DIFF.replace("src/foo.py", "src/other.py"))
+
+        assert mgr.get_publishable_lines("src/foo.py") == frozenset()
+
+    def test_get_all_publishable_lines_covers_union_of_paths(self):
+        mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+        mgr.attach_github_diff(GITHUB_U3_DIFF)
+
+        all_lines = mgr.get_all_publishable_lines()
+        assert all_lines == {"src/foo.py": frozenset({17, 18, 19, 20, 21, 22, 23})}
