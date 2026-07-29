@@ -327,3 +327,19 @@ def test_extract_pr_intent_line_returns_first_meaningful_line_capped():
     assert extract_pr_intent_line("A" * 500).startswith("A")
     assert len(extract_pr_intent_line("A" * 500)) == 200
     assert extract_pr_intent_line("![m](http://x.gif)\nReal intent sentence.") == "Real intent sentence."
+
+
+def test_default_titan_checklist_renders_with_descriptions_too():
+    """The checklist content fix must work without a project override: Titan's
+    built-in DEFAULT_REVIEW_CHECKLIST (served by ChecklistManager when no
+    .titan/review/checklist.yaml exists) must reach the findings prompt with
+    name + description, same as any project checklist."""
+    from titan_plugin_github.checklists.defaults import DEFAULT_REVIEW_CHECKLIST
+    from titan_plugin_github.operations.findings_operations import _checklist_to_json
+
+    assert all(item.name and item.description for item in DEFAULT_REVIEW_CHECKLIST)
+
+    rendered = _checklist_to_json(list(DEFAULT_REVIEW_CHECKLIST)[:4])
+
+    assert '"name": "Functional Correctness"' in rendered
+    assert "Logic bugs" in rendered
