@@ -28,6 +28,12 @@ class ParsedHunk:
         added_lines: New-file line numbers of added ('+') lines only. Added lines
                      exist identically in any diff of the same change regardless of
                      context width, so they are always safe inline targets for GitHub.
+        header_consistent: True when the number of new-file lines counted while
+                           parsing matches the @@ header's declared new-line count.
+                           False means the hunk body desynced from its header (e.g.
+                           lines lost or mangled in transport) and every computed
+                           line number after the desync point may be shifted —
+                           such hunks must not be trusted for inline placement.
     """
     header: str
     content: str
@@ -38,6 +44,7 @@ class ParsedHunk:
     new_line_count: int
     valid_review_lines: frozenset = field(default_factory=frozenset)
     added_lines: frozenset = field(default_factory=frozenset)
+    header_consistent: bool = True
 
     @property
     def new_line_end(self) -> int:
@@ -85,6 +92,16 @@ class ParsedFileDiff:
         for hunk in self.hunks:
             result.update(hunk.added_lines)
         return frozenset(result)
+
+    @property
+    def hunks_consistent(self) -> bool:
+        """
+        True when every hunk passed the @@ header line-count self-check.
+
+        False means at least one hunk's parsed line numbers may be shifted —
+        the file is unreliable for inline comment placement.
+        """
+        return all(hunk.header_consistent for hunk in self.hunks)
 
 
 @dataclass

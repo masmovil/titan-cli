@@ -19,7 +19,7 @@ diff --git a/src/foo.py b/src/foo.py
 index abc..def 100644
 --- a/src/foo.py
 +++ b/src/foo.py
-@@ -10,6 +10,7 @@
+@@ -10,5 +10,6 @@
  def hello():
      print("hello")
 +    print("world")
@@ -33,13 +33,13 @@ diff --git a/src/bar.py b/src/bar.py
 index 111..222 100644
 --- a/src/bar.py
 +++ b/src/bar.py
-@@ -1,5 +1,6 @@
+@@ -1,4 +1,5 @@
  import os
 +import sys
  import re
 
  def first():
-@@ -20,4 +21,5 @@
+@@ -20,2 +21,3 @@
  def second():
      pass
 +    # new comment
@@ -51,7 +51,7 @@ diff --git a/src/baz.py b/src/baz.py
 index aaa..bbb 100644
 --- a/src/baz.py
 +++ b/src/baz.py
-@@ -5,7 +5,6 @@
+@@ -5,4 +5,3 @@
  def foo():
 -    old_line_1 = True
 -    old_line_2 = False
@@ -487,13 +487,13 @@ diff --git a/src/svc.py b/src/svc.py
 index 111..222 100644
 --- a/src/svc.py
 +++ b/src/svc.py
-@@ -3,5 +3,6 @@
+@@ -3,3 +3,4 @@
  def early_helper(x):
      if not x:
 +        return None
      return x
 
-@@ -48,6 +50,7 @@
+@@ -48,4 +50,5 @@
  def late_handler(y):
      value = compute(y)
      if value is None:
@@ -552,3 +552,160 @@ class TestResolverV2:
 
     def test_find_line_by_snippet_compat_returns_first_match(self):
         assert self._mgr().find_line_by_snippet("src/svc.py", "return None") == 5
+
+
+# ---------------------------------------------------------------------------
+# Parser hardening: empty context lines, @@ self-check, quoted paths, CRLF
+# ---------------------------------------------------------------------------
+
+# An empty context line that lost its leading space ("" instead of " ") — e.g.
+# a trailing-whitespace-stripping transport. Not counting it shifts every
+# subsequent line of the hunk by one (the classic "comment lands N lines off").
+STRIPPED_EMPTY_CONTEXT_DIFF = (
+    "diff --git a/src/pkg.py b/src/pkg.py\n"
+    "index 111..222 100644\n"
+    "--- a/src/pkg.py\n"
+    "+++ b/src/pkg.py\n"
+    "@@ -1,6 +1,6 @@\n"
+    " import os\n"
+    "\n"  # empty context line whose leading space was stripped
+    " def run():\n"
+    "-    pass\n"
+    "+    return os.name\n"
+    " \n"
+    " # end\n"
+)
+
+# Hunk header declares 4 new-file lines but the body only has 2 — a desync the
+# self-check must flag so the file degrades to general-body placement.
+DESYNCED_DIFF = (
+    "diff --git a/src/foo.py b/src/foo.py\n"
+    "index 111..222 100644\n"
+    "--- a/src/foo.py\n"
+    "+++ b/src/foo.py\n"
+    "@@ -1,3 +1,4 @@\n"
+    " import os\n"
+    "+import sys\n"
+)
+
+QUOTED_PATH_DIFF = (
+    'diff --git "a/src/my file.py" "b/src/my file.py"\n'
+    "index 111..222 100644\n"
+    '--- "a/src/my file.py"\n'
+    '+++ "b/src/my file.py"\n'
+    "@@ -1,2 +1,3 @@\n"
+    " x = 1\n"
+    "+y = 2\n"
+    " z = 3\n"
+)
+
+CRLF_DIFF = (
+    "diff --git a/src/win.py b/src/win.py\r\n"
+    "index 111..222 100644\r\n"
+    "--- a/src/win.py\r\n"
+    "+++ b/src/win.py\r\n"
+    "@@ -1,2 +1,3 @@\r\n"
+    " x = 1\r\n"
+    "+y = 2\r\n"
+    " z = 3\r\n"
+)
+
+
+class TestEmptyContextLineCounting:
+    def test_lines_after_stripped_empty_line_are_not_shifted(self):
+        """Without counting "" as context, '# end' would resolve to line 5 instead of 6."""
+        mgr = DiffContextManager.from_diff(STRIPPED_EMPTY_CONTEXT_DIFF)
+
+        assert mgr.find_line_by_snippet("src/pkg.py", "# end") == 6
+        assert mgr.find_line_by_snippet("src/pkg.py", "return os.name") == 4
+
+    def test_hunk_with_stripped_empty_line_passes_self_check(self):
+        mgr = DiffContextManager.from_diff(STRIPPED_EMPTY_CONTEXT_DIFF)
+
+        hunk = mgr.get_hunks("src/pkg.py")[0]
+        assert hunk.header_consistent is True
+        assert mgr.get_file("src/pkg.py").hunks_consistent is True
+
+    def test_stripped_empty_line_is_a_valid_review_line(self):
+        mgr = DiffContextManager.from_diff(STRIPPED_EMPTY_CONTEXT_DIFF)
+
+        assert 2 in mgr.get_valid_review_lines("src/pkg.py")
+
+
+class TestHunkHeaderSelfCheck:
+    def test_consistent_hunk_is_flagged_consistent(self):
+        mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
+
+        assert mgr.get_hunks("src/foo.py")[0].header_consistent is True
+
+    def test_desynced_hunk_is_flagged_inconsistent(self):
+        mgr = DiffContextManager.from_diff(DESYNCED_DIFF)
+
+        hunk = mgr.get_hunks("src/foo.py")[0]
+        assert hunk.header_consistent is False
+        assert mgr.get_file("src/foo.py").hunks_consistent is False
+
+    def test_desynced_file_has_no_publishable_lines(self):
+        """The load-bearing degradation: a desynced parse must never publish
+        potentially-shifted lines inline — not even its added lines."""
+        mgr = DiffContextManager.from_diff(DESYNCED_DIFF)
+
+        assert 2 in mgr.get_file("src/foo.py").added_lines  # parsed, but untrusted
+        assert mgr.get_publishable_lines("src/foo.py") == frozenset()
+
+    def test_desynced_context_diff_wins_over_attached_github_diff(self):
+        """Anchors resolve against the context diff; if that parse desynced, an
+        intact GitHub diff cannot make its lines trustworthy."""
+        mgr = DiffContextManager.from_diff(DESYNCED_DIFF)
+        mgr.attach_github_diff(GITHUB_U3_DIFF)
+
+        assert mgr.get_publishable_lines("src/foo.py") == frozenset()
+
+    def test_desynced_github_diff_falls_back_to_added_lines(self):
+        mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+        mgr.attach_github_diff(DESYNCED_DIFF)
+
+        assert mgr.get_publishable_lines("src/foo.py") == frozenset({20})
+
+    def test_desync_does_not_affect_other_files(self):
+        mgr = DiffContextManager.from_diff(
+            DESYNCED_DIFF + WIDE_CONTEXT_DIFF.replace("src/foo.py", "src/ok.py")
+        )
+
+        assert mgr.get_publishable_lines("src/foo.py") == frozenset()
+        assert mgr.get_publishable_lines("src/ok.py") == frozenset({20})
+
+
+class TestQuotedPathHeaders:
+    def test_quoted_path_with_spaces_is_indexed(self):
+        mgr = DiffContextManager.from_diff(QUOTED_PATH_DIFF)
+
+        assert mgr.get_file("src/my file.py") is not None
+        assert mgr.find_line_by_snippet("src/my file.py", "y = 2") == 2
+
+    def test_quoted_path_hunk_is_consistent(self):
+        mgr = DiffContextManager.from_diff(QUOTED_PATH_DIFF)
+
+        assert mgr.get_file("src/my file.py").hunks_consistent is True
+        assert mgr.get_publishable_lines("src/my file.py") == frozenset({2})
+
+
+class TestCrlfDiffs:
+    def test_crlf_path_is_indexed_without_carriage_return(self):
+        mgr = DiffContextManager.from_diff(CRLF_DIFF)
+
+        assert mgr.get_file("src/win.py") is not None
+        assert mgr.get_file("src/win.py\r") is None
+
+    def test_crlf_snippet_search_matches(self):
+        mgr = DiffContextManager.from_diff(CRLF_DIFF)
+
+        assert mgr.find_line_by_snippet("src/win.py", "y = 2") == 2
+        # snippet itself polluted with \r (copy-paste from CRLF content)
+        assert mgr.find_line_by_snippet("src/win.py", "y = 2\r") == 2
+
+    def test_crlf_hunk_passes_self_check(self):
+        mgr = DiffContextManager.from_diff(CRLF_DIFF)
+
+        assert mgr.get_file("src/win.py").hunks_consistent is True
+        assert mgr.get_publishable_lines("src/win.py") == frozenset({2})

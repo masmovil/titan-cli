@@ -28,7 +28,13 @@ from ..models.view import UIComment
 logger = get_logger(__name__)
 
 _HUNK_HEADER_RE = re.compile(r"@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@(.*)")
-_FILE_HEADER_RE = re.compile(r"^diff --git a/.+ b/(.+)$")
+# Git quotes both paths when they contain spaces/special chars:
+#   diff --git "a/my file.py" "b/my file.py"
+# The trailing \r? tolerates CRLF diffs (otherwise the captured path keeps the \r
+# and every subsequent lookup by path silently misses).
+_FILE_HEADER_RE = re.compile(
+    r'^diff --git (?:a/.+ b/(?P<path>.+?)|"a/.+" "b/(?P<quoted_path>.+?)")\r?$'
+)
 _COMMENT_PREFIXES = ("//", "#", "/*", "*/", "*")
 
 
@@ -226,17 +232,39 @@ class DiffContextManager:
         1. GitHub's own diff when attached — added + context lines of ITS hunks.
         2. Added ('+') lines from the context diff — these exist identically in any
            diff of the same change, so GitHub always accepts them.
+
+        Files whose context-diff hunks failed the @@ line-count self-check
+        return an empty set: every resolved line for them may be shifted, so they
+        degrade to general-body placement. A self-check failure in the GitHub diff
+        only drops that source, falling back to the added-lines floor.
         """
+        context_file = self._parsed.files.get(path)
+        if context_file is not None and not context_file.hunks_consistent:
+            # Anchors are resolved against the context diff — if its parse desynced,
+            # any line we'd publish may be shifted. Force general-body degradation.
+            logger.warning(
+                "get_publishable_lines: path=%s context diff failed line-count self-check "
+                "→ no inline placement",
+                path,
+            )
+            return frozenset()
+
         if self._github_parsed is not None:
             file_diff = self._github_parsed.files.get(path)
-            lines = file_diff.valid_review_lines if file_diff else frozenset()
-            logger.debug(
-                "get_publishable_lines: path=%s source=github_diff count=%s", path, len(lines)
-            )
-            return lines
+            if file_diff is not None and not file_diff.hunks_consistent:
+                logger.warning(
+                    "get_publishable_lines: path=%s GitHub diff failed line-count self-check "
+                    "→ falling back to added lines",
+                    path,
+                )
+            else:
+                lines = file_diff.valid_review_lines if file_diff else frozenset()
+                logger.debug(
+                    "get_publishable_lines: path=%s source=github_diff count=%s", path, len(lines)
+                )
+                return lines
 
-        file_diff = self._parsed.files.get(path)
-        lines = file_diff.added_lines if file_diff else frozenset()
+        lines = context_file.added_lines if context_file else frozenset()
         logger.debug(
             "get_publishable_lines: path=%s source=added_lines_fallback count=%s", path, len(lines)
         )
@@ -301,7 +329,9 @@ class DiffContextManager:
                     if snippet_stripped in line[1:].strip():
                         matches.append(current)
                     current += 1
-                elif line.startswith(" "):
+                elif line.startswith(" ") or line in ("", "\r"):
+                    # "" — empty context line whose leading space was stripped in
+                    # transport; must advance the counter to stay in sync
                     if snippet_stripped in line[1:].strip():
                         matches.append(current)
                     current += 1
@@ -551,7 +581,7 @@ def _parse_diff(raw: str) -> ParsedDiff:
         if file_match:
             _flush_hunk()
             current_hunk_lines = []
-            current_path = file_match.group(1)
+            current_path = file_match.group("path") or file_match.group("quoted_path")
             if current_path not in files:
                 logger.debug(f"_parse_diff: found file: {current_path}")
                 files[current_path] = ParsedFileDiff(path=current_path, hunks=[])
@@ -571,7 +601,16 @@ def _parse_diff(raw: str) -> ParsedDiff:
 
 
 def _parse_hunk(path: str, content: str) -> Optional[ParsedHunk]:
-    """Parse a single hunk string into a ``ParsedHunk``. Returns None on malformed header."""
+    """
+    Parse a single hunk string into a ``ParsedHunk``. Returns None on malformed header.
+
+    Empty lines (``""``/``"\\r"``) inside the body are counted as context lines: git
+    always emits the leading space, so a bare empty line means it was stripped in
+    transport — not counting it would silently shift every subsequent line.
+    After parsing, the counted new-file lines are checked against the @@ header's
+    declared count; a mismatch marks the hunk ``header_consistent=False`` so the
+    file degrades to general-body placement instead of publishing shifted lines.
+    """
     lines = content.split("\n")
     if not lines:
         return None
@@ -579,6 +618,12 @@ def _parse_hunk(path: str, content: str) -> Optional[ParsedHunk]:
     header_match = _HUNK_HEADER_RE.match(lines[0])
     if not header_match:
         return None
+
+    # Trailing empty lines are join/transport artifacts, not hunk content — a real
+    # empty context line inside the hunk is " " (or "" if space-stripped, handled below).
+    while len(lines) > 1 and lines[-1] in ("", "\r"):
+        lines.pop()
+    content = "\n".join(lines)
 
     old_start = int(header_match.group(1))
     old_count = int(header_match.group(2)) if header_match.group(2) else 1
@@ -594,10 +639,23 @@ def _parse_hunk(path: str, content: str) -> Optional[ParsedHunk]:
             valid_lines.add(current)
             added_lines.add(current)
             current += 1
-        elif line.startswith(" "):
+        elif line.startswith(" ") or line in ("", "\r"):
             valid_lines.add(current)
             current += 1
         # '-' lines: do not advance new-file counter
+        # '\ No newline at end of file' markers: not file lines, do not count
+
+    counted_new = current - new_start
+    header_consistent = counted_new == new_count
+    if not header_consistent:
+        logger.warning(
+            "hunk_header_desync: path=%s header=%r declares %s new-file lines, parsed %s "
+            "— file will be excluded from inline placement",
+            path,
+            lines[0],
+            new_count,
+            counted_new,
+        )
 
     return ParsedHunk(
         header=lines[0],
@@ -609,6 +667,7 @@ def _parse_hunk(path: str, content: str) -> Optional[ParsedHunk]:
         new_line_count=new_count,
         valid_review_lines=frozenset(valid_lines),
         added_lines=frozenset(added_lines),
+        header_consistent=header_consistent,
     )
 
 
@@ -628,6 +687,10 @@ def _build_focused_diff_from_hunk(
     if not header_match:
         return hunk_content
 
+    # Trailing empty lines are join artifacts, not hunk content
+    while len(lines) > 1 and lines[-1] in ("", "\r"):
+        lines.pop()
+
     old_start = int(header_match.group(1))
     new_start = int(header_match.group(3))
     header_suffix = header_match.group(5)
@@ -643,7 +706,8 @@ def _build_focused_diff_from_hunk(
         elif raw.startswith("-") and not raw.startswith("---"):
             parsed.append((old_line, None, raw, idx))
             old_line += 1
-        elif raw.startswith(" "):
+        elif raw.startswith(" ") or raw in ("", "\r"):
+            # "" — space-stripped empty context line; must advance both counters
             parsed.append((old_line, new_line, raw, idx))
             old_line += 1
             new_line += 1
@@ -693,8 +757,14 @@ def _rebuild_diff(
     if extracted_old_start is None:
         extracted_old_start = old_start
 
-    old_count = sum(1 for _, _, raw, _ in extracted if raw.startswith("-") or raw.startswith(" "))
-    new_count = sum(1 for _, _, raw, _ in extracted if raw.startswith("+") or raw.startswith(" "))
+    old_count = sum(
+        1 for _, _, raw, _ in extracted
+        if raw.startswith(("-", " ")) or raw in ("", "\r")
+    )
+    new_count = sum(
+        1 for _, _, raw, _ in extracted
+        if raw.startswith(("+", " ")) or raw in ("", "\r")
+    )
 
     header = (
         f"@@ -{extracted_old_start},{old_count}"
@@ -734,7 +804,8 @@ def _extract_lines_from_hunk(
             if current >= target_line and len(extracted) < count:
                 extracted.append(line[1:])
             current += 1
-        elif line.startswith(" "):
+        elif line.startswith(" ") or line in ("", "\r"):
+            # "" — space-stripped empty context line; counts toward the new file
             if current >= target_line and len(extracted) < count:
                 extracted.append(line[1:])
             current += 1
@@ -779,10 +850,10 @@ code as ``NN | code`` (full_content) or ``NN [ADDED] code`` / ``NN [CONTEXT] cod
 
 
 def _sanitize_snippet(snippet: Optional[str]) -> str:
-    """Strip prompt-annotation prefixes and diff markers from a model-provided snippet."""
+    """Strip prompt-annotation prefixes, diff markers, and CR chars from a snippet."""
     if not snippet:
         return ""
-    text = snippet.strip()
+    text = snippet.replace("\r", "").strip()
     cleaned = _SNIPPET_ANNOTATION_RE.sub("", text)
     if cleaned != text:
         text = cleaned.strip()

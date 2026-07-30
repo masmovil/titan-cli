@@ -14,7 +14,7 @@ diff --git a/src/foo.py b/src/foo.py
 index abc..def 100644
 --- a/src/foo.py
 +++ b/src/foo.py
-@@ -10,6 +10,7 @@
+@@ -10,3 +10,4 @@
  def hello():
      print(\"hello\")
 +    print(\"world\")
