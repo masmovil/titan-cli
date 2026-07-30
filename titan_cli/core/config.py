@@ -529,6 +529,32 @@ class TitanConfig:
 
         self._write_global_config(config_data)
 
+    def get_favorite_workflows(self) -> list:
+        """Return the list of favorited workflow names from the global user config."""
+        config_data = self._load_toml(self._global_config_path)
+        return list(config_data.get("workflows", {}).get("favorites", []))
+
+    def is_favorite_workflow(self, name: str) -> bool:
+        """Return whether a workflow is marked as favorite."""
+        return name in self.get_favorite_workflows()
+
+    def toggle_favorite_workflow(self, name: str) -> bool:
+        """Toggle a workflow's favorite status in the global user config.
+
+        Returns:
+            The new favorite state (True if now favorited, False if removed).
+        """
+        config_data = self._load_toml(self._global_config_path)
+        favorites = config_data.setdefault("workflows", {}).setdefault("favorites", [])
+        if name in favorites:
+            favorites.remove(name)
+            is_now_favorite = False
+        else:
+            favorites.append(name)
+            is_now_favorite = True
+        self._write_global_config(config_data)
+        return is_now_favorite
+
     def _get_project_source_scope_key(self) -> str:
         """Return the global-config key used to scope local plugin overrides per project."""
         project_path = str((self._project_root or Path.cwd()).resolve())

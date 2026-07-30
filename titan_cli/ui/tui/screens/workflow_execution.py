@@ -40,6 +40,7 @@ class WorkflowExecutionScreen(BaseScreen):
     BINDINGS = [
         ("escape", "cancel_execution", "Cancel"),
         ("q", "cancel_execution", "Cancel"),
+        ("f", "toggle_favorite", "Favorite"),
     ]
 
     CSS = """
@@ -92,6 +93,8 @@ class WorkflowExecutionScreen(BaseScreen):
             config,
             title=f"{Icons.WORKFLOW} Executing: {workflow_name}",
             show_back=True,
+            show_favorite=True,
+            is_favorite=config.is_favorite_workflow(workflow_name),
             **kwargs
         )
         self.workflow_name = workflow_name
@@ -230,6 +233,23 @@ class WorkflowExecutionScreen(BaseScreen):
             header.title = title
         except Exception:
             pass
+
+    def action_toggle_favorite(self) -> None:
+        """Toggle favorite status for this workflow and update the header."""
+        new_state = self.config.toggle_favorite_workflow(self.workflow_name)
+        self.is_favorite = new_state
+        try:
+            header = self.query_one(HeaderWidget)
+            header.is_favorite = new_state
+        except Exception:
+            pass
+
+        # Local import avoids a circular import (workflows.py imports this module).
+        from titan_cli.ui.tui.screens.workflows import WorkflowsScreen
+
+        for screen in self.app.screen_stack:
+            if isinstance(screen, WorkflowsScreen):
+                screen.refresh_favorites()
 
     def _update_description(self, description: str) -> None:
         """Update the workflow description."""

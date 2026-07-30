@@ -43,6 +43,7 @@ class WorkflowsScreen(BaseScreen):
         self._is_mounting = False  # Flag to prevent auto-update during mount
         self._all_workflows = None  # Cache for discovered workflows
         self._plugin_source_map = {}  # Map plugin names to their source identifiers
+        self._favorite_names = set()  # Cache of favorited workflow names
 
     def on_mount(self) -> None:
         """Initialize the screen with first options highlighted."""
@@ -63,6 +64,23 @@ class WorkflowsScreen(BaseScreen):
         finally:
             # Re-enable auto-filtering after mount completes
             self._is_mounting = False
+
+    def refresh_favorites(self) -> None:
+        """Re-sort and re-render the workflow list to reflect updated favorite state.
+
+        Called directly by WorkflowExecutionScreen right after a favorite is
+        toggled, rather than via a screen lifecycle hook - this keeps the
+        refresh scoped to the one moment it's actually needed instead of
+        running on every screen transition.
+        """
+        if self._all_workflows is None:
+            return
+        self._favorite_names = set(self.config.get_favorite_workflows())
+        self._all_workflows = WorkflowFilterService.sort_favorites_first(
+            self._all_workflows, self._favorite_names
+        )
+        self._plugin_source_map = WorkflowFilterService.group_by_plugin(self._all_workflows)
+        self._update_workflow_list()
 
     CSS = """
     WorkflowsScreen {
@@ -131,6 +149,12 @@ class WorkflowsScreen(BaseScreen):
         # Cache and remove duplicates using service
         self._all_workflows = WorkflowFilterService.remove_duplicates(all_workflows)
 
+        # Favorited workflows always sort to the top
+        self._favorite_names = set(self.config.get_favorite_workflows())
+        self._all_workflows = WorkflowFilterService.sort_favorites_first(
+            self._all_workflows, self._favorite_names
+        )
+
         with Container(id="workflows-container"):
             if not self._all_workflows:
                 yield Static("No workflows found.", id="no-workflows")
@@ -172,6 +196,8 @@ class WorkflowsScreen(BaseScreen):
 
         for wf_info in workflows_to_show:
             display_title = wf_info.title if wf_info.title else wf_info.name.capitalize()
+            if wf_info.name in self._favorite_names:
+                display_title = f"{Icons.STAR} {display_title}"
             styled_opt = StyledOption(
                 id=wf_info.name,
                 title=display_title,
