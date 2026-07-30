@@ -7,7 +7,7 @@ from typing import List
 
 from textual.app import ComposeResult
 from textual.widgets import Static, OptionList
-from textual.widgets.option_list import Option
+from textual.widgets.option_list import Option, OptionDoesNotExist
 from textual.containers import Container
 from textual.containers import Horizontal
 from textual.css.query import NoMatches
@@ -237,9 +237,22 @@ class WorkflowsScreen(BaseScreen):
         # Get the workflow list widget and replace its options
         workflow_list = self.query_one("#workflow-list", OptionList)
 
+        # Preserve the highlighted item (by id) across the rebuild so toggling
+        # a favorite doesn't reset the user's cursor position
+        highlighted_id = None
+        if workflow_list.highlighted is not None:
+            highlighted_option = workflow_list.get_option_at_index(workflow_list.highlighted)
+            highlighted_id = highlighted_option.id
+
         # Clear and add in one operation
         workflow_list.clear_options()
         workflow_list.add_options(workflow_options)
+
+        if highlighted_id is not None:
+            try:
+                workflow_list.highlighted = workflow_list.get_option_index(highlighted_id)
+            except OptionDoesNotExist:
+                pass
 
         # Force refresh to update display
         workflow_list.refresh()
