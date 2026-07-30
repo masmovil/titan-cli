@@ -40,6 +40,7 @@ from ..operations.review_action_operations import (
     build_review_action_payload,
     classify_github_review_rejection,
     extract_diff_hunk_for_action,
+    extract_file_excerpt_for_action,
     resolve_action_anchors,
 )
 from ..operations.thread_resolution_operations import (
@@ -406,6 +407,7 @@ def _show_review_action_and_get_decision(
     idx: int,
     total: int,
     review_threads: Optional[List[UICommentThread]] = None,
+    file_excerpt: Optional[str] = None,
 ) -> str:
     """
     Display a ReviewActionProposal and return the user's chosen decision.
@@ -413,6 +415,9 @@ def _show_review_action_and_get_decision(
     For resolve_thread actions, shows thread context and resolve confirmation.
     For reply_to_thread actions, shows the original thread context and proposed reply.
     For new_comment actions, shows just the proposed comment.
+
+    ``file_excerpt`` carries real file content for findings the diff cannot anchor, so
+    they are shown with their code rather than as an unsupported claim.
 
     Returns:
         "approve", "edit", "skip", or "exit"
@@ -480,7 +485,9 @@ def _show_review_action_and_get_decision(
 
         # Show the action (proposed reply or new comment)
         from titan_plugin_github.widgets import CommentView
-        ctx.textual.mount(CommentView.from_action(action, diff_hunk=diff_hunk))
+        ctx.textual.mount(
+            CommentView.from_action(action, diff_hunk=diff_hunk, file_excerpt=file_excerpt)
+        )
         ctx.textual.text("")
 
         options = [
@@ -1730,6 +1737,21 @@ def _render_findings_batch_result(
     ctx.textual.warning_text(message)
 
 
+def _attach_content_provider(diff_manager, root: Optional[str]) -> None:
+    """
+    Give the diff manager a way to read whole files from ``root``.
+
+    Only call this with a root already verified to hold the PR's head revision — the
+    provider is trusted to return the code the diff describes.
+    """
+    if diff_manager is None or not root:
+        return
+
+    from ..operations.context_resolution_operations import read_file_content
+
+    diff_manager.attach_content_provider(lambda path: read_file_content(path, root))
+
+
 def _resolve_file_read_access(ctx: WorkflowContext, worktree_path: Optional[str]):
     """
     Decide whether files on disk may be used as this PR's code.
@@ -1827,6 +1849,9 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
     read_access = _resolve_file_read_access(ctx, worktree_path)
     if read_access.allowed:
         ctx.textual.dim_text(f"Reading files from {read_access.source} ({read_access.reason})")
+        # Same verified root powers the comment-rendering path, so a finding about
+        # pre-existing code can show that code instead of nothing.
+        _attach_content_provider(diff_manager, project_root)
     else:
         ctx.textual.warning_text(
             f"Reviewing from the diff only — {read_access.reason}. "
@@ -2395,11 +2420,15 @@ def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
 
         current = action
         diff_hunk = extract_diff_hunk_for_action(current, diff, diff_manager=diff_manager)
+        # Unanchored findings have no diff hunk by definition — read the real file so the
+        # user judges the finding against its code instead of a bare assertion.
+        file_excerpt = extract_file_excerpt_for_action(current, diff_manager=diff_manager)
 
         while True:
             choice = _show_review_action_and_get_decision(
                 ctx, current, diff_hunk or "", idx, len(sorted_actions),
-                review_threads=review_threads
+                review_threads=review_threads,
+                file_excerpt=file_excerpt,
             )
 
             if choice == "exit":

@@ -5,6 +5,7 @@ from titan_plugin_github.operations.review_action_operations import (
     build_review_action_payload,
     detect_head_sha_drift,
     extract_diff_hunk_for_action,
+    extract_file_excerpt_for_action,
     resolve_action_anchors,
 )
 from titan_plugin_github.widgets.comment_view import CommentView
@@ -402,3 +403,71 @@ def test_force_general_body_defaults_to_inline_placement():
     payload = build_review_action_payload([_make_action(12)], commit_sha="abc123", diff=DIFF)
 
     assert payload["comments"][0]["line"] == 12
+
+
+# ---------------------------------------------------------------------------
+# Real code for findings the diff cannot anchor
+# ---------------------------------------------------------------------------
+
+_PREEXISTING_FILE = "\n".join(f"code line {n}" for n in range(1, 16))
+
+
+def _manager_with_content(content=_PREEXISTING_FILE):
+    from titan_plugin_github.managers.diff_context_manager import DiffContextManager
+
+    manager = DiffContextManager.from_diff(DIFF)
+    manager.attach_content_provider(lambda path: content)
+    return manager
+
+
+class TestExtractFileExcerptForAction:
+    def test_unanchored_action_gets_an_excerpt_from_the_real_file(self):
+        """The finding is about pre-existing code, so the diff has nothing to show —
+        without this the comment appeared with no code at all."""
+        manager = _manager_with_content()
+
+        excerpt = extract_file_excerpt_for_action(_unresolved_action(line=10), manager)
+
+        assert excerpt is not None
+        assert "code line 10 ◄" in excerpt
+
+    def test_anchored_action_gets_no_excerpt(self):
+        """An anchored action already shows its diff hunk."""
+        manager = _manager_with_content()
+
+        assert extract_file_excerpt_for_action(_make_action(12), manager) is None
+
+    def test_no_manager_means_no_excerpt(self):
+        assert extract_file_excerpt_for_action(_unresolved_action(), None) is None
+
+    def test_no_content_provider_means_no_excerpt(self):
+        from titan_plugin_github.managers.diff_context_manager import DiffContextManager
+
+        manager = DiffContextManager.from_diff(DIFF)
+
+        assert extract_file_excerpt_for_action(_unresolved_action(), manager) is None
+
+    def test_action_without_a_line_gets_no_excerpt(self):
+        manager = _manager_with_content()
+
+        assert extract_file_excerpt_for_action(_unresolved_action(line=None), manager) is None
+
+    def test_line_past_the_end_of_the_file_gets_no_excerpt(self):
+        manager = _manager_with_content()
+
+        assert extract_file_excerpt_for_action(_unresolved_action(line=999), manager) is None
+
+
+def test_comment_view_renders_the_excerpt_for_an_unanchored_finding():
+    manager = _manager_with_content()
+    action = _unresolved_action(line=10)
+    excerpt = extract_file_excerpt_for_action(action, manager)
+
+    view = CommentView.from_action(action, file_excerpt=excerpt)
+
+    assert view.file_excerpt is not None
+    assert view.file_excerpt_line == 10
+    # Still no line: the finding remains unpublishable inline, the excerpt only
+    # explains what the finding is about.
+    assert view.line is None
+    assert view.line_label == "⚠ outside this PR's diff (AI said 10)"

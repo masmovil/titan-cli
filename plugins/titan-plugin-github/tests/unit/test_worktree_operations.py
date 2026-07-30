@@ -59,6 +59,41 @@ class TestSetupWorktree:
         assert success is True
         mock_git_client.create_worktree.assert_called_once()
 
+    def test_handles_refspec_fetch_failure(self, mock_git_client):
+        """Test handling of refspec fetch failure for fork PRs."""
+        mock_git_client.fetch_refspec.return_value = ClientError(
+            error_message="Fetch failed", error_code="FETCH_ERROR"
+        )
+
+        abs_path, success = setup_worktree(mock_git_client, 123, "feature-branch")
+
+        assert success is False
+        assert abs_path == ""
+        mock_git_client.create_worktree.assert_not_called()
+
+    def test_handles_creation_failure(self, mock_git_client):
+        """Test handling of worktree creation failure"""
+        mock_git_client.create_worktree.return_value = ClientError(
+            error_message="Creation failed", error_code="WORKTREE_CREATE_ERROR"
+        )
+
+        abs_path, success = setup_worktree(mock_git_client, 123, "feature-branch")
+
+        assert success is False
+        assert abs_path == ""
+
+    def test_uses_custom_base_path(self, mock_git_client):
+        """Test using custom base path for worktrees"""
+        abs_path, success = setup_worktree(
+            mock_git_client,
+            456,
+            "branch",
+            base_path="/custom/path"
+        )
+
+        assert success is True
+        assert "titan-review-456" in abs_path
+
 
 @pytest.mark.unit
 class TestClearStaleWorktree:
@@ -119,42 +154,6 @@ class TestClearStaleWorktree:
         clear_stale_worktree(mock_git_client, "wt/path", str(not_a_dir))
 
         assert not_a_dir.exists()
-
-    def test_handles_refspec_fetch_failure(self, mock_git_client):
-        """Test handling of refspec fetch failure for fork PRs."""
-        mock_git_client.fetch_refspec.return_value = ClientError(
-            error_message="Fetch failed", error_code="FETCH_ERROR"
-        )
-
-        abs_path, success = setup_worktree(mock_git_client, 123, "feature-branch")
-
-        assert success is False
-        assert abs_path == ""
-        mock_git_client.create_worktree.assert_not_called()
-
-    def test_handles_creation_failure(self, mock_git_client):
-        """Test handling of worktree creation failure"""
-        from titan_cli.core.result import ClientError
-        mock_git_client.create_worktree.return_value = ClientError(
-            error_message="Creation failed", error_code="WORKTREE_CREATE_ERROR"
-        )
-
-        abs_path, success = setup_worktree(mock_git_client, 123, "feature-branch")
-
-        assert success is False
-        assert abs_path == ""
-
-    def test_uses_custom_base_path(self, mock_git_client):
-        """Test using custom base path for worktrees"""
-        abs_path, success = setup_worktree(
-            mock_git_client,
-            456,
-            "branch",
-            base_path="/custom/path"
-        )
-
-        assert success is True
-        assert "titan-review-456" in abs_path
 
 
 @pytest.mark.unit

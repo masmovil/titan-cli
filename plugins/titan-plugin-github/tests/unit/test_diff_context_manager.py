@@ -767,3 +767,117 @@ class TestGetOrCreateDiffManager:
         mgr = get_or_create_diff_manager(SIMPLE_DIFF)
 
         assert mgr.get_file("src/foo.py") is not None
+
+
+# ---------------------------------------------------------------------------
+# File-content provider: code the diff does not contain at all
+# ---------------------------------------------------------------------------
+
+FILE_CONTENT = "\n".join(f"line {n}" for n in range(1, 21))
+
+
+class TestContentProvider:
+    def test_no_provider_means_no_content(self):
+        mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
+
+        assert mgr.has_content_provider is False
+        assert mgr.get_file_content("src/foo.py") is None
+        assert mgr.build_file_excerpt("src/foo.py", 10) is None
+
+    def test_provider_supplies_content(self):
+        mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
+        mgr.attach_content_provider(lambda path: FILE_CONTENT)
+
+        assert mgr.has_content_provider is True
+        assert mgr.get_file_content("src/foo.py") == FILE_CONTENT
+
+    def test_content_is_cached_per_path(self):
+        calls = []
+
+        def provider(path):
+            calls.append(path)
+            return FILE_CONTENT
+
+        mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
+        mgr.attach_content_provider(provider)
+
+        mgr.get_file_content("src/foo.py")
+        mgr.get_file_content("src/foo.py")
+
+        assert calls == ["src/foo.py"]
+
+    def test_missing_file_is_cached_too(self):
+        calls = []
+
+        def provider(path):
+            calls.append(path)
+            return None
+
+        mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
+        mgr.attach_content_provider(provider)
+
+        assert mgr.get_file_content("gone.py") is None
+        assert mgr.get_file_content("gone.py") is None
+        assert calls == ["gone.py"]
+
+    def test_provider_exception_never_breaks_rendering(self):
+        def provider(path):
+            raise OSError("worktree vanished")
+
+        mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
+        mgr.attach_content_provider(provider)
+
+        assert mgr.get_file_content("src/foo.py") is None
+        assert mgr.build_file_excerpt("src/foo.py", 5) is None
+
+    def test_reattaching_a_provider_clears_the_cache(self):
+        mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
+        mgr.attach_content_provider(lambda path: "old content")
+        mgr.get_file_content("src/foo.py")
+
+        mgr.attach_content_provider(lambda path: "new content")
+
+        assert mgr.get_file_content("src/foo.py") == "new content"
+
+
+class TestBuildFileExcerpt:
+    def _mgr(self, content=FILE_CONTENT):
+        mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
+        mgr.attach_content_provider(lambda path: content)
+        return mgr
+
+    def test_centres_the_window_on_the_target_line(self):
+        excerpt = self._mgr().build_file_excerpt("src/foo.py", 10, before=2, after=2)
+
+        assert excerpt.splitlines() == [
+            " 8 | line 8",
+            " 9 | line 9",
+            "10 | line 10 ◄",
+            "11 | line 11",
+            "12 | line 12",
+        ]
+
+    def test_marks_only_the_target_line(self):
+        excerpt = self._mgr().build_file_excerpt("src/foo.py", 10, before=2, after=2)
+
+        assert excerpt.count("◄") == 1
+
+    def test_window_is_clamped_at_the_start_of_the_file(self):
+        excerpt = self._mgr().build_file_excerpt("src/foo.py", 2, before=6, after=1)
+
+        assert excerpt.splitlines()[0] == "1 | line 1"
+
+    def test_window_is_clamped_at_the_end_of_the_file(self):
+        excerpt = self._mgr().build_file_excerpt("src/foo.py", 20, before=1, after=6)
+
+        assert excerpt.splitlines()[-1] == "20 | line 20 ◄"
+
+    def test_line_beyond_the_file_returns_none(self):
+        """The AI's line was never validated — it can point past the file's end."""
+        assert self._mgr().build_file_excerpt("src/foo.py", 999) is None
+
+    def test_non_positive_line_returns_none(self):
+        assert self._mgr().build_file_excerpt("src/foo.py", 0) is None
+
+    def test_empty_content_returns_none(self):
+        assert self._mgr(content="").build_file_excerpt("src/foo.py", 1) is None

@@ -219,13 +219,20 @@ class CommentView(Widget):
         )
 
     @classmethod
-    def from_action(cls, action: Any, diff_hunk: Optional[str] = None) -> "CommentView":
+    def from_action(
+        cls,
+        action: Any,
+        diff_hunk: Optional[str] = None,
+        file_excerpt: Optional[str] = None,
+    ) -> "CommentView":
         """
         Build a CommentView from a ReviewActionProposal model.
 
         Args:
             action: ReviewActionProposal instance from the new review pipeline.
             diff_hunk: Pre-extracted diff hunk for the action's file/line (optional).
+            file_excerpt: Plain-file code excerpt for an action the diff cannot anchor
+                          (optional) — see extract_file_excerpt_for_action.
 
         Returns:
             CommentView configured to display the review action.
@@ -246,6 +253,8 @@ class CommentView(Widget):
             diff_hunk=diff_hunk,
             severity=action.severity,
             line_label=_build_action_line_label(action),
+            file_excerpt=file_excerpt,
+            file_excerpt_line=action.line,
         )
 
     def compose(self) -> ComposeResult:
@@ -275,6 +284,10 @@ class CommentView(Widget):
         has_diff = self.focused_diff or self.diff_hunk
         if has_diff and self.line:
             yield self._code_context_widget()
+        elif self.file_excerpt:
+            # No diff to show: the finding is about code this PR did not change, read
+            # straight from the file. Captioned so it is never mistaken for the diff.
+            yield from self._file_excerpt_widgets()
 
         # 5. Comment body
         if self.body and self.body.strip():
@@ -368,6 +381,24 @@ class CommentView(Widget):
             language="diff",
             theme="native",
             line_numbers=True,
+        )
+
+    def _file_excerpt_widgets(self):
+        """Yield the caption + plain code block for a pre-existing-code excerpt."""
+        caption = (
+            f"pre-existing code around line {self.file_excerpt_line} "
+            "(unchanged by this PR)"
+            if self.file_excerpt_line
+            else "pre-existing code (unchanged by this PR)"
+        )
+        yield DimItalicText(caption)
+        yield CodeBlock(
+            code=self.file_excerpt,
+            # Plain file text, not a diff: these lines have no +/- prefix, and
+            # highlighting them as a diff would render every line as unchanged context.
+            language="text",
+            theme="native",
+            line_numbers=False,
         )
 
     def _parse_and_render_body(self) -> List[Any]:
