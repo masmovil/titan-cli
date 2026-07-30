@@ -278,34 +278,47 @@ class DiffContextManager:
     # Snippet search
     # ------------------------------------------------------------------
 
-    def find_line_by_snippet(self, path: str, snippet: str) -> Optional[int]:
+    def find_lines_by_snippet(self, path: str, snippet: str) -> list[int]:
         """
-        Find the new-file line number of the first added/context line containing
-        ``snippet`` in ``path``.
+        Find ALL new-file line numbers of added/context lines containing
+        ``snippet`` in ``path``, in hunk order.
 
-        Returns None if the snippet is not found.
+        The snippet is sanitized first (prompt-annotation prefixes like
+        ``NN | ``, ``NN [ADDED]`` and leading diff markers are stripped —
+        models copy them from the annotated prompt code).
         """
-        if not snippet:
-            logger.debug(f"find_line_by_snippet: path={path}, snippet=<empty> → skipped")
-            return None
-        snippet_stripped = snippet.strip()
-        logger.debug(f"find_line_by_snippet: path={path}, snippet='{snippet_stripped[:50]}...'")
+        snippet_stripped = _sanitize_snippet(snippet)
+        if not snippet_stripped:
+            logger.debug(f"find_lines_by_snippet: path={path}, snippet=<empty> → skipped")
+            return []
+        logger.debug(f"find_lines_by_snippet: path={path}, snippet='{snippet_stripped[:50]}...'")
+        matches: list[int] = []
         for hunk in self.get_hunks(path):
             lines = hunk.content.split("\n")
             current = hunk.new_line_start
             for line in lines[1:]:  # skip @@ header
                 if line.startswith("+") and not line.startswith("+++"):
                     if snippet_stripped in line[1:].strip():
-                        logger.debug(f"find_line_by_snippet: found at line {current}")
-                        return current
+                        matches.append(current)
                     current += 1
                 elif line.startswith(" "):
                     if snippet_stripped in line[1:].strip():
-                        logger.debug(f"find_line_by_snippet: found at line {current}")
-                        return current
+                        matches.append(current)
                     current += 1
-        logger.debug(f"find_line_by_snippet: path={path} → not found")
-        return None
+        logger.debug(f"find_lines_by_snippet: path={path} → {len(matches)} match(es): {matches[:10]}")
+        return matches
+
+    def find_line_by_snippet(self, path: str, snippet: str) -> Optional[int]:
+        """
+        Find the new-file line number of the first added/context line containing
+        ``snippet`` in ``path``.
+
+        Returns None if the snippet is not found. Prefer ``resolve_line_anchor``
+        for anchoring decisions — first-occurrence alone is ambiguous when the
+        snippet repeats across hunks (D-002/D-005).
+        """
+        matches = self.find_lines_by_snippet(path, snippet)
+        return matches[0] if matches else None
 
     def resolve_line_anchor(
         self,
@@ -314,17 +327,63 @@ class DiffContextManager:
         snippet: Optional[str] = None,
         evidence: Optional[str] = None,
     ) -> Optional[int]:
-        """Resolve the best inline comment line using snippet/evidence before trusting AI line."""
-        search_candidates = [snippet, _extract_best_anchor_from_text(evidence)]
-        for candidate in search_candidates:
-            resolved = self.find_line_by_snippet(path, candidate or "")
-            if resolved is not None:
+        """
+        Resolve the best inline comment line for a finding.
+
+        Scoring per candidate source (snippet first, then an anchor extracted
+        from evidence), designed against the reproduced D-002/D-005 false
+        positive (duplicate snippet across hunks relocating a correct comment):
+
+        - unique match → trust it (may legitimately correct a slightly-off AI line)
+        - ambiguous match containing the AI line → the AI line
+        - ambiguous match, AI line valid elsewhere → the AI line wins over a guess
+        - ambiguous match, no usable AI line → prefer publishable lines, then
+          nearest to the AI line, then first occurrence
+        - no source matched → the AI line if valid, else None
+        """
+        for candidate in (snippet, _extract_best_anchor_from_text(evidence)):
+            matches = self.find_lines_by_snippet(path, candidate or "")
+            if not matches:
+                continue
+
+            if len(matches) == 1:
                 logger.debug(
-                    "resolve_line_anchor: path=%s resolved via snippet/evidence to line=%s",
-                    path,
-                    resolved,
+                    "resolve_line_anchor: path=%s unique snippet match line=%s", path, matches[0]
                 )
-                return resolved
+                return matches[0]
+
+            if line is not None and line in matches:
+                logger.debug(
+                    "resolve_line_anchor: path=%s ambiguous snippet, AI line %s among matches",
+                    path,
+                    line,
+                )
+                return line
+            if line is not None and line in self.get_valid_review_lines(path):
+                logger.debug(
+                    "resolve_line_anchor: path=%s ambiguous snippet %s, valid AI line %s wins",
+                    path,
+                    matches,
+                    line,
+                )
+                return line
+
+            publishable = self.get_publishable_lines(path)
+            best = min(
+                matches,
+                key=lambda m: (
+                    m not in publishable,
+                    abs(m - line) if line is not None else 0,
+                    m,
+                ),
+            )
+            logger.debug(
+                "resolve_line_anchor: path=%s ambiguous snippet %s, no usable AI line → %s",
+                path,
+                matches,
+                best,
+            )
+            return best
 
         if line is not None and line in self.get_valid_review_lines(path):
             logger.debug("resolve_line_anchor: path=%s using validated line=%s", path, line)
@@ -709,6 +768,30 @@ def build_focused_diff_from_hunk(
     and comment_view), not a full diff. Delegates to the internal helper.
     """
     return _build_focused_diff_from_hunk(hunk_content, target_line, is_outdated, before, after)
+
+
+_SNIPPET_ANNOTATION_RE = re.compile(
+    r"^\s*(?:\d+\s*)?(?:\|\s?|\[(?:ADDED|CONTEXT)\]\s?)"
+)
+"""Prompt-annotation prefixes models copy into `snippet`: the findings prompt renders
+code as ``NN | code`` (full_content) or ``NN [ADDED] code`` / ``NN [CONTEXT] code``
+(annotated hunks) — see findings_operations._add_line_numbers/_annotate_diff_hunk."""
+
+
+def _sanitize_snippet(snippet: Optional[str]) -> str:
+    """Strip prompt-annotation prefixes and diff markers from a model-provided snippet."""
+    if not snippet:
+        return ""
+    text = snippet.strip()
+    cleaned = _SNIPPET_ANNOTATION_RE.sub("", text)
+    if cleaned != text:
+        text = cleaned.strip()
+    elif text.startswith(("+", "-")) and not text.startswith(("++", "--")):
+        # A single leading diff marker (e.g. "+return None") — strip it; real code
+        # lines starting with +/- followed by code are rare, and the substring
+        # match still works either way for most of them.
+        text = text[1:].strip()
+    return text
 
 
 def _extract_best_anchor_from_text(text: Optional[str]) -> Optional[str]:

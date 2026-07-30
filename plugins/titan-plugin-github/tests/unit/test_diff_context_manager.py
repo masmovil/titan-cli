@@ -474,3 +474,81 @@ class TestPublishableLines:
 
         all_lines = mgr.get_all_publishable_lines()
         assert all_lines == {"src/foo.py": frozenset({17, 18, 19, 20, 21, 22, 23})}
+
+
+# ---------------------------------------------------------------------------
+# Resolver v2 (line-anchoring-003: D-002/D-005 reproduced false positive)
+# ---------------------------------------------------------------------------
+
+# The generic line `return None` is ADDED in two different hunks:
+# hunk 1 -> new-file line 5, hunk 2 -> new-file line 53.
+DUPLICATE_SNIPPET_DIFF = """\
+diff --git a/src/svc.py b/src/svc.py
+index 111..222 100644
+--- a/src/svc.py
++++ b/src/svc.py
+@@ -3,5 +3,6 @@
+ def early_helper(x):
+     if not x:
++        return None
+     return x
+
+@@ -48,6 +50,7 @@
+ def late_handler(y):
+     value = compute(y)
+     if value is None:
++        return None
+     return value
+"""
+
+
+class TestResolverV2:
+    def _mgr(self):
+        return DiffContextManager.from_diff(DUPLICATE_SNIPPET_DIFF)
+
+    def test_repro_duplicate_snippet_no_longer_relocates_valid_ai_line(self):
+        """The reproduced false positive: the AI reported line 53 with snippet
+        'return None' (also added at line 5, an earlier hunk). The old resolver
+        returned 5 — first global occurrence — silently relocating a correct
+        comment to the wrong hunk."""
+        resolved = self._mgr().resolve_line_anchor("src/svc.py", line=53, snippet="return None")
+
+        assert resolved == 53
+
+    def test_ambiguous_snippet_with_ai_line_among_matches_keeps_it(self):
+        resolved = self._mgr().resolve_line_anchor("src/svc.py", line=5, snippet="return None")
+
+        assert resolved == 5
+
+    def test_unique_snippet_match_still_corrects_offset_ai_line(self):
+        # snippet unique in the file; AI line slightly off (52) — snippet wins
+        resolved = self._mgr().resolve_line_anchor(
+            "src/svc.py", line=52, snippet="value = compute(y)"
+        )
+
+        assert resolved == 51
+
+    def test_ambiguous_snippet_without_usable_ai_line_prefers_publishable_then_first(self):
+        resolved = self._mgr().resolve_line_anchor("src/svc.py", line=None, snippet="return None")
+
+        assert resolved == 5
+
+    def test_ambiguous_snippet_without_usable_ai_line_prefers_nearest_publishable(self):
+        # AI line 999 (not valid, not a match) — nearest publishable match wins
+        resolved = self._mgr().resolve_line_anchor("src/svc.py", line=999, snippet="return None")
+
+        assert resolved == 53
+
+    def test_find_lines_by_snippet_returns_all_matches_in_order(self):
+        assert self._mgr().find_lines_by_snippet("src/svc.py", "return None") == [5, 53]
+
+    def test_polluted_snippets_are_sanitized_before_matching(self):
+        """Models copy prompt-annotation prefixes ('NN | ', 'NN [ADDED] ', '+')
+        into the snippet — the old matcher lost the anchor entirely."""
+        mgr = self._mgr()
+
+        for polluted in ("53 [ADDED] return None", "53 | return None", "+return None"):
+            assert mgr.find_lines_by_snippet("src/svc.py", polluted) == [5, 53], polluted
+
+    def test_find_line_by_snippet_compat_returns_first_match(self):
+        assert self._mgr().find_line_by_snippet("src/svc.py", "return None") == 5

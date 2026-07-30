@@ -243,11 +243,11 @@ def resolve_action_anchors(
         inline_reason = None
         why_inline_allowed = None
         if resolved_line is not None:
-            if action.anchor_snippet and manager.find_line_by_snippet(action.path, action.anchor_snippet) == resolved_line:
+            if action.anchor_snippet and resolved_line in manager.find_lines_by_snippet(action.path, action.anchor_snippet):
                 resolution_source = "snippet"
                 anchor_confidence = "high"
                 inline_reason = "snippet_match"
-            elif action.evidence and manager.find_line_by_snippet(action.path, action.evidence) == resolved_line:
+            elif action.evidence and resolved_line in manager.find_lines_by_snippet(action.path, action.evidence):
                 resolution_source = "evidence"
                 anchor_confidence = "medium"
                 inline_reason = "evidence_match"
