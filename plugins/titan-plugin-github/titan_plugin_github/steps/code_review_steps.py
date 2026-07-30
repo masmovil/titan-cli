@@ -1730,6 +1730,51 @@ def _render_findings_batch_result(
     ctx.textual.warning_text(message)
 
 
+def _resolve_file_read_access(ctx: WorkflowContext, worktree_path: Optional[str]):
+    """
+    Decide whether files on disk may be used as this PR's code.
+
+    Worktree creation is allowed to fail in the workflow, and the fallback root is the
+    user's own checkout — which is usually on a different branch. Query its HEAD and
+    dirty state so the decision is made on facts rather than assumed.
+    """
+    from ..operations.context_resolution_operations import resolve_file_read_access
+
+    if worktree_path:
+        return resolve_file_read_access(worktree_path)
+
+    head_sha = ctx.data.get("review_commit_sha")
+    checkout_sha = None
+    checkout_dirty = None
+
+    if ctx.git:
+        match ctx.git.get_current_commit():
+            case ClientSuccess(data=sha):
+                checkout_sha = (sha or "").strip()
+            case ClientError(error_message=err):
+                logger.debug("checkout_sha_unavailable", error=err)
+
+        match ctx.git.has_uncommitted_changes():
+            case ClientSuccess(data=dirty):
+                checkout_dirty = dirty
+            case ClientError(error_message=err):
+                logger.debug("checkout_dirty_state_unavailable", error=err)
+
+    access = resolve_file_read_access(
+        worktree_path=None,
+        head_sha=head_sha,
+        checkout_sha=checkout_sha,
+        checkout_dirty=checkout_dirty,
+    )
+    logger.debug(
+        "file_read_access_resolved",
+        allowed=access.allowed,
+        source=access.source,
+        reason=access.reason,
+    )
+    return access
+
+
 def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
     """
     Fetch the exact code context according to the validated review plan.
@@ -1779,8 +1824,14 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
     from ..operations.context_resolution_operations import build_review_context_package
     diff_manager = ctx.get("review_diff_manager")
 
-    if worktree_path:
-        ctx.textual.dim_text(f"Using worktree: {worktree_path}")
+    read_access = _resolve_file_read_access(ctx, worktree_path)
+    if read_access.allowed:
+        ctx.textual.dim_text(f"Reading files from {read_access.source} ({read_access.reason})")
+    else:
+        ctx.textual.warning_text(
+            f"Reviewing from the diff only — {read_access.reason}. "
+            "Full-file and expanded-hunk context are disabled to avoid mixing revisions."
+        )
 
     try:
         with ctx.textual.loading("Extracting code context…"):
@@ -1793,6 +1844,7 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
                 strategy=strategy,
                 cwd=project_root,
                 diff_manager=diff_manager,
+                allow_file_reads=read_access.allowed,
             )
     except Exception as e:
         ctx.textual.end_step("error")
@@ -1800,6 +1852,7 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
 
     ctx.data["review_context_package"] = package
     ctx.data["review_context_batches"] = package.batches
+    ctx.data["review_file_reads_allowed"] = read_access.allowed
 
     batch_count = len(package.batches)
     files_count = sum(len(batch.files_context) for batch in package.batches)
@@ -1821,6 +1874,7 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
         metadata={
             "review_context_package": package,
             "review_context_batches": package.batches,
+            "review_file_reads_allowed": read_access.allowed,
         },
     )
 
@@ -2389,6 +2443,36 @@ def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     )
 
 
+def _detect_submit_time_sha_drift(ctx: WorkflowContext, pr_number: int, reviewed_sha: str):
+    """
+    Re-read the PR's head SHA and compare it with the one the review was prepared against.
+
+    The bundle's SHA is captured minutes earlier, before the user inspects findings. A push
+    in that window invalidates every resolved line, so this is checked at submit time
+    rather than trusted from the bundle.
+    """
+    from ..operations.review_action_operations import detect_head_sha_drift
+
+    current_sha = ""
+    match ctx.github.get_pr_commit_sha(pr_number):
+        case ClientSuccess(data=sha):
+            current_sha = (sha or "").strip()
+        case ClientError(error_message=err):
+            # Unverifiable is not the same as drifted: the publish gate still validates
+            # every line against the diff, so proceed rather than block the submission.
+            logger.debug("submit_sha_recheck_failed", pr_number=pr_number, error=err)
+
+    drift = detect_head_sha_drift(reviewed_sha, current_sha)
+    logger.debug(
+        "submit_sha_drift_check",
+        pr_number=pr_number,
+        reviewed_sha=drift.reviewed_sha,
+        current_sha=drift.current_sha,
+        drifted=drift.drifted,
+    )
+    return drift
+
+
 def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     """
     Submit approved ReviewActionProposal objects to GitHub.
@@ -2468,6 +2552,27 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                 ctx.textual.end_step("error")
                 return Error(f"Missing commit SHA for inline review: {err}")
 
+    # The anchors were resolved against commit_sha's diff. If the PR has been pushed to
+    # since, every inline line describes code that moved — degrade them to the review body
+    # rather than publish comments on the wrong lines.
+    force_general_body = False
+    if comment_actions:
+        drift = _detect_submit_time_sha_drift(ctx, pr_number, commit_sha)
+        if drift.drifted:
+            ctx.textual.warning_text(f"⚠ PR head changed: {drift.message}")
+            ctx.textual.dim_text(
+                f"reviewed: {drift.reviewed_sha[:8]} · current: {drift.current_sha[:8]}"
+            )
+            ctx.textual.text(
+                f"The {len(comment_actions)} comment(s) will go in the review body instead "
+                "of inline, since their line numbers no longer match the PR's diff."
+            )
+            if not ctx.textual.ask_confirm("Publish the review anyway?", default=True):
+                ctx.textual.warning_text("Review cancelled")
+                ctx.textual.end_step("skip")
+                return Skip("User cancelled after head SHA drift")
+            force_general_body = True
+
     # Show AI's opinion and prepare action options
     ctx.textual.text("")
     if comment_actions:
@@ -2509,7 +2614,13 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
         review_body = ctx.textual.ask_multiline("General review comment:", default="")
 
     # Build payload from comment actions
-    payload = build_review_action_payload(comment_actions, commit_sha, diff, diff_manager=diff_manager)
+    payload = build_review_action_payload(
+        comment_actions,
+        commit_sha,
+        diff,
+        diff_manager=diff_manager,
+        force_general_body=force_general_body,
+    )
 
     if review_body and review_body.strip():
         existing_body = payload.get("body", "")

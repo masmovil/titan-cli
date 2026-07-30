@@ -190,6 +190,7 @@ def mock_git_client():
 
     client.create_worktree = Mock(return_value=ClientSuccess(data=None, message="Created"))
     client.remove_worktree = Mock(return_value=ClientSuccess(data=None, message="Removed"))
+    client.prune_worktrees = Mock(return_value=ClientSuccess(data=None, message="Pruned"))
     client.commit_in_worktree = Mock(return_value=ClientSuccess(
         data="abc123def456789abc123def456789abc1234567", message="Committed"
     ))

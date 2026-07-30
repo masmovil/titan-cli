@@ -35,6 +35,7 @@ from .pr_selection_operations import (
 from .worktree_operations import (
     setup_worktree,
     cleanup_worktree,
+    clear_stale_worktree,
     commit_in_worktree,
 )
 
@@ -79,6 +80,7 @@ __all__ = [
     # Worktree operations
     "setup_worktree",
     "cleanup_worktree",
+    "clear_stale_worktree",
     "commit_in_worktree",
 
     # PR creation operations

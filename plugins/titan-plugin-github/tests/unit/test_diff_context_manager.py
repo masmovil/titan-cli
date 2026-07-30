@@ -6,7 +6,10 @@ outdated comments, suggestions multiline, snippet match,
 líneas válidas para inline comment, y fallbacks.
 """
 
-from titan_plugin_github.managers.diff_context_manager import DiffContextManager
+from titan_plugin_github.managers.diff_context_manager import (
+    DiffContextManager,
+    get_or_create_diff_manager,
+)
 from titan_plugin_github.managers.diff_context_manager import _extract_best_anchor_from_text
 
 
@@ -709,3 +712,58 @@ class TestCrlfDiffs:
 
         assert mgr.get_file("src/win.py").hunks_consistent is True
         assert mgr.get_publishable_lines("src/win.py") == frozenset({2})
+
+
+# ---------------------------------------------------------------------------
+# Manager cache: a refetched diff must not keep serving the previous parse
+# ---------------------------------------------------------------------------
+
+class TestGetOrCreateDiffManager:
+    def test_parses_and_caches_on_first_call(self):
+        cache = {}
+
+        mgr = get_or_create_diff_manager(SIMPLE_DIFF, cache)
+
+        assert mgr.get_file("src/foo.py") is not None
+        assert get_or_create_diff_manager(SIMPLE_DIFF, cache) is mgr
+
+    def test_same_diff_reuses_the_cached_manager(self):
+        cache = {}
+        first = get_or_create_diff_manager(SIMPLE_DIFF, cache)
+
+        assert get_or_create_diff_manager(SIMPLE_DIFF, cache) is first
+
+    def test_changed_diff_reparses_instead_of_serving_stale_lines(self):
+        """The bug: a diff refetched after a push kept returning the old manager, so
+        every anchor resolved against line numbers from the previous revision."""
+        cache = {}
+        get_or_create_diff_manager(SIMPLE_DIFF, cache)
+
+        refreshed = get_or_create_diff_manager(MULTI_HUNK_DIFF, cache)
+
+        assert refreshed.get_file("src/bar.py") is not None
+        assert refreshed.get_file("src/foo.py") is None
+
+    def test_reverting_to_the_previous_diff_reparses_too(self):
+        cache = {}
+        first = get_or_create_diff_manager(SIMPLE_DIFF, cache)
+        get_or_create_diff_manager(MULTI_HUNK_DIFF, cache)
+
+        back = get_or_create_diff_manager(SIMPLE_DIFF, cache)
+
+        assert back is not first
+        assert back.get_file("src/foo.py") is not None
+
+    def test_distinct_cache_keys_stay_independent(self):
+        cache = {}
+
+        review = get_or_create_diff_manager(SIMPLE_DIFF, cache, cache_key="review")
+        thread = get_or_create_diff_manager(MULTI_HUNK_DIFF, cache, cache_key="thread")
+
+        assert get_or_create_diff_manager(SIMPLE_DIFF, cache, cache_key="review") is review
+        assert get_or_create_diff_manager(MULTI_HUNK_DIFF, cache, cache_key="thread") is thread
+
+    def test_works_without_a_cache(self):
+        mgr = get_or_create_diff_manager(SIMPLE_DIFF)
+
+        assert mgr.get_file("src/foo.py") is not None

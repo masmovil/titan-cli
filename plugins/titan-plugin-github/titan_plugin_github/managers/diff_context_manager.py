@@ -13,8 +13,9 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import re
-from typing import Optional
+from typing import Callable, Optional
 
 from titan_cli.core.logging import get_logger
 from ..models.diff_models import (
@@ -52,6 +53,9 @@ class DiffContextManager:
         # generated with extended context (-U20) for AI quality; GitHub validates inline
         # comment lines against ITS diff only, so publishable lines must come from here.
         self._github_parsed: Optional[ParsedDiff] = None
+        # Optional source of whole-file content, for code the diff does not contain at all.
+        self._content_provider: Optional[Callable[[str], Optional[str]]] = None
+        self._content_cache: dict[str, Optional[str]] = {}
 
     # ------------------------------------------------------------------
     # Construction
@@ -276,6 +280,92 @@ class DiffContextManager:
         if self._github_parsed is not None:
             paths |= set(self._github_parsed.files)
         return {path: self.get_publishable_lines(path) for path in paths}
+
+    # ------------------------------------------------------------------
+    # File content (code the diff does not contain)
+    # ------------------------------------------------------------------
+
+    def attach_content_provider(self, provider: Callable[[str], Optional[str]]) -> None:
+        """
+        Attach a source of whole-file content, keyed by repo-relative path.
+
+        Every other method here reads from the parsed diff, so it can only describe lines
+        the diff contains. A finding about pre-existing code the PR never touched has no
+        such lines — without a provider there is nothing to show for it at all. The
+        provider is expected to return content for the PR's head revision (or None), and
+        results are cached per path.
+        """
+        self._content_provider = provider
+        self._content_cache = {}
+        logger.debug("attach_content_provider: provider attached")
+
+    @property
+    def has_content_provider(self) -> bool:
+        """Return True when a file-content provider has been attached."""
+        return self._content_provider is not None
+
+    def get_file_content(self, path: str) -> Optional[str]:
+        """Return whole-file content for ``path`` via the attached provider, or None."""
+        if self._content_provider is None:
+            return None
+        if path in self._content_cache:
+            return self._content_cache[path]
+
+        try:
+            content = self._content_provider(path)
+        except Exception as e:
+            # A provider reads from a worktree or the network; neither should be able to
+            # break comment rendering.
+            logger.debug("get_file_content: provider failed for %s: %s", path, e)
+            content = None
+
+        self._content_cache[path] = content
+        logger.debug(
+            "get_file_content: path=%s found=%s", path, content is not None
+        )
+        return content
+
+    def build_file_excerpt(
+        self,
+        path: str,
+        line: int,
+        before: int = 6,
+        after: int = 4,
+    ) -> Optional[str]:
+        """
+        Return a numbered excerpt of ``path`` centred on ``line``, from file content.
+
+        Plain file text, not diff format: these lines are unchanged by the PR, so
+        there is no +/- to show. The target line is marked so it is identifiable at a
+        glance. Returns None when no content is available or ``line`` is out of range.
+        """
+        content = self.get_file_content(path)
+        if not content or line < 1:
+            return None
+
+        lines = content.split("\n")
+        if line > len(lines):
+            logger.debug(
+                "build_file_excerpt: path=%s line=%s beyond file length %s",
+                path,
+                line,
+                len(lines),
+            )
+            return None
+
+        start = max(1, line - before)
+        end = min(len(lines), line + after)
+        width = len(str(end))
+
+        excerpt = []
+        for number in range(start, end + 1):
+            marker = " ◄" if number == line else ""
+            excerpt.append(f"{str(number).rjust(width)} | {lines[number - 1]}{marker}")
+
+        logger.debug(
+            "build_file_excerpt: path=%s line=%s window=%s-%s", path, line, start, end
+        )
+        return "\n".join(excerpt)
 
     # ------------------------------------------------------------------
     # Valid review lines
@@ -890,14 +980,31 @@ def get_or_create_diff_manager(
     cache: Optional[dict] = None,
     cache_key: str = "review_diff_manager",
 ) -> DiffContextManager:
-    """Return a cached diff manager when available, otherwise parse once and store it."""
+    """
+    Return a cached diff manager when available, otherwise parse once and store it.
+
+    The cached manager is only reused when it was built from this exact diff. Without
+    that check, re-fetching the diff (after a push, or on a retry) would silently keep
+    serving line numbers parsed from the previous one, and every anchor resolved against
+    it would be off. The hash is kept next to the manager rather than folded into
+    ``cache_key`` so callers keep passing the same key they always did.
+    """
+    diff_hash = hashlib.sha256(diff.encode("utf-8", errors="replace")).hexdigest()
+    hash_key = f"{cache_key}__diff_hash"
+
     if cache is not None:
         existing = cache.get(cache_key)
         if existing is not None:
-            logger.debug("get_or_create_diff_manager: reusing cached manager")
-            return existing
+            if cache.get(hash_key) == diff_hash:
+                logger.debug("get_or_create_diff_manager: reusing cached manager")
+                return existing
+            logger.debug(
+                "get_or_create_diff_manager: cached manager was built from a different "
+                "diff — reparsing"
+            )
 
     manager = DiffContextManager.from_diff(diff)
     if cache is not None:
         cache[cache_key] = manager
+        cache[hash_key] = diff_hash
     return manager

@@ -6,6 +6,7 @@ converting Finding objects into ReviewActionProposal objects and building
 the GitHub API payload for submission.
 """
 
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from titan_cli.core.logging.config import get_logger
@@ -15,6 +16,57 @@ from ..models.review_models import Finding, ReviewActionProposal
 from ..managers.diff_context_manager import DiffContextManager, get_or_create_diff_manager
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class HeadShaDrift:
+    """
+    Whether the PR moved between the diff being fetched and the review being submitted.
+
+    Attributes:
+        drifted: True when the PR head is no longer the commit the anchors were
+                 resolved against.
+        reviewed_sha: Head commit the review was prepared against.
+        current_sha: Head commit the PR is on now.
+        message: Ready-to-display explanation, empty when there is no drift.
+    """
+    drifted: bool
+    reviewed_sha: str
+    current_sha: str
+    message: str = ""
+
+
+def detect_head_sha_drift(reviewed_sha: Optional[str], current_sha: Optional[str]) -> HeadShaDrift:
+    """
+    Compare the commit the review was prepared against with the PR's current head.
+
+    Every resolved inline line is a position in the diff of one specific commit. If the
+    PR is pushed to in between, those positions describe code that is no longer there:
+    GitHub rejects them, or worse, accepts them against shifted content. Callers should
+    degrade such comments to the general review body rather than publish them inline.
+
+    When either SHA is unknown, no drift is reported — an unverifiable comparison is not
+    evidence of a change, and the publish gate already validates lines against the diff.
+
+    Args:
+        reviewed_sha: Head SHA captured when the review bundle was fetched
+        current_sha: Head SHA of the PR right now
+
+    Returns:
+        HeadShaDrift describing the comparison
+    """
+    reviewed = (reviewed_sha or "").strip()
+    current = (current_sha or "").strip()
+
+    if not reviewed or not current or reviewed == current:
+        return HeadShaDrift(False, reviewed, current)
+
+    return HeadShaDrift(
+        True,
+        reviewed,
+        current,
+        f"the PR head moved from {reviewed[:8]} to {current[:8]} since the review started",
+    )
 
 
 def classify_github_review_rejection(error_message: str) -> str:
@@ -65,6 +117,7 @@ def build_review_action_payload(
     commit_sha: str,
     diff: str = "",
     diff_manager: Optional[DiffContextManager] = None,
+    force_general_body: bool = False,
 ) -> Dict:
     """
     Build the GitHub API payload from approved ReviewActionProposal objects.
@@ -80,6 +133,10 @@ def build_review_action_payload(
         actions: Approved ReviewActionProposal objects
         commit_sha: Head commit SHA for inline comments
         diff: Full PR unified diff (used to validate inline line positions)
+        diff_manager: Pre-built manager, so the diff is parsed once per review
+        force_general_body: Send every comment to the review body instead of inline.
+                            Used when the resolved lines are known to be stale, e.g.
+                            the PR was pushed to after the anchors were resolved.
 
     Returns:
         Dict with keys: commit_id, comments (list), body (str, optional)
@@ -94,6 +151,7 @@ def build_review_action_payload(
         action_count=len(actions),
         files_in_diff=len(valid_lines),
         publishable_source="github_diff" if manager and manager.has_github_diff else "added_lines_fallback",
+        force_general_body=force_general_body,
     )
     if valid_lines:
         for path, lines in valid_lines.items():  # Log TODOS los archivos
@@ -115,7 +173,7 @@ def build_review_action_payload(
         # new_comment — try inline first, fall back to general body
         resolved_line = action.resolved_line
 
-        if action.path and resolved_line:
+        if action.path and resolved_line and not force_general_body:
             file_valid_lines = valid_lines.get(action.path, set())
             inline_safe = resolved_line in file_valid_lines
             logger.debug("validate_comment_action",
@@ -214,6 +272,37 @@ def extract_diff_hunk_for_action(
 
     hunk = manager.get_hunk_for_line(action.path, resolved_line, allow_fallback=False)
     return hunk.content if hunk else None
+
+
+def extract_file_excerpt_for_action(
+    action: ReviewActionProposal,
+    diff_manager: Optional[DiffContextManager] = None,
+) -> Optional[str]:
+    """
+    Extract a plain-file code excerpt for an action the diff cannot anchor.
+
+    ``extract_diff_hunk_for_action`` returns nothing when the anchor is unresolved,
+    which is correct — the diff has no lines there. But the finding may still be real:
+    a reviewer reading the whole file can flag pre-existing code the PR never touched.
+    This reads the actual file so that finding is shown with its code instead of as a
+    bare assertion, using the AI's reported line as the centre.
+
+    Returns None for anchored actions (they get a diff hunk instead), when the action
+    has no path or line, or when no content provider is attached.
+
+    Args:
+        action: The action whose anchor could not be resolved
+        diff_manager: Manager holding the file-content provider
+
+    Returns:
+        Numbered code excerpt, or None
+    """
+    if diff_manager is None or action.resolved_line is not None:
+        return None
+    if not action.path or not action.line:
+        return None
+
+    return diff_manager.build_file_excerpt(action.path, action.line)
 
 
 def resolve_action_anchors(

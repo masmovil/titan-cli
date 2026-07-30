@@ -74,12 +74,6 @@ steps:
     step: ai_review_findings
     on_error: continue
 
-  - id: cleanup_worktree
-    name: "Cleanup PR Worktree"
-    plugin: github
-    step: cleanup_worktree
-    on_error: continue
-
   - id: normalize
     name: "Normalize Findings"
     plugin: github
@@ -106,4 +100,13 @@ steps:
     name: "Submit Review"
     plugin: github
     step: submit_review_actions
+    on_error: continue
+
+  # Runs last on purpose: the worktree is the source of real file content while the
+  # user inspects findings in validate_actions and while comments are being placed.
+  # on_error: continue so a failed cleanup never masks the review's outcome.
+  - id: cleanup_worktree
+    name: "Cleanup PR Worktree"
+    plugin: github
+    step: cleanup_worktree
     on_error: continue

@@ -20,7 +20,7 @@ from titan_cli.ui.tui.widgets import BoldText, DimText, ItalicText, Text, DimIta
 
 from ..managers.diff_context_manager import DiffContextManager
 from ..models.diff_models import ResolvedCommentContext
-from ..models.review_enums import FindingSeverity, ThreadSeverity
+from ..models.review_enums import FindingSeverity, ReviewActionType, ThreadSeverity
 from .code_block import CodeBlock
 from .comment_utils import render_comment_elements
 
@@ -96,6 +96,8 @@ class CommentView(Widget):
         severity: Optional[FindingSeverity | ThreadSeverity] = None,
         is_outdated: bool = False,
         line_label: Optional[str] = None,
+        file_excerpt: Optional[str] = None,
+        file_excerpt_line: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -111,6 +113,10 @@ class CommentView(Widget):
             focused_diff: Pre-trimmed diff for display (7 before + target + 3 after).
             severity: Severity level for AI suggestions or thread follow-ups.
             is_outdated: Whether the comment references outdated code.
+            line_label: Pre-built location label, overriding the default "Line N".
+            file_excerpt: Numbered plain-file excerpt, for findings about code this PR
+                          did not change (no diff hunk exists for them).
+            file_excerpt_line: Line the excerpt is centred on, shown in its caption.
         """
         super().__init__(**kwargs)
         self.body = body
@@ -123,6 +129,8 @@ class CommentView(Widget):
         self.severity = severity
         self.is_outdated = is_outdated
         self.line_label = line_label
+        self.file_excerpt = file_excerpt
+        self.file_excerpt_line = file_excerpt_line
 
     @classmethod
     def from_resolved_context(cls, ctx: ResolvedCommentContext) -> "CommentView":
@@ -222,10 +230,19 @@ class CommentView(Widget):
         Returns:
             CommentView configured to display the review action.
         """
+        # A reply to an existing thread inherits that thread's position, which GitHub
+        # already accepted — its line needs no anchoring. Only a brand-new comment has to
+        # be anchored into this PR's diff, so only it can be left unanchored.
+        is_new_comment = _is_new_comment_action(action)
+
         return cls(
             body=action.body,
             file_path=action.path,
-            line=action.resolved_line or action.line,
+            # For a new comment, only the resolved line is a real position in this PR's
+            # diff. Falling back to the raw AI line would render a code block around a
+            # line nothing verified — extract_diff_hunk_for_action already returns no hunk
+            # in that case, so the block would be empty or, worse, from elsewhere.
+            line=action.resolved_line if is_new_comment else (action.resolved_line or action.line),
             diff_hunk=diff_hunk,
             severity=action.severity,
             line_label=_build_action_line_label(action),
@@ -362,8 +379,24 @@ class CommentView(Widget):
         )
 
 
+def _is_new_comment_action(action: Any) -> bool:
+    """Return True for a brand-new comment (not a reply to, or resolution of, a thread)."""
+    action_type = getattr(action, "action_type", None)
+    value = getattr(action_type, "value", action_type)
+    return value == ReviewActionType.NEW_COMMENT.value
+
+
 def _build_action_line_label(action: Any) -> Optional[str]:
-    """Build a user-facing line label for review action preview."""
+    """
+    Build a user-facing line label for review action preview.
+
+    For a new comment whose anchor could not be resolved, the label says so instead of
+    showing the AI's raw line number: that number was never validated against the diff,
+    and a finding about pre-existing code outside this PR carries no valid line at all.
+    Presenting it like a resolved one would claim a precision nothing backs, and hide why
+    the comment cannot be published inline. Thread replies keep their line as-is — it
+    comes from the existing thread, not from anchoring.
+    """
     resolved_line = getattr(action, "resolved_line", None)
     original_line = getattr(action, "original_line", None) or getattr(action, "line", None)
     resolution_source = getattr(action, "resolution_source", None)
@@ -373,9 +406,13 @@ def _build_action_line_label(action: Any) -> Optional[str]:
         return f"Line {resolved_line} (AI {original_line}{suffix})"
     if resolved_line:
         return f"Line {resolved_line}"
+
+    if not _is_new_comment_action(action):
+        return f"Line {original_line}" if original_line else None
+
     if original_line:
-        return f"Line {original_line}"
-    return None
+        return f"⚠ outside this PR's diff (AI said {original_line})"
+    return "⚠ outside this PR's diff"
 
 
 __all__ = ["CommentView"]
