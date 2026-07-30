@@ -73,7 +73,7 @@ class WorkflowsScreen(BaseScreen):
         refresh scoped to the one moment it's actually needed instead of
         running on every screen transition.
         """
-        if self._all_workflows is None:
+        if not self._all_workflows:
             return
         self._favorite_names = set(self.config.get_favorite_workflows())
         self._all_workflows = WorkflowFilterService.sort_favorites_first(
