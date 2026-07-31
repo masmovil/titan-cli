@@ -323,17 +323,17 @@ class DiffContextManager:
 
         try:
             content = self._content_provider(path)
+            # Only cache successful lookups or legitimate None returns
+            self._content_cache[path] = content
+            logger.debug(
+                "get_file_content: path=%s found=%s", path, content is not None
+            )
+            return content
         except Exception as e:
-            # A provider reads from a worktree or the network; neither should be able to
-            # break comment rendering.
-            logger.debug("get_file_content: provider failed for %s: %s", path, e)
-            content = None
-
-        self._content_cache[path] = content
-        logger.debug(
-            "get_file_content: path=%s found=%s", path, content is not None
-        )
-        return content
+            # Provider reads from worktree or network — transient failures shouldn't
+            # permanently disable excerpts for this path. Log at warning and don't cache.
+            logger.warning("get_file_content: provider failed for %s: %s", path, e)
+            return None
 
     def build_file_excerpt(
         self,
