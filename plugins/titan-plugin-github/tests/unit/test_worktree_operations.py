@@ -127,6 +127,21 @@ class TestClearStaleWorktree:
 
         mock_git_client.prune_worktrees.assert_called_once()
 
+    def test_prune_runs_after_the_directory_removal(self, mock_git_client, tmp_path):
+        """prune only clears metadata for worktrees whose directory is MISSING —
+        pruning before the rmtree would leave the stale entry behind (PR #253
+        review finding on the original remove → prune → rmtree order)."""
+        leftover = tmp_path / "titan-review-7"
+        leftover.mkdir()
+        dir_exists_at_prune_time = {}
+        mock_git_client.prune_worktrees.side_effect = (
+            lambda: dir_exists_at_prune_time.setdefault("value", leftover.exists())
+        )
+
+        clear_stale_worktree(mock_git_client, "wt/path", str(leftover))
+
+        assert dir_exists_at_prune_time["value"] is False
+
     def test_removes_directory_even_when_git_steps_raise(self, mock_git_client, tmp_path):
         leftover = tmp_path / "titan-review-999"
         leftover.mkdir()

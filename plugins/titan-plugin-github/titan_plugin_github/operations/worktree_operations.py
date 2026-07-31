@@ -79,11 +79,11 @@ def clear_stale_worktree(
     different remedies, so all three are attempted in order:
 
     1. A live registered worktree — ``git worktree remove --force`` handles it.
-    2. Stale metadata under ``.git/worktrees`` after the directory was deleted by
-       hand or a removal was interrupted — ``remove`` rejects it ("not a working
-       tree") and only ``git worktree prune`` clears it.
-    3. A leftover directory with no registration — neither git command touches it
-       and ``add`` refuses a non-empty path, so it is deleted directly.
+    2. A leftover directory git commands can't touch (unregistered, or ``remove``
+       failed on it) — ``add`` refuses a non-empty path, so it is deleted directly.
+    3. Stale metadata under ``.git/worktrees`` — only ``git worktree prune`` clears
+       it, and prune only acts on entries whose directory is MISSING, so it must
+       run after the directory removal, not before.
 
     Best-effort by design: every step is optional cleanup, so failures are ignored
     and the caller proceeds to creation, which reports the real error if any residue
@@ -97,11 +97,6 @@ def clear_stale_worktree(
     """
     try:
         git_client.remove_worktree(worktree_path, force=True)
-    except Exception:
-        pass
-
-    try:
-        git_client.prune_worktrees()
     except Exception:
         pass
 

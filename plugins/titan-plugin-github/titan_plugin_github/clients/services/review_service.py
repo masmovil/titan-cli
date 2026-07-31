@@ -434,7 +434,9 @@ class ReviewService:
             args = [
                 "api", "-X", "POST",
                 f"/repos/{repo}/issues/{pr_number}/comments",
-                "-F", "body=-",
+                # "@-" makes gh read the field value from stdin; a bare "-" is
+                # taken literally and posts a one-dash comment.
+                "-F", "body=@-",
             ]
 
             self.gh.run_command(args, stdin_input=body)

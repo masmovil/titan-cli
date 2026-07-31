@@ -412,3 +412,21 @@ def test_get_pr_general_comments_without_reviews_key_still_works(
 
     assert isinstance(result, ClientSuccess)
     assert result.data == []
+
+
+# ---------------------------------------------------------------------------
+# add_issue_comment: body must travel via stdin, not as a literal "-"
+# ---------------------------------------------------------------------------
+
+
+def test_add_issue_comment_reads_body_from_stdin(review_service, mock_gh_network):
+    """gh api needs "body=@-" to read the field from stdin — a bare "body=-" is
+    taken literally and every general reply gets posted as a one-dash comment
+    (live-observed on PR #253, 2026-07-31)."""
+    result = review_service.add_issue_comment(42, "Actual reply text")
+
+    assert isinstance(result, ClientSuccess)
+    args, kwargs = mock_gh_network.run_command.call_args
+    assert "body=@-" in args[0]
+    assert "body=-" not in args[0]
+    assert kwargs.get("stdin_input") == "Actual reply text"
