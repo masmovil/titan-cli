@@ -53,6 +53,7 @@ For full contract details for every public step, including documented inputs, ou
 | `ai_review_findings` | Code Review | - |
 | `normalize_findings` | Code Review | - |
 | `dedupe_findings` | Code Review | - |
+| `verify_findings` | Code Review | - |
 | `build_new_comment_actions` | Code Review | - |
 | `validate_review_actions` | Code Review | - |
 | `submit_review_actions` | Code Review | - |
@@ -124,6 +125,7 @@ These are advanced review-pipeline steps for structured AI-assisted code review.
 - `ai_review_findings`: run targeted AI analysis and produce candidate findings
 - `normalize_findings`: normalize raw findings into workflow-friendly structures
 - `dedupe_findings`: remove duplicate or overlapping findings before submission
+- `verify_findings`: adversarial AI pass that drops findings refuted against the code (fail-open)
 - `build_new_comment_actions`: translate findings into GitHub review actions
 - `validate_review_actions`: validate those review actions before posting
 - `submit_review_actions`: submit review comments or review actions to GitHub
@@ -1477,6 +1479,49 @@ How to read these contracts:
     | Result | Saved for later steps | Description |
     |--------|-----------------------|-------------|
     | `Success or Error` | - | - |
+
+
+??? info "`verify_findings`"
+    Adversarial verification pass: one batched AI call (low effort) tries to REFUTE
+    each non-nit finding against the code it targets; findings refuted with evidence
+    are dropped before the human gate. Fail-open: any CLI, parse, or budget problem
+    keeps all findings. Gated by `findings_verification_enabled` in the project
+    review profile (`.titan/review/profile.yaml`, default `true`).
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: github
+      step: verify_findings
+      on_error: continue
+    ```
+
+    **Used by built-in workflows:** `review-pr`
+
+    **Available to later steps:** `deduped_findings` (verified set), `refuted_findings`
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `deduped_findings` | List[Finding] | Findings after duplicate removal |
+    | `review_context_batches` | List[FocusContextBatch] | Source of the focused hunks shown to the verifier |
+    | `review_strategy` | ReviewStrategy | Prompt budget cap |
+    | `cli_preference` | str | Headless CLI selection |
+
+    **Outputs (saved to ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `deduped_findings` | List[Finding] | Verified findings (refuted ones removed) |
+    | `refuted_findings` | List[Finding] | Findings dropped by the verifier, with reasons shown in the UI |
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | `deduped_findings`, `refuted_findings` | Verification applied. |
+    | `Skip` | - | No findings, only nits, verification disabled, no CLI, over budget, or verification failed (fail-open). |
 
 
 ??? info "`build_new_comment_actions`"

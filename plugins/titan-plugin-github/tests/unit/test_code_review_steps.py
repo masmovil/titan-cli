@@ -1,3 +1,4 @@
+import threading
 from unittest.mock import Mock
 
 from titan_cli.core.result import ClientError, ClientSuccess
@@ -683,6 +684,8 @@ def test_ai_review_findings_partial_batch_failure_still_succeeds_with_flag(monke
     """One batch fails parse (main + retry), the other returns findings: the step
     succeeds but ai_findings_failed must be True so the outcome isn't presented
     as a fully clean review."""
+    from titan_plugin_github.models.review_profile_models import ReviewProfile
+
     fake_adapter = _FakeSequentialAdapter(
         [
             "Reported one finding: fix the null check.",  # batch_1 main call (prose)
@@ -694,6 +697,8 @@ def test_ai_review_findings_partial_batch_failure_still_succeeds_with_flag(monke
 
     ctx = WorkflowContext(secrets=Mock())
     ctx.textual = _FakeTextual()
+    # The canned-stdout sequence assumes batch order — pin the pool to 1.
+    ctx.data["review_profile"] = ReviewProfile(findings_batch_concurrency=1)
     ctx.data["review_context_batches"] = [
         _make_findings_batch("batch_1", {"a.py": 100}),
         _make_findings_batch("batch_2", {"b.py": 100}),
@@ -1418,3 +1423,246 @@ def test_verify_findings_fails_open_when_prompt_over_budget(monkeypatch):
     assert isinstance(result, Skip)
     assert fake_adapter.calls == []
     assert ctx.data["deduped_findings"] == [finding]
+
+
+# ============================================================================
+# ai_review_findings concurrency (review-quality-006)
+# ============================================================================
+
+
+class _FakeConcurrencyTrackingAdapter:
+    """Fake adapter that records how many executes overlap in flight."""
+
+    cli_name = SupportedCLI.CLAUDE
+    supports_structured_output = False
+    supports_tool_restriction = False
+    supports_effort_control = False
+
+    def __init__(self, stdout: str = "[]", block_until: int | None = None):
+        self._stdout = stdout
+        self._lock = threading.Lock()
+        self._in_flight = 0
+        self.max_in_flight = 0
+        self.calls = 0
+        # When set, every call waits until `block_until` calls are in flight —
+        # proves genuine overlap (deadlocks under a sequential executor).
+        self._barrier = threading.Barrier(block_until, timeout=10) if block_until else None
+
+    def is_available(self) -> bool:
+        return True
+
+    def execute(self, prompt: str, cwd=None, timeout=None, json_schema=None, disallowed_tools=None, effort=None) -> HeadlessResponse:
+        with self._lock:
+            self.calls += 1
+            self._in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self._in_flight)
+        try:
+            if self._barrier:
+                self._barrier.wait()
+            return HeadlessResponse(stdout=self._stdout, stderr="", exit_code=0)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+
+
+def _concurrency_ctx(batch_count: int, concurrency: int) -> WorkflowContext:
+    from titan_plugin_github.models.review_profile_models import ReviewProfile
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_profile"] = ReviewProfile(findings_batch_concurrency=concurrency)
+    ctx.data["review_context_batches"] = [
+        _make_findings_batch(f"batch_{i}", {f"f{i}.py": 100}) for i in range(batch_count)
+    ]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=20000,
+        max_comment_entries=5,
+        batching_enabled=True,
+    )
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+    return ctx
+
+
+def test_ai_review_findings_runs_batches_concurrently(monkeypatch):
+    """review-quality-006: with findings_batch_concurrency=2, two batches must be
+    in flight at the same time (the barrier only releases when both arrive — this
+    test deadlocks/times out under a sequential executor)."""
+    fake_adapter = _FakeConcurrencyTrackingAdapter(stdout='[{"title": "Bug"}]', block_until=2)
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _concurrency_ctx(batch_count=2, concurrency=2)
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert fake_adapter.max_in_flight == 2
+    assert ctx.data["raw_findings"] == [{"title": "Bug"}, {"title": "Bug"}]
+    assert ctx.data["ai_findings_failed"] is False
+
+
+def test_ai_review_findings_concurrency_one_stays_sequential(monkeypatch):
+    fake_adapter = _FakeConcurrencyTrackingAdapter(stdout="[]")
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _concurrency_ctx(batch_count=3, concurrency=1)
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert fake_adapter.calls == 3
+    assert fake_adapter.max_in_flight == 1
+
+
+def test_ai_review_findings_pool_never_exceeds_configured_concurrency(monkeypatch):
+    fake_adapter = _FakeConcurrencyTrackingAdapter(stdout="[]")
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _concurrency_ctx(batch_count=6, concurrency=2)
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert fake_adapter.calls == 6
+    assert fake_adapter.max_in_flight <= 2
+
+
+def test_ai_review_findings_worker_crash_marks_batch_failed_not_step_crash(monkeypatch):
+    """An adapter exception inside a worker must degrade to a failed batch (visible),
+    not crash the whole step."""
+
+    class _ExplodingAdapter:
+        cli_name = SupportedCLI.CLAUDE
+        supports_structured_output = False
+        supports_tool_restriction = False
+        supports_effort_control = False
+
+        def is_available(self) -> bool:
+            return True
+
+        def execute(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: _ExplodingAdapter())
+
+    ctx = _concurrency_ctx(batch_count=1, concurrency=2)
+    result = ai_review_findings(ctx)
+
+    # Single batch crashed → 0/1 produced output → visible Error (review-quality-005).
+    assert isinstance(result, Error)
+    assert ctx.data["raw_findings"] == []
+    assert ctx.data["ai_findings_failed"] is True
+
+
+# ============================================================================
+# ai_review_findings empty-findings rescue (review-quality-007)
+# ============================================================================
+
+from titan_plugin_github.models.review_enums import FileReviewPriority
+from titan_plugin_github.models.review_models import ScoredReviewCandidate
+
+
+def _rescue_ctx(adapter_stdouts: list[str]) -> tuple[WorkflowContext, "_FakeSequentialAdapter"]:
+    fake_adapter = _FakeSequentialAdapter(adapter_stdouts)
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_profile"] = ReviewProfile(findings_batch_concurrency=1)
+    ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=20000,
+        max_comment_entries=5,
+        batching_enabled=True,
+        suspicious_empty_findings=True,
+    )
+    ctx.data["review_candidates"] = [
+        ScoredReviewCandidate(
+            path="border.py",
+            score=3,
+            priority=FileReviewPriority.LOW,
+            suggested_read_mode=FileReadMode.HUNKS_ONLY,
+        )
+    ]
+    ctx.data["review_diff"] = (
+        "diff --git a/border.py b/border.py\n"
+        "index 111..222 100644\n"
+        "--- a/border.py\n"
+        "+++ b/border.py\n"
+        "@@ -1,2 +1,3 @@\n"
+        " context\n"
+        "+added line\n"
+        " context\n"
+    )
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+    return ctx, fake_adapter
+
+
+def test_ai_review_findings_runs_rescue_batch_on_suspicious_empty(monkeypatch):
+    """review-quality-007: zero findings + suspicious_empty_findings must trigger ONE
+    extra rescue batch over borderline unreviewed files — not just a dim line."""
+    ctx, fake_adapter = _rescue_ctx(
+        [
+            "[]",  # batch_1: clean review, no findings
+            '[{"title": "Rescued bug", "path": "border.py"}]',  # rescue batch
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 2
+    assert "border.py" in fake_adapter.calls[1]["prompt"]
+    assert ctx.data["raw_findings"] == [{"title": "Rescued bug", "path": "border.py"}]
+    assert ctx.data["ai_findings_failed"] is False
+
+
+def test_ai_review_findings_rescue_failure_does_not_fail_the_review(monkeypatch):
+    """The rescue pass is best-effort: if it fails, the review stays a clean Success
+    (the main batches DID complete with zero findings)."""
+    ctx, fake_adapter = _rescue_ctx(
+        [
+            "[]",  # batch_1: clean
+            "no json from the rescue call",  # rescue main call
+            "still no json",  # rescue reformat retry
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert ctx.data["raw_findings"] == []
+    assert ctx.data["ai_findings_failed"] is False
+
+
+def test_ai_review_findings_no_rescue_when_findings_exist(monkeypatch):
+    ctx, fake_adapter = _rescue_ctx(['[{"title": "Bug"}]'])
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 1
+
+
+def test_ai_review_findings_no_rescue_when_not_suspicious(monkeypatch):
+    ctx, fake_adapter = _rescue_ctx(["[]"])
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=20000,
+        max_comment_entries=5,
+        batching_enabled=True,
+        suspicious_empty_findings=False,
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 1

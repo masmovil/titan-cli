@@ -43,6 +43,14 @@ class ReviewProfile(BaseModel):
         "human gate. Disable in cost-sensitive projects: it adds one extra AI call per "
         "review when findings exist.",
     )
+    findings_batch_concurrency: int = Field(
+        default=2,
+        ge=1,
+        le=4,
+        description="How many findings batches run against the CLI at once. Zero token "
+        "cost — only wall time. Keep low: each worker is a full CLI session and "
+        "provider-side rate limits apply.",
+    )
 
 
 class ReviewChecklistFile(BaseModel):

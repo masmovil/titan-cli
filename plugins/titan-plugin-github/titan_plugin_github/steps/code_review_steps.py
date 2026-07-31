@@ -1868,6 +1868,96 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
 # ============================================================================
 
 
+def _execute_findings_batch(
+    adapter,
+    batch,
+    prompt: str,
+    *,
+    project_root: Optional[str],
+    findings_schema: Optional[dict],
+    disallowed_tools: Optional[list],
+    effort: Optional[str],
+    use_structured_output: bool,
+    strategy_name: Optional[str],
+) -> dict:
+    """Run one findings batch end-to-end: CLI call, parse, reformat retry.
+
+    Runs inside a worker thread when batches execute concurrently, so it must not
+    touch `ctx`/the UI — it returns an outcome dict the step thread renders:
+    {"status": "success" | "failed", "raw": list | None, "detail": str}.
+    """
+    from ..operations.findings_operations import parse_findings_response
+
+    adapter_started_at = time.monotonic()
+    response = adapter.execute(
+        prompt,
+        cwd=project_root,
+        timeout=300,
+        json_schema=findings_schema,
+        disallowed_tools=disallowed_tools,
+        effort=effort,
+    )
+    adapter_duration_seconds = time.monotonic() - adapter_started_at
+    worktree_reference_count = sum(
+        1 for entry in batch.files_context.values() if entry.worktree_reference
+    )
+    logger.info(
+        "findings_batch_adapter_call",
+        batch_id=batch.batch_id,
+        cli=adapter.cli_name.value,
+        files_context=len(batch.files_context),
+        worktree_reference_count=worktree_reference_count,
+        prompt_actual_chars=len(prompt),
+        duration_seconds=round(adapter_duration_seconds, 3),
+        exit_code=response.exit_code,
+        timed_out=response.exit_code == 124,
+        structured_output=use_structured_output,
+        effort=effort,
+    )
+    _log_ai_response(
+        step_name="ai_review_findings",
+        cli_name=adapter.cli_name.value,
+        stdout=response.stdout,
+        stderr=response.stderr,
+        exit_code=response.exit_code,
+        batch_id=batch.batch_id,
+        files_context=len(batch.files_context),
+        related_files=len(batch.related_files),
+        checklist_items=len(batch.checklist_applicable),
+        comment_entries=len(batch.comment_context),
+        strategy=strategy_name,
+    )
+
+    if not response.succeeded:
+        logger.debug("findings_batch_failed", batch_id=batch.batch_id, exit_code=response.exit_code)
+        return {"status": "failed", "raw": None, "detail": f"CLI exit {response.exit_code}"}
+
+    match parse_findings_response(response.stdout, structured=use_structured_output):
+        case ClientSuccess(data=raw) if isinstance(raw, list):
+            return {"status": "success", "raw": raw, "detail": ""}
+        case ClientSuccess(data=raw):
+            # A structured success whose payload isn't a findings list (e.g. a dict)
+            # must not vanish silently — treat it like any other parse failure.
+            parse_error = f"non-list findings payload ({type(raw).__name__})"
+        case ClientError(error_message=err):
+            parse_error = err
+
+    logger.debug("findings_batch_parse_failed", batch_id=batch.batch_id, error=parse_error)
+    match _retry_findings_batch_reformat(
+        adapter, response.stdout, project_root, batch.batch_id, use_structured_output, effort
+    ):
+        case ClientSuccess(data=raw) if isinstance(raw, list):
+            logger.debug(
+                "findings_batch_reformat_recovered",
+                batch_id=batch.batch_id,
+                findings_count=len(raw),
+            )
+            return {"status": "success", "raw": raw, "detail": ""}
+        case _:
+            logger.debug("findings_batch_reformat_failed", batch_id=batch.batch_id)
+            return {"status": "failed", "raw": None, "detail": "parse error"}
+
+
 def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     """
     Second AI call: find actionable problems in the exact code context.
@@ -1911,7 +2001,6 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         build_default_findings,
         build_findings_prompt_parts,
         findings_json_schema,
-        parse_findings_response,
         summarize_findings_prompt_parts,
     )
 
@@ -1940,6 +2029,10 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     batch_queue = list(batches)
     ctx.textual.dim_text(f"Reviewing {len(batch_queue)} batch(es) with {cli_display}")
 
+    # Phase 1 — budget fitting stays sequential and deterministic: splits/degradations
+    # requeue, so the set of ready-to-execute batches isn't known until this loop
+    # reaches a fixpoint. No AI calls happen here.
+    ready: list[tuple] = []  # (batch, prompt, effort)
     while batch_queue:
         batch = batch_queue.pop(0)
         prompt_parts = build_findings_prompt_parts(batch)
@@ -1969,7 +2062,6 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
 
         batch = fitted_batches[0]
         batches_attempted += 1
-        _render_findings_batch_started(ctx, batch)
         prompt_parts = build_findings_prompt_parts(batch)
         prompt = prompt_parts["prompt"]
         prompt_breakdown = summarize_findings_prompt_parts(prompt_parts)
@@ -2018,99 +2110,69 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
             if worktree_reference_count and adapter.supports_effort_control
             else None
         )
-        adapter_started_at = time.monotonic()
-        with ctx.textual.loading(f"Asking {cli_display} to review {len(batch.files_context)} file(s) in {batch.batch_id}…"):
-            response = adapter.execute(
-                prompt,
-                cwd=project_root,
-                timeout=300,
-                json_schema=findings_schema,
+        _render_findings_batch_started(ctx, batch)
+        ready.append((batch, prompt, effort))
+
+    # Phase 2 — execute ready batches through a small worker pool. Adapter calls are
+    # independent subprocesses, so the only sequential cost was the loop itself
+    # (real baseline: 307s wall for 6 batches, PR #3596). Workers never touch the UI;
+    # results render here, on the step thread, as each batch completes.
+    def _run(entry: tuple) -> dict:
+        entry_batch, entry_prompt, entry_effort = entry
+        try:
+            return _execute_findings_batch(
+                adapter,
+                entry_batch,
+                entry_prompt,
+                project_root=project_root,
+                findings_schema=findings_schema,
                 disallowed_tools=disallowed_tools,
-                effort=effort,
+                effort=entry_effort,
+                use_structured_output=use_structured_output,
+                strategy_name=str(strategy.strategy) if strategy else None,
             )
-        adapter_duration_seconds = time.monotonic() - adapter_started_at
-        logger.info(
-            "findings_batch_adapter_call",
-            batch_id=batch.batch_id,
-            cli=adapter.cli_name.value,
-            files_context=len(batch.files_context),
-            worktree_reference_count=worktree_reference_count,
-            prompt_actual_chars=len(prompt),
-            duration_seconds=round(adapter_duration_seconds, 3),
-            exit_code=response.exit_code,
-            timed_out=response.exit_code == 124,
-            structured_output=use_structured_output,
-            effort=effort,
+        except Exception as exc:
+            logger.error("findings_batch_crashed", batch_id=entry_batch.batch_id, error=str(exc))
+            return {"status": "failed", "raw": None, "detail": f"adapter error: {exc}"}
+
+    if ready:
+        pool_size = min(
+            max(1, _get_review_profile(ctx).findings_batch_concurrency), len(ready)
         )
-        _log_ai_response(
-            step_name="ai_review_findings",
-            cli_name=adapter.cli_name.value,
-            stdout=response.stdout,
-            stderr=response.stderr,
-            exit_code=response.exit_code,
-            batch_id=batch.batch_id,
-            files_context=len(batch.files_context),
-            related_files=len(batch.related_files),
-            checklist_items=len(batch.checklist_applicable),
-            comment_entries=len(batch.comment_context),
-            strategy=str(strategy.strategy) if strategy else None,
-        )
-
-        if not response.succeeded:
-            findings_failed = True
-            logger.debug("findings_batch_failed", batch_id=batch.batch_id, exit_code=response.exit_code)
-            _render_findings_batch_result(
-                ctx,
-                batch.batch_id,
-                status="failed",
-                detail=f"CLI exit {response.exit_code}",
-            )
-            continue
-
-        match parse_findings_response(response.stdout, structured=use_structured_output):
-            case ClientSuccess(data=raw) if isinstance(raw, list):
-                batches_succeeded += 1
-                aggregated_raw.extend(raw)
-                _render_findings_batch_result(
-                    ctx,
-                    batch.batch_id,
-                    status="success",
-                    findings_count=len(raw),
-                )
-                continue
-            case ClientSuccess(data=raw):
-                # A structured success whose payload isn't a findings list (e.g. a dict)
-                # must not vanish silently — treat it like any other parse failure.
-                parse_error = f"non-list findings payload ({type(raw).__name__})"
-            case ClientError(error_message=err):
-                parse_error = err
-
-        logger.debug("findings_batch_parse_failed", batch_id=batch.batch_id, error=parse_error)
-        match _retry_findings_batch_reformat(
-            adapter, response.stdout, project_root, batch.batch_id, use_structured_output, effort
+        with ctx.textual.loading(
+            f"Asking {cli_display} to review {len(ready)} batch(es)"
+            + (f" ({pool_size} in parallel)…" if pool_size > 1 else "…")
         ):
-            case ClientSuccess(data=raw) if isinstance(raw, list):
+            if pool_size == 1:
+                completed = ((entry[0], _run(entry)) for entry in ready)
+                outcomes = list(completed)
+            else:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+
+                with ThreadPoolExecutor(max_workers=pool_size) as executor:
+                    future_to_batch = {executor.submit(_run, entry): entry[0] for entry in ready}
+                    outcomes = [
+                        (future_to_batch[future], future.result())
+                        for future in as_completed(future_to_batch)
+                    ]
+
+        for batch, outcome in outcomes:
+            if outcome["status"] == "success":
                 batches_succeeded += 1
-                aggregated_raw.extend(raw)
-                logger.debug(
-                    "findings_batch_reformat_recovered",
-                    batch_id=batch.batch_id,
-                    findings_count=len(raw),
-                )
+                aggregated_raw.extend(outcome["raw"])
                 _render_findings_batch_result(
                     ctx,
                     batch.batch_id,
                     status="success",
-                    findings_count=len(raw),
+                    findings_count=len(outcome["raw"]),
                 )
-            case _:
+            else:
                 findings_failed = True
-                logger.debug("findings_batch_reformat_failed", batch_id=batch.batch_id)
                 _render_findings_batch_result(
                     ctx,
                     batch.batch_id,
                     status="failed",
-                    detail="parse error",
+                    detail=outcome["detail"],
                 )
 
     if batches_attempted and not batches_succeeded:
@@ -2129,11 +2191,86 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         return Error(f"AI findings failed: 0/{batches_attempted} batches produced output")
 
     if not aggregated_raw and strategy and strategy.suspicious_empty_findings:
+        # Empty review on a PR the strategy flagged as suspicious-if-empty: instead of
+        # only noting that borderline files went unreviewed, run ONE rescue batch over
+        # up to 2 of them (hunks_only, budget-respecting). Rescue findings are the
+        # signal that the main candidate selection was too aggressive.
+        from ..operations.findings_operations import build_empty_findings_rescue_batch
+
         candidates = ctx.get("review_candidates", [])
         already_reviewed = {fp.path for batch in batches for fp in batch.files_context.values()}
-        borderline = [candidate for candidate in candidates if candidate.path not in already_reviewed][:2]
-        if borderline:
-            ctx.textual.dim_text("No findings from main batches; borderline files remain unreviewed.")
+        borderline_paths = [
+            candidate.path for candidate in candidates if candidate.path not in already_reviewed
+        ]
+        rescue_batch = (
+            build_empty_findings_rescue_batch(
+                borderline_paths,
+                ctx.get("review_diff", ""),
+                ctx.get("review_checklist", []),
+                batches[0].pr_manifest if batches else None,
+                diff_manager=ctx.get("review_diff_manager"),
+            )
+            if borderline_paths
+            else None
+        )
+        if rescue_batch:
+            rescue_prompt = build_findings_prompt_parts(rescue_batch)["prompt"]
+            if len(rescue_prompt) > strategy.max_prompt_chars:
+                logger.debug(
+                    "rescue_batch_over_budget",
+                    prompt_actual_chars=len(rescue_prompt),
+                    prompt_budget_target_chars=strategy.max_prompt_chars,
+                )
+                ctx.textual.dim_text(
+                    "No findings from main batches; borderline files remain unreviewed (rescue over budget)."
+                )
+            else:
+                ctx.textual.dim_text(
+                    f"No findings from main batches — reviewing {len(rescue_batch.files_context)} "
+                    "borderline file(s) as a rescue batch."
+                )
+                _log_ai_prompt(
+                    step_name="ai_review_findings",
+                    cli_name=adapter.cli_name.value,
+                    prompt=rescue_prompt,
+                    batch_id=rescue_batch.batch_id,
+                    files_context=len(rescue_batch.files_context),
+                    prompt_budget_target_chars=strategy.max_prompt_chars,
+                    prompt_actual_chars=len(rescue_prompt),
+                )
+                _render_findings_batch_started(ctx, rescue_batch)
+                with ctx.textual.loading(f"Asking {cli_display} to review the rescue batch…"):
+                    rescue_outcome = _run((rescue_batch, rescue_prompt, None))
+                if rescue_outcome["status"] == "success":
+                    aggregated_raw.extend(rescue_outcome["raw"])
+                    _render_findings_batch_result(
+                        ctx,
+                        rescue_batch.batch_id,
+                        status="success",
+                        findings_count=len(rescue_outcome["raw"]),
+                    )
+                    if rescue_outcome["raw"]:
+                        # The rescue pass finding real issues means files the scorer
+                        # considered borderline held findings — candidate selection was
+                        # too aggressive for this PR shape.
+                        logger.info(
+                            "rescue_batch_found_findings",
+                            findings_count=len(rescue_outcome["raw"]),
+                            rescued_paths=sorted(rescue_batch.files_context),
+                        )
+                else:
+                    # The rescue pass is best-effort: its failure must not mark an
+                    # otherwise-clean review as failed.
+                    _render_findings_batch_result(
+                        ctx,
+                        rescue_batch.batch_id,
+                        status="failed",
+                        detail=rescue_outcome["detail"],
+                    )
+        elif borderline_paths:
+            ctx.textual.dim_text(
+                "No findings from main batches; borderline files remain unreviewed (no diff hunks)."
+            )
 
     ctx.data["raw_findings"] = aggregated_raw or build_default_findings()
     ctx.data["ai_findings_failed"] = findings_failed
