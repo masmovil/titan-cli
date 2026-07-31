@@ -1923,7 +1923,10 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     existing comments) to the selected headless CLI. The AI reviews only the
     code it was specifically directed to read in the planning phase.
 
-    On parse failure or CLI error, falls back to empty findings (safe default).
+    On parse failure or CLI error a batch is retried (reformat) and then marked
+    failed. If every batch fails, the step returns Error — an empty result caused
+    by total AI failure must not look like a clean review — while still publishing
+    empty raw_findings so downstream steps run via the workflow's on_error: continue.
 
     Requires (from ctx.data):
         review_context_package (ReviewContextPackage)
@@ -1979,6 +1982,8 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     cli_display = adapter.cli_name.value.capitalize()
     aggregated_raw = []
     findings_failed = False
+    batches_attempted = 0
+    batches_succeeded = 0
     batch_queue = list(batches)
     ctx.textual.dim_text(f"Reviewing {len(batch_queue)} batch(es) with {cli_display}")
 
@@ -2010,6 +2015,7 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
             continue
 
         batch = fitted_batches[0]
+        batches_attempted += 1
         _render_findings_batch_started(ctx, batch)
         prompt_parts = build_findings_prompt_parts(batch)
         prompt = prompt_parts["prompt"]
@@ -2110,6 +2116,7 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
 
         match parse_findings_response(response.stdout, structured=use_structured_output):
             case ClientSuccess(data=raw) if isinstance(raw, list):
+                batches_succeeded += 1
                 aggregated_raw.extend(raw)
                 _render_findings_batch_result(
                     ctx,
@@ -2117,35 +2124,56 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
                     status="success",
                     findings_count=len(raw),
                 )
-            case ClientSuccess():
-                pass
+                continue
+            case ClientSuccess(data=raw):
+                # A structured success whose payload isn't a findings list (e.g. a dict)
+                # must not vanish silently — treat it like any other parse failure.
+                parse_error = f"non-list findings payload ({type(raw).__name__})"
             case ClientError(error_message=err):
-                logger.debug("findings_batch_parse_failed", batch_id=batch.batch_id, error=err)
-                match _retry_findings_batch_reformat(
-                    adapter, response.stdout, project_root, batch.batch_id, use_structured_output, effort
-                ):
-                    case ClientSuccess(data=raw) if isinstance(raw, list):
-                        aggregated_raw.extend(raw)
-                        logger.debug(
-                            "findings_batch_reformat_recovered",
-                            batch_id=batch.batch_id,
-                            findings_count=len(raw),
-                        )
-                        _render_findings_batch_result(
-                            ctx,
-                            batch.batch_id,
-                            status="success",
-                            findings_count=len(raw),
-                        )
-                    case _:
-                        findings_failed = True
-                        logger.debug("findings_batch_reformat_failed", batch_id=batch.batch_id)
-                        _render_findings_batch_result(
-                            ctx,
-                            batch.batch_id,
-                            status="failed",
-                            detail="parse error",
-                        )
+                parse_error = err
+
+        logger.debug("findings_batch_parse_failed", batch_id=batch.batch_id, error=parse_error)
+        match _retry_findings_batch_reformat(
+            adapter, response.stdout, project_root, batch.batch_id, use_structured_output, effort
+        ):
+            case ClientSuccess(data=raw) if isinstance(raw, list):
+                batches_succeeded += 1
+                aggregated_raw.extend(raw)
+                logger.debug(
+                    "findings_batch_reformat_recovered",
+                    batch_id=batch.batch_id,
+                    findings_count=len(raw),
+                )
+                _render_findings_batch_result(
+                    ctx,
+                    batch.batch_id,
+                    status="success",
+                    findings_count=len(raw),
+                )
+            case _:
+                findings_failed = True
+                logger.debug("findings_batch_reformat_failed", batch_id=batch.batch_id)
+                _render_findings_batch_result(
+                    ctx,
+                    batch.batch_id,
+                    status="failed",
+                    detail="parse error",
+                )
+
+    if batches_attempted and not batches_succeeded:
+        # Every batch failed or was skipped: an "empty" review here means the AI never
+        # ran, not that the code is clean. Publish empty findings so downstream steps
+        # (and the worktree cleanup) still run via on_error: continue, but fail the step
+        # visibly instead of masquerading as a clean review.
+        ctx.data["raw_findings"] = build_default_findings()
+        ctx.data["ai_findings_failed"] = True
+        logger.error("findings_all_batches_failed", batches_attempted=batches_attempted)
+        ctx.textual.error_text(
+            f"AI findings failed: 0 of {batches_attempted} batch(es) produced output. "
+            "No code was reviewed — do not treat this as a clean review."
+        )
+        ctx.textual.end_step("error")
+        return Error(f"AI findings failed: 0/{batches_attempted} batches produced output")
 
     if not aggregated_raw and strategy and strategy.suspicious_empty_findings:
         candidates = ctx.get("review_candidates", [])

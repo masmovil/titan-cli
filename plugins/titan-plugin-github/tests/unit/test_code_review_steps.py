@@ -669,9 +669,190 @@ def test_ai_review_findings_marks_batch_failed_when_reformat_retry_also_fails(mo
 
     result = ai_review_findings(ctx)
 
-    assert isinstance(result, Success)
+    # The only batch failed, so the whole step must fail visibly (0/1 produced output).
+    assert isinstance(result, Error)
     assert len(fake_adapter.calls) == 2
     assert ctx.data["ai_findings_failed"] is True
+    assert ctx.data["raw_findings"] == []
+
+
+def test_ai_review_findings_partial_batch_failure_still_succeeds_with_flag(monkeypatch):
+    """One batch fails parse (main + retry), the other returns findings: the step
+    succeeds but ai_findings_failed must be True so the outcome isn't presented
+    as a fully clean review."""
+    fake_adapter = _FakeSequentialAdapter(
+        [
+            "Reported one finding: fix the null check.",  # batch_1 main call (prose)
+            "Still no JSON here, sorry.",  # batch_1 reformat retry
+            '[{"title": "Bug"}]',  # batch_2 main call
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_context_batches"] = [
+        _make_findings_batch("batch_1", {"a.py": 100}),
+        _make_findings_batch("batch_2", {"b.py": 100}),
+    ]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=6000,
+        max_comment_entries=5,
+        batching_enabled=True,
+    )
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert ctx.data["raw_findings"] == [{"title": "Bug"}]
+    assert ctx.data["ai_findings_failed"] is True
+
+
+class _FakeFailingCLIAdapter:
+    """Fake headless adapter whose every call fails with a non-zero exit code."""
+
+    cli_name = SupportedCLI.CLAUDE
+    supports_structured_output = False
+    supports_tool_restriction = False
+    supports_effort_control = False
+
+    def __init__(self, exit_code: int = 1):
+        self._exit_code = exit_code
+        self.calls = 0
+
+    def is_available(self) -> bool:
+        return True
+
+    def execute(self, prompt: str, cwd=None, timeout=None, json_schema=None, disallowed_tools=None, effort=None) -> HeadlessResponse:
+        self.calls += 1
+        return HeadlessResponse(stdout="", stderr="credit balance too low", exit_code=self._exit_code)
+
+
+def test_ai_review_findings_returns_error_when_all_batches_fail(monkeypatch):
+    """review-quality-005: when every batch fails (e.g. headless CLI without credits,
+    observed live 2026-07-31), the step must NOT report plain Success — a total AI
+    failure was indistinguishable from a clean review. raw_findings stays published
+    (empty) so downstream steps and worktree cleanup still run via on_error: continue."""
+    fake_adapter = _FakeFailingCLIAdapter(exit_code=1)
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_context_batches"] = [
+        _make_findings_batch("batch_1", {"a.py": 100}),
+        _make_findings_batch("batch_2", {"b.py": 100}),
+    ]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=6000,
+        max_comment_entries=5,
+        batching_enabled=True,
+    )
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Error)
+    assert "0/2" in result.message
+    assert fake_adapter.calls == 2
+    assert ctx.data["raw_findings"] == []
+    assert ctx.data["ai_findings_failed"] is True
+
+
+class _FakeStructuredSequentialAdapter:
+    """Fake structured-output adapter returning one canned stdout per call, in order."""
+
+    cli_name = SupportedCLI.CLAUDE
+    supports_structured_output = True
+    supports_tool_restriction = True
+    supports_effort_control = True
+
+    def __init__(self, stdouts: list[str]):
+        self._stdouts = list(stdouts)
+        self.calls: list[dict] = []
+
+    def is_available(self) -> bool:
+        return True
+
+    def execute(self, prompt: str, cwd=None, timeout=None, json_schema=None, disallowed_tools=None, effort=None) -> HeadlessResponse:
+        self.calls.append({"prompt": prompt, "timeout": timeout, "json_schema": json_schema})
+        stdout = self._stdouts[len(self.calls) - 1]
+        return HeadlessResponse(stdout=stdout, stderr="", exit_code=0)
+
+
+def test_ai_review_findings_non_list_payload_goes_through_reformat_retry(monkeypatch):
+    """review-quality-005: a structured success whose findings payload isn't a list
+    (e.g. a dict) used to hit `case ClientSuccess(): pass` and vanish — no failure
+    flag, no batch result rendered. It must go through the reformat-retry path and
+    recover when the retry returns a proper list."""
+    fake_adapter = _FakeStructuredSequentialAdapter(
+        [
+            '{"findings": {"title": "Bug"}}',  # main call: dict payload, not a list
+            '{"findings": [{"title": "Bug"}]}',  # reformat retry: proper list
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=6000,
+        max_comment_entries=5,
+        batching_enabled=True,
+    )
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 2
+    assert ctx.data["raw_findings"] == [{"title": "Bug"}]
+    assert ctx.data["ai_findings_failed"] is False
+
+
+def test_ai_review_findings_non_list_payload_marks_failed_when_retry_also_non_list(monkeypatch):
+    fake_adapter = _FakeStructuredSequentialAdapter(
+        [
+            '{"findings": {"title": "Bug"}}',  # main call: dict payload
+            '{"findings": {"title": "Bug"}}',  # retry: still a dict
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=6000,
+        max_comment_entries=5,
+        batching_enabled=True,
+    )
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+
+    result = ai_review_findings(ctx)
+
+    # Single batch, non-list payload twice: batch failed, so 0/1 → step fails visibly.
+    assert isinstance(result, Error)
+    assert len(fake_adapter.calls) == 2
+    assert ctx.data["ai_findings_failed"] is True
+    assert ctx.data["raw_findings"] == []
 
 
 class _FakeStructuredOutputAdapter:
@@ -756,7 +937,8 @@ def test_ai_review_findings_structured_output_retry_also_requests_schema(monkeyp
 
     result = ai_review_findings(ctx)
 
-    assert isinstance(result, Success)
+    # The only batch failed even after the retry, so the step fails (0/1 produced output).
+    assert isinstance(result, Error)
     assert len(fake_adapter.calls) == 2
     assert fake_adapter.calls[1]["json_schema"] is not None
     assert ctx.data["ai_findings_failed"] is True
@@ -842,7 +1024,8 @@ def test_ai_review_findings_reformat_retry_also_restricts_tools(monkeypatch):
 
     result = ai_review_findings(ctx)
 
-    assert isinstance(result, Success)
+    # The only batch failed even after the retry, so the step fails (0/1 produced output).
+    assert isinstance(result, Error)
     assert len(fake_adapter.calls) == 2
     assert fake_adapter.calls[1]["disallowed_tools"] == list(FINDINGS_DISALLOWED_TOOLS)
 
