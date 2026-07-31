@@ -213,6 +213,15 @@ def build_review_context_package(
     manager = diff_manager or get_or_create_diff_manager(diff)
     applicable_ids = set(plan.review_axes)
     checklist_applicable = [item for item in checklist if item.id in applicable_ids] or checklist[:2]
+
+    if len(plan.extra_context_requests) > 1:
+        logger.info(
+            "extra_context_requests_trimmed: planned=%d resolved=%d dropped=%d",
+            len(plan.extra_context_requests),
+            1,
+            len(plan.extra_context_requests) - 1,
+        )
+
     related_files = resolve_context_requests(
         plan.extra_context_requests[:1], cwd, allow_file_reads=allow_file_reads
     )
