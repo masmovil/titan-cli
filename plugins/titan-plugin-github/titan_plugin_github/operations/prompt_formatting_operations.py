@@ -8,7 +8,9 @@ from ..models.review_models import CommentContextEntry
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _CHECKBOX_LINE_RE = re.compile(r"^\s*[-*]\s*\[[ xX]\]")
-_BARE_LINK_LINE_RE = re.compile(r"^\s*\[?!?\[?[^\]]*\]?\(?https?://\S+\)?\s*$")
+_BARE_LINK_LINE_RE = re.compile(
+    r"^\s*!?\[[^\]]*\]\(https?://\S+\)\s*$|^\s*https?://\S+\s*$"
+)
 
 
 def extract_pr_intent(description: str, max_chars: int = 800) -> str:
