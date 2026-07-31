@@ -84,6 +84,14 @@ steps:
     plugin: github
     step: dedupe_findings
 
+  # Fail-open quality filter: refuted findings are dropped before the human gate;
+  # any verification failure just passes findings through unverified.
+  - id: verify
+    name: "Verify Findings"
+    plugin: github
+    step: verify_findings
+    on_error: continue
+
   - id: build_actions
     name: "Build Comment Actions"
     plugin: github

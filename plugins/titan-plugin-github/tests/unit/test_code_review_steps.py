@@ -2,13 +2,14 @@ from unittest.mock import Mock
 
 from titan_cli.core.result import ClientError, ClientSuccess
 from titan_cli.engine import WorkflowContext
-from titan_cli.engine.results import Error, Exit, Success
+from titan_cli.engine.results import Error, Exit, Skip, Success
 from titan_cli.external_cli.adapters import HeadlessResponse
 from titan_cli.external_cli.adapters.base import SupportedCLI
-from titan_plugin_github.models.review_enums import FileReadMode, PRSizeClass, ReviewStrategyType
+from titan_plugin_github.models.review_enums import FileReadMode, FindingSeverity, PRSizeClass, ReviewStrategyType
 from titan_plugin_github.models.review_models import (
     ChangeManifest,
     FileContextEntry,
+    Finding,
     FocusContextBatch,
     PullRequestManifest,
     ReferencedCommitContext,
@@ -17,6 +18,7 @@ from titan_plugin_github.models.review_models import (
     ThreadReviewContext,
 )
 from titan_plugin_github.models.review_enums import FileChangeStatus
+from titan_plugin_github.models.review_profile_models import ReviewProfile
 from titan_plugin_github.models.view import UIComment, UICommentThread, UIFileChange, UIPullRequest
 import titan_plugin_github.steps.code_review_steps as code_review_steps
 from titan_plugin_github.steps.code_review_steps import (
@@ -26,6 +28,7 @@ from titan_plugin_github.steps.code_review_steps import (
     build_thread_review_contexts,
     fetch_pr_review_bundle,
     score_review_candidates,
+    verify_findings,
 )
 
 
@@ -1282,3 +1285,136 @@ def test_submit_sha_drift_ignores_surrounding_whitespace():
     drift = code_review_steps._detect_submit_time_sha_drift(ctx, 123, "a" * 40)
 
     assert drift.drifted is False
+
+
+# ============================================================================
+# verify_findings (review-quality-003)
+# ============================================================================
+
+
+def _make_finding_model(
+    title: str = "Null check missing",
+    severity: FindingSeverity = FindingSeverity.IMPORTANT,
+    path: str = "a.py",
+) -> Finding:
+    return Finding(
+        severity=severity,
+        category="error_handling",
+        path=path,
+        line=10,
+        title=title,
+        why="The value may be None",
+        evidence="value.method()",
+        suggested_comment="Add a null check",
+    )
+
+
+def _verify_ctx(findings: list, adapter_stdout: str | None = None) -> WorkflowContext:
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["deduped_findings"] = findings
+    ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=20000,
+        max_comment_entries=5,
+        batching_enabled=True,
+    )
+    ctx.data["review_profile"] = ReviewProfile()
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+    return ctx
+
+
+def test_verify_findings_drops_refuted_finding(monkeypatch):
+    """review-quality-003: a finding the verifier refutes with evidence is removed
+    from deduped_findings before the human gate, and published as refuted."""
+    refuted = _make_finding_model("False positive")
+    confirmed = _make_finding_model("Real bug")
+    stdout = '{"verdicts": [{"index": 0, "verdict": "refuted", "reasoning": "check exists at line 12"}, {"index": 1, "verdict": "confirmed", "reasoning": "holds"}]}'
+    fake_adapter = _FakeStructuredOutputAdapter(stdout)
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([refuted, confirmed])
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert ctx.data["deduped_findings"] == [confirmed]
+    assert ctx.data["refuted_findings"] == [refuted]
+    # Verification must run at low effort with the verdicts schema (D-002/D-003).
+    assert fake_adapter.calls[0]["effort"] == "low"
+    assert fake_adapter.calls[0]["json_schema"]["required"] == ["verdicts"]
+
+
+def test_verify_findings_fails_open_on_cli_failure(monkeypatch):
+    finding = _make_finding_model()
+    fake_adapter = _FakeFailingCLIAdapter(exit_code=1)
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([finding])
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Skip)
+    assert ctx.data["deduped_findings"] == [finding]
+
+
+def test_verify_findings_fails_open_on_unparseable_response(monkeypatch):
+    finding = _make_finding_model()
+    fake_adapter = _FakeStructuredOutputAdapter("I cannot judge these findings, sorry.")
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([finding])
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Skip)
+    assert ctx.data["deduped_findings"] == [finding]
+
+
+def test_verify_findings_skips_when_profile_disables_it(monkeypatch):
+    finding = _make_finding_model()
+    fake_adapter = _FakeStructuredOutputAdapter("should never be called")
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([finding])
+    ctx.data["review_profile"] = ReviewProfile(findings_verification_enabled=False)
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Skip)
+    assert fake_adapter.calls == []
+    assert ctx.data["deduped_findings"] == [finding]
+
+
+def test_verify_findings_skips_nit_only_findings(monkeypatch):
+    nit = _make_finding_model("Style nit", severity=FindingSeverity.NIT)
+    fake_adapter = _FakeStructuredOutputAdapter("should never be called")
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([nit])
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Skip)
+    assert fake_adapter.calls == []
+    assert ctx.data["deduped_findings"] == [nit]
+
+
+def test_verify_findings_fails_open_when_prompt_over_budget(monkeypatch):
+    finding = _make_finding_model()
+    fake_adapter = _FakeStructuredOutputAdapter("should never be called")
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([finding])
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=100,
+        max_comment_entries=5,
+        batching_enabled=True,
+    )
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Skip)
+    assert fake_adapter.calls == []
+    assert ctx.data["deduped_findings"] == [finding]

@@ -37,6 +37,12 @@ class ReviewProfile(BaseModel):
     candidate_scoring: list[CandidateScoringRule] = Field(default_factory=list)
     candidate_exclusions: CandidateExclusions = Field(default_factory=CandidateExclusions)
     review_axes: dict[ChecklistCategory, ReviewAxisRule] = Field(default_factory=dict)
+    findings_verification_enabled: bool = Field(
+        default=True,
+        description="Run the batched refute-or-confirm AI pass over findings before the "
+        "human gate. Disable in cost-sensitive projects: it adds one extra AI call per "
+        "review when findings exist.",
+    )
 
 
 class ReviewChecklistFile(BaseModel):

@@ -69,10 +69,6 @@ logger = get_logger(__name__)
 _PROMPT_PREVIEW_CHARS = 2000
 _RESPONSE_PREVIEW_CHARS = 1500
 _COMMIT_SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b", re.IGNORECASE)
-_STRONG_API_CLAIM_RE = re.compile(
-    r"(does not accept|does not provide|does not compile|overload|signature|parameter(?:s)? .* not)",
-    re.IGNORECASE,
-)
 _CENTRAL_PATH_HINTS = ("/utils/", "/configuration/", "/interceptors/", "/base/", "Utils.kt", "Configuration.kt")
 _MAX_REFERENCED_COMMITS_PER_THREAD = 3
 _MAX_REFERENCED_COMMIT_FILES = 3
@@ -218,49 +214,6 @@ def _load_referenced_commit_contexts(
             contexts_by_thread[thread.thread_id] = referenced_contexts
 
     return contexts_by_thread
-
-
-def _build_visible_file_context_map(batches: list) -> dict[str, str]:
-    """Flatten current review batches into a path -> visible text map."""
-    file_map: dict[str, str] = {}
-    for batch in batches or []:
-        for path, entry in batch.files_context.items():
-            parts = []
-            if entry.full_content:
-                parts.append(entry.full_content)
-            parts.extend(entry.expanded_hunks)
-            parts.extend(entry.hunks)
-            if parts:
-                file_map[path] = "\n".join(parts)
-    return file_map
-
-
-def _looks_like_contradicted_api_claim(finding, visible_content: str) -> bool:
-    """Detect strong API/signature claims contradicted by the visible code context."""
-    claim_text = " ".join(
-        part for part in (finding.title, finding.why, finding.suggested_comment) if part
-    )
-    if not _STRONG_API_CLAIM_RE.search(claim_text):
-        return False
-
-    identifiers = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", claim_text))
-    identifiers.update(re.findall(r"\b(on[A-Z][A-Za-z0-9_]+|manageResult)\b", claim_text))
-    if not identifiers:
-        return False
-
-    lower_visible = visible_content.lower()
-    if "fun " not in lower_visible:
-        return False
-
-    contradicted = any(identifier.lower() in lower_visible for identifier in identifiers)
-    if contradicted:
-        logger.debug(
-            "finding_contradicted_by_visible_context",
-            path=finding.path,
-            title=finding.title,
-            identifiers=sorted(identifiers),
-        )
-    return contradicted
 
 
 def _show_review_plan_summary(ctx: WorkflowContext, plan) -> None:
@@ -2219,7 +2172,6 @@ def normalize_findings(ctx: WorkflowContext) -> WorkflowResult:
     ctx.textual.begin_step("Normalize Findings")
 
     raw = ctx.get("raw_findings")
-    review_batches = ctx.get("review_context_batches", [])
 
     if raw is None:
         ctx.textual.end_step("error")
@@ -2243,21 +2195,10 @@ def normalize_findings(ctx: WorkflowContext) -> WorkflowResult:
 
     findings: list[Finding] = []
     skipped = 0
-    visible_file_context = _build_visible_file_context_map(review_batches)
 
     for i, item in enumerate(raw):
         try:
-            finding = Finding.model_validate(item)
-            if finding.path in visible_file_context and _looks_like_contradicted_api_claim(
-                finding,
-                visible_file_context[finding.path],
-            ):
-                skipped += 1
-                ctx.textual.dim_text(
-                    f"⚠ Finding {i + 1} contradicted by visible code context, skipping"
-                )
-                continue
-            findings.append(finding)
+            findings.append(Finding.model_validate(item))
         except ValidationError as e:
             skipped += 1
             ctx.textual.dim_text(f"⚠ Finding {i + 1} invalid, skipping: {e.error_count()} error(s)")
@@ -2342,6 +2283,185 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
     )
     ctx.textual.end_step("success")
     return Success("Findings deduplicated", metadata={"deduped_findings_count": len(deduped)})
+
+
+def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
+    """
+    Adversarial verification pass: try to REFUTE each finding before the human gate.
+
+    One batched AI call (effort low, structured output, same adapter infra as
+    ai_review_findings) receives all non-nit findings plus the focused hunks they
+    refer to, and judges each as confirmed/refuted/uncertain. Findings refuted with
+    evidence are dropped (and shown, with the refutation reasoning); everything else
+    passes through. Fail-open: any CLI/parse/budget problem keeps all findings.
+
+    Generalizes the retired `_looks_like_contradicted_api_claim` heuristic.
+    Gated by ReviewProfile.findings_verification_enabled (default True).
+
+    Requires (from ctx.data):
+        deduped_findings (List[Finding])
+        review_context_batches (List[FocusContextBatch])
+        review_strategy (ReviewStrategy)
+        cli_preference (str)
+
+    Outputs (saved to ctx.data):
+        deduped_findings (List[Finding]): verified set, refuted findings removed
+        refuted_findings (List[Finding]): findings dropped by this pass
+
+    Returns:
+        Success or Skip
+    """
+    if not ctx.textual:
+        return Error("Textual UI context is not available for this step.")
+
+    ctx.textual.begin_step("Verify Findings")
+
+    findings = ctx.get("deduped_findings")
+    if findings is None:
+        ctx.textual.end_step("error")
+        return Error("No deduped_findings in context (run dedupe_findings first)")
+
+    if not findings:
+        ctx.textual.dim_text("No findings to verify.")
+        ctx.textual.end_step("skip")
+        return Skip("No findings to verify")
+
+    profile = _get_review_profile(ctx)
+    if not profile.findings_verification_enabled:
+        ctx.textual.dim_text("Findings verification disabled by review profile.")
+        ctx.textual.end_step("skip")
+        return Skip("Verification disabled by review profile")
+
+    from ..operations.findings_operations import FINDINGS_DISALLOWED_TOOLS
+    from ..operations.verification_operations import (
+        VERIFICATION_EFFORT,
+        VERIFICATION_TIMEOUT_SECONDS,
+        apply_verification_verdicts,
+        build_verification_code_map,
+        build_verification_prompt_parts,
+        parse_verification_response,
+        select_findings_for_verification,
+        summarize_verification_prompt_parts,
+        verification_json_schema,
+    )
+
+    to_verify, exempt = select_findings_for_verification(findings)
+    if not to_verify:
+        ctx.textual.dim_text("Only nit-severity findings — skipping verification.")
+        ctx.textual.end_step("skip")
+        return Skip("No findings eligible for verification")
+
+    adapter = _resolve_headless_adapter(ctx.data.get("cli_preference", "auto"))
+    if not adapter:
+        ctx.textual.dim_text("No headless CLI available — findings pass unverified.")
+        ctx.textual.end_step("skip")
+        return Skip("No CLI available for verification")
+
+    strategy = ctx.get("review_strategy")
+    batches = ctx.get("review_context_batches", [])
+    project_root = ctx.data.get("worktree_path") or ctx.data.get("project_root")
+
+    code_map = build_verification_code_map(to_verify, batches)
+    prompt_parts = build_verification_prompt_parts(to_verify, code_map)
+    prompt = prompt_parts["prompt"]
+
+    max_prompt_chars = strategy.max_prompt_chars if strategy else None
+    if max_prompt_chars and len(prompt) > max_prompt_chars:
+        # Fail-open on budget too: verification is an optional quality filter, never
+        # worth degrading or splitting like the findings pass.
+        logger.warning(
+            "verification_prompt_over_budget",
+            prompt_actual_chars=len(prompt),
+            prompt_budget_target_chars=max_prompt_chars,
+        )
+        ctx.textual.dim_text(
+            f"Verification prompt too large ({len(prompt)} chars) — findings pass unverified."
+        )
+        ctx.textual.end_step("skip")
+        return Skip("Verification prompt over budget")
+
+    use_structured_output = adapter.supports_structured_output
+    disallowed_tools = list(FINDINGS_DISALLOWED_TOOLS) if adapter.supports_tool_restriction else None
+    effort = VERIFICATION_EFFORT if adapter.supports_effort_control else None
+    cli_display = adapter.cli_name.value.capitalize()
+
+    _log_ai_prompt(
+        step_name="verify_findings",
+        cli_name=adapter.cli_name.value,
+        prompt=prompt,
+        findings_to_verify=len(to_verify),
+        findings_exempt=len(exempt),
+        prompt_actual_chars=len(prompt),
+        effort=effort,
+        **summarize_verification_prompt_parts(prompt_parts),
+    )
+    adapter_started_at = time.monotonic()
+    with ctx.textual.loading(f"Asking {cli_display} to verify {len(to_verify)} finding(s)…"):
+        response = adapter.execute(
+            prompt,
+            cwd=project_root,
+            timeout=VERIFICATION_TIMEOUT_SECONDS,
+            json_schema=verification_json_schema() if use_structured_output else None,
+            disallowed_tools=disallowed_tools,
+            effort=effort,
+        )
+    adapter_duration_seconds = time.monotonic() - adapter_started_at
+    _log_ai_response(
+        step_name="verify_findings",
+        cli_name=adapter.cli_name.value,
+        stdout=response.stdout,
+        stderr=response.stderr,
+        exit_code=response.exit_code,
+        duration_seconds=round(adapter_duration_seconds, 3),
+        findings_to_verify=len(to_verify),
+    )
+
+    if not response.succeeded:
+        logger.warning("verification_call_failed", exit_code=response.exit_code)
+        ctx.textual.warning_text(
+            f"Verification call failed (exit {response.exit_code}) — findings pass unverified."
+        )
+        ctx.textual.end_step("skip")
+        return Skip("Verification call failed")
+
+    match parse_verification_response(response.stdout, structured=use_structured_output):
+        case ClientSuccess(data=raw_verdicts) if isinstance(raw_verdicts, list):
+            pass
+        case _:
+            logger.warning("verification_parse_failed")
+            ctx.textual.warning_text("Could not parse verification response — findings pass unverified.")
+            ctx.textual.end_step("skip")
+            return Skip("Verification response unparseable")
+
+    outcome = apply_verification_verdicts(to_verify, raw_verdicts, exempt)
+    ctx.data["deduped_findings"] = outcome.kept
+    ctx.data["refuted_findings"] = outcome.refuted
+
+    logger.info(
+        "findings_verification_applied",
+        findings_in=len(findings),
+        verified=len(to_verify),
+        exempt_nits=len(exempt),
+        refuted=len(outcome.refuted),
+        kept=len(outcome.kept),
+        duration_seconds=round(adapter_duration_seconds, 3),
+    )
+    for finding, reason in zip(outcome.refuted, outcome.refuted_reasons):
+        ctx.textual.dim_text(
+            f"✗ Refuted: {finding.title} @ {finding.path}:{finding.line} — {reason[:200]}"
+        )
+    summary = f"✓ {len(outcome.kept)} finding(s) verified"
+    if outcome.refuted:
+        summary += f" ({len(outcome.refuted)} refuted and dropped)"
+    ctx.textual.success_text(summary)
+    ctx.textual.end_step("success")
+    return Success(
+        "Findings verified",
+        metadata={
+            "deduped_findings": outcome.kept,
+            "refuted_findings": outcome.refuted,
+        },
+    )
 
 
 # ============================================================================
