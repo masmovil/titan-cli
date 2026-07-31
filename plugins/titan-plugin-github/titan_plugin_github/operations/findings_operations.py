@@ -308,6 +308,55 @@ def build_default_findings() -> list[Finding]:
     return []
 
 
+RESCUE_BATCH_ID = "rescue_1"
+RESCUE_MAX_FILES = 2
+
+
+def build_empty_findings_rescue_batch(
+    borderline_paths: list[str],
+    diff: str,
+    checklist: list[ReviewChecklistItem],
+    pr_manifest,
+    diff_manager=None,
+) -> FocusContextBatch | None:
+    """Build one extra findings batch from borderline candidate files.
+
+    Used when the main batches return zero findings on a PR the strategy flagged as
+    suspicious-if-empty: instead of just noting that borderline files went unreviewed,
+    review up to RESCUE_MAX_FILES of them in hunks_only mode. Returns None when none
+    of the paths have diff hunks.
+    """
+    from ..models.review_enums import FileReadMode
+    from ..models.review_models import FileContextEntry
+    from .context_resolution_operations import extract_hunks_only
+
+    files_context: dict[str, FileContextEntry] = {}
+    for path in borderline_paths:
+        if len(files_context) >= RESCUE_MAX_FILES:
+            break
+        hunks = extract_hunks_only(diff, path, diff_manager=diff_manager)
+        # A borderline candidate without hunks (binary, rename-only) shouldn't burn
+        # one of the rescue slots.
+        if not hunks:
+            continue
+        files_context[path] = FileContextEntry(
+            path=path,
+            read_mode=FileReadMode.HUNKS_ONLY,
+            hunks=hunks,
+            approximate_chars=sum(len(hunk) for hunk in hunks),
+        )
+
+    if not files_context:
+        return None
+
+    return FocusContextBatch(
+        batch_id=RESCUE_BATCH_ID,
+        files_context=files_context,
+        checklist_applicable=checklist[:4],
+        pr_manifest=pr_manifest,
+    )
+
+
 def summarize_findings_prompt_parts(parts: dict[str, str]) -> dict[str, Any]:
     """Return character counts for each prompt block."""
     return {

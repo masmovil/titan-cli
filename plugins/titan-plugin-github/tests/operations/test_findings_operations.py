@@ -343,3 +343,60 @@ def test_default_titan_checklist_renders_with_descriptions_too():
 
     assert '"name": "Functional Correctness"' in rendered
     assert "Logic bugs" in rendered
+
+
+# ============================================================================
+# build_empty_findings_rescue_batch (review-quality-007)
+# ============================================================================
+
+
+def _rescue_diff() -> str:
+    return (
+        "diff --git a/border.py b/border.py\n"
+        "index 111..222 100644\n"
+        "--- a/border.py\n"
+        "+++ b/border.py\n"
+        "@@ -1,2 +1,3 @@\n"
+        " context\n"
+        "+added line\n"
+        " context\n"
+    )
+
+
+def test_rescue_batch_builds_hunks_only_entries():
+    from titan_plugin_github.models.review_enums import FileReadMode
+    from titan_plugin_github.operations.findings_operations import (
+        RESCUE_BATCH_ID,
+        build_empty_findings_rescue_batch,
+    )
+
+    batch = build_empty_findings_rescue_batch(["border.py"], _rescue_diff(), [], None)
+
+    assert batch is not None
+    assert batch.batch_id == RESCUE_BATCH_ID
+    entry = batch.files_context["border.py"]
+    assert entry.read_mode == FileReadMode.HUNKS_ONLY
+    assert any("added line" in hunk for hunk in entry.hunks)
+    assert entry.full_content is None
+
+
+def test_rescue_batch_caps_files_and_skips_paths_without_hunks():
+    from titan_plugin_github.operations.findings_operations import build_empty_findings_rescue_batch
+
+    diff = _rescue_diff() + _rescue_diff().replace("border.py", "second.py") + _rescue_diff().replace(
+        "border.py", "third.py"
+    )
+    batch = build_empty_findings_rescue_batch(
+        ["missing_a.py", "border.py", "second.py", "third.py"], diff, [], None
+    )
+
+    # Paths without hunks don't burn a rescue slot; the cap (2) applies to files
+    # that actually made it into the batch.
+    assert batch is not None
+    assert set(batch.files_context) == {"border.py", "second.py"}
+
+
+def test_rescue_batch_returns_none_when_no_paths_have_hunks():
+    from titan_plugin_github.operations.findings_operations import build_empty_findings_rescue_batch
+
+    assert build_empty_findings_rescue_batch(["nope.py"], _rescue_diff(), [], None) is None

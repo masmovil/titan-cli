@@ -6,7 +6,7 @@ from titan_cli.engine import WorkflowContext
 from titan_cli.engine.results import Error, Exit, Skip, Success
 from titan_cli.external_cli.adapters import HeadlessResponse
 from titan_cli.external_cli.adapters.base import SupportedCLI
-from titan_plugin_github.models.review_enums import FileReadMode, FindingSeverity, PRSizeClass, ReviewStrategyType
+from titan_plugin_github.models.review_enums import FileReadMode, FileReviewPriority, FindingSeverity, PRSizeClass, ReviewStrategyType
 from titan_plugin_github.models.review_models import (
     ChangeManifest,
     FileContextEntry,
@@ -15,6 +15,7 @@ from titan_plugin_github.models.review_models import (
     PullRequestManifest,
     ReferencedCommitContext,
     ReviewStrategy,
+    ScoredReviewCandidate,
     ThreadReviewCandidate,
     ThreadReviewContext,
 )
@@ -1557,9 +1558,6 @@ def test_ai_review_findings_worker_crash_marks_batch_failed_not_step_crash(monke
 # ============================================================================
 # ai_review_findings empty-findings rescue (review-quality-007)
 # ============================================================================
-
-from titan_plugin_github.models.review_enums import FileReviewPriority
-from titan_plugin_github.models.review_models import ScoredReviewCandidate
 
 
 def _rescue_ctx(adapter_stdouts: list[str]) -> tuple[WorkflowContext, "_FakeSequentialAdapter"]:
