@@ -474,11 +474,13 @@ class TestPublishableLines:
         assert not mgr.has_github_diff
         assert mgr.get_publishable_lines("src/foo.py") == frozenset({20})
 
-    def test_file_missing_from_github_diff_has_no_publishable_lines(self):
+    def test_file_missing_from_github_diff_falls_back_to_added_lines(self):
+        # GitHub omits `patch` for large files, so a missing entry doesn't mean
+        # the file is un-commentable — added lines remain publishable.
         mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
         mgr.attach_github_diff(GITHUB_U3_DIFF.replace("src/foo.py", "src/other.py"))
 
-        assert mgr.get_publishable_lines("src/foo.py") == frozenset()
+        assert mgr.get_publishable_lines("src/foo.py") == frozenset({20})
 
     def test_get_all_publishable_lines_covers_union_of_paths(self):
         mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)

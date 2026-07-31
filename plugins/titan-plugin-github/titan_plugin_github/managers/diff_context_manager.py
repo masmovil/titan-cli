@@ -239,8 +239,9 @@ class DiffContextManager:
 
         Files whose context-diff hunks failed the @@ line-count self-check
         return an empty set: every resolved line for them may be shifted, so they
-        degrade to general-body placement. A self-check failure in the GitHub diff
-        only drops that source, falling back to the added-lines floor.
+        degrade to general-body placement. A self-check failure in the GitHub diff —
+        or a path missing from it — only drops that source, falling back to the
+        added-lines floor.
         """
         context_file = self._parsed.files.get(path)
         if context_file is not None and not context_file.hunks_consistent:
@@ -255,14 +256,23 @@ class DiffContextManager:
 
         if self._github_parsed is not None:
             file_diff = self._github_parsed.files.get(path)
-            if file_diff is not None and not file_diff.hunks_consistent:
+            if file_diff is None:
+                # The attached diff may be assembled from files-API `patch` sections,
+                # which GitHub omits for large files — a missing entry doesn't mean
+                # the file is un-commentable, so drop the source, keep the floor.
+                logger.warning(
+                    "get_publishable_lines: path=%s missing from GitHub diff "
+                    "→ falling back to added lines",
+                    path,
+                )
+            elif not file_diff.hunks_consistent:
                 logger.warning(
                     "get_publishable_lines: path=%s GitHub diff failed line-count self-check "
                     "→ falling back to added lines",
                     path,
                 )
             else:
-                lines = file_diff.valid_review_lines if file_diff else frozenset()
+                lines = file_diff.valid_review_lines
                 logger.debug(
                     "get_publishable_lines: path=%s source=github_diff count=%s", path, len(lines)
                 )
