@@ -253,7 +253,7 @@ class CommentView(Widget):
             diff_hunk=diff_hunk,
             severity=action.severity,
             line_label=_build_action_line_label(action),
-            file_excerpt=file_excerpt,
+            file_excerpt=file_excerpt if is_new_comment else None,
             file_excerpt_line=action.line,
         )
 
