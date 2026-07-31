@@ -58,6 +58,29 @@ class TestWorktreeServiceCheckoutBranch:
 
 
 @pytest.mark.unit
+class TestWorktreeServicePrune:
+    """Test WorktreeService.prune_worktrees()"""
+
+    def test_prune_runs_git_worktree_prune(self, mock_git_network):
+        mock_git_network.run_command.return_value = ""
+
+        service = WorktreeService(mock_git_network)
+        result = service.prune_worktrees()
+
+        assert isinstance(result, ClientSuccess)
+        mock_git_network.run_command.assert_called_once_with(["git", "worktree", "prune"])
+
+    def test_prune_error_returns_client_error(self, mock_git_network):
+        mock_git_network.run_command.side_effect = GitError("not a git repository")
+
+        service = WorktreeService(mock_git_network)
+        result = service.prune_worktrees()
+
+        assert isinstance(result, ClientError)
+        assert result.error_code == "WORKTREE_PRUNE_ERROR"
+
+
+@pytest.mark.unit
 class TestWorktreeServiceCommit:
     """Test WorktreeService.commit_in_worktree()"""
 

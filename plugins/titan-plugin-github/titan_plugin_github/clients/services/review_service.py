@@ -113,8 +113,11 @@ class ReviewService:
         """
         Get general PR comments (not attached to code lines).
 
-        Uses GraphQL to fetch top-level PR comments and wraps each one as
-        a pseudo-thread (thread_id = "general_{id}") for uniform rendering.
+        Uses GraphQL to fetch top-level PR comments AND submitted review bodies
+        (the summary text of a review — where findings without an inline anchor
+        end up), wrapping each one as a pseudo-thread (thread_id = "general_{id}")
+        for uniform rendering. Pending reviews and empty review bodies (plain
+        approvals) are skipped.
 
         Args:
             pr_number: PR number
@@ -137,16 +140,22 @@ class ReviewService:
                 variables
             )
 
-            comments_data = (
+            pull_request = (
                 response.get("data", {})
                 .get("repository", {})
                 .get("pullRequest", {})
-                .get("comments", {})
-                .get("nodes", [])
             )
+            comments_data = pull_request.get("comments", {}).get("nodes", [])
+            # The query aliases submittedAt as createdAt/updatedAt, so review
+            # nodes parse with the same network model as issue comments.
+            reviews_data = [
+                r for r in pull_request.get("reviews", {}).get("nodes", [])
+                if (r.get("body") or "").strip() and r.get("state") != "PENDING"
+            ]
 
             network_comments = [
-                GraphQLIssueComment.from_graphql(c) for c in comments_data
+                GraphQLIssueComment.from_graphql(c)
+                for c in comments_data + reviews_data
             ]
 
             ui_threads = [
@@ -425,7 +434,9 @@ class ReviewService:
             args = [
                 "api", "-X", "POST",
                 f"/repos/{repo}/issues/{pr_number}/comments",
-                "-F", "body=-",
+                # "@-" makes gh read the field value from stdin; a bare "-" is
+                # taken literally and posts a one-dash comment.
+                "-F", "body=@-",
             ]
 
             self.gh.run_command(args, stdin_input=body)

@@ -789,6 +789,26 @@ client.remove_worktree(path="../repo-search-worktree", force=False)
 - `path`: Required. Worktree path.
 - `force`: Optional. Force removal.
 
+### Prune stale worktree metadata
+
+Clears Git's records for worktrees whose directories no longer exist.
+
+Git keeps administrative data under `.git/worktrees` for every registered worktree. If
+the directory is deleted by hand, or a removal is interrupted, that record survives and
+blocks the path: `create_worktree` reports it as already registered, while
+`remove_worktree` reports it as "not a working tree". Pruning is the only way to clear
+it, so call this before recreating a worktree at a path a previous run may have used.
+
+**Call:**
+
+```python
+client.prune_worktrees()
+```
+
+**Parameters:**
+
+- No parameters.
+
 ### List worktrees
 
 Returns all worktrees for the repository.

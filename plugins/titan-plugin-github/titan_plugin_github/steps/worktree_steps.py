@@ -5,7 +5,7 @@ Steps for creating and cleaning up git worktrees.
 Available for use in any workflow that needs isolated branch checkouts.
 """
 import os
-from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Exit
+from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from ..operations import setup_worktree, cleanup_worktree
 
 def create_worktree_step(ctx: WorkflowContext) -> WorkflowResult:
@@ -74,7 +74,11 @@ def cleanup_worktree_step(ctx: WorkflowContext) -> WorkflowResult:
 
     Returns:
         Success: Worktree cleaned up
-        Exit: No worktree to cleanup
+        Skip: Nothing to clean up, no git client, or removal failed
+
+    Never returns Exit: that would stop the whole workflow, and this step may run
+    before others (nothing was created is a normal case when worktree setup was
+    allowed to fail). Skip keeps the workflow going.
     """
     if not ctx.textual:
         return Error("Textual UI context is not available for this step.")
@@ -87,12 +91,12 @@ def cleanup_worktree_step(ctx: WorkflowContext) -> WorkflowResult:
     if not worktree_created or not worktree_path:
         ctx.textual.dim_text("No worktree to cleanup")
         ctx.textual.end_step("skip")
-        return Exit("No worktree to cleanup")
+        return Skip("No worktree to cleanup")
 
     if not ctx.git:
         ctx.textual.warning_text("Git client not available - cannot cleanup")
         ctx.textual.end_step("skip")
-        return Exit("Git client not available")
+        return Skip("Git client not available")
 
     with ctx.textual.loading("Cleaning up worktree..."):
         success = cleanup_worktree(ctx.git, worktree_path)
@@ -104,7 +108,7 @@ def cleanup_worktree_step(ctx: WorkflowContext) -> WorkflowResult:
     else:
         ctx.textual.warning_text("Failed to cleanup worktree")
         ctx.textual.end_step("skip")
-        return Exit("Cleanup failed")
+        return Skip("Cleanup failed")
 
 
 __all__ = [

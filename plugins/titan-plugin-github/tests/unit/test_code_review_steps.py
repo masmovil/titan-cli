@@ -965,3 +965,137 @@ def test_ai_thread_resolution_falls_back_to_empty_decisions_on_parse_failure(mon
 
     assert isinstance(result, Success)
     assert ctx.data["raw_thread_decisions"] == []
+
+
+# ---------------------------------------------------------------------------
+# File-read access guard: the fallback root is the user's own checkout, which is
+# usually on a different branch than the PR head.
+# ---------------------------------------------------------------------------
+
+_HEAD_SHA = "a" * 40
+_OTHER_SHA = "b" * 40
+
+
+def _read_access_ctx(*, head_sha=_HEAD_SHA, checkout_sha=_HEAD_SHA, dirty=False, with_git=True):
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_commit_sha"] = head_sha
+    if with_git:
+        ctx.git = Mock()
+        ctx.git.get_current_commit.return_value = ClientSuccess(data=checkout_sha, message="ok")
+        ctx.git.has_uncommitted_changes.return_value = ClientSuccess(data=dirty, message="ok")
+    else:
+        ctx.git = None
+    return ctx
+
+
+def test_file_read_access_trusts_worktree_without_querying_git():
+    ctx = _read_access_ctx(checkout_sha=_OTHER_SHA)
+
+    access = code_review_steps._resolve_file_read_access(ctx, "/tmp/titan-review-1")
+
+    assert access.allowed is True
+    assert access.source == "worktree"
+    ctx.git.get_current_commit.assert_not_called()
+
+
+def test_file_read_access_allows_clean_checkout_at_pr_head():
+    ctx = _read_access_ctx()
+
+    access = code_review_steps._resolve_file_read_access(ctx, None)
+
+    assert access.allowed is True
+    assert access.source == "checkout"
+
+
+def test_file_read_access_blocks_checkout_on_another_branch():
+    """The failure mode: create_worktree failed (on_error: continue) and the user is
+    sitting on an unrelated branch."""
+    ctx = _read_access_ctx(checkout_sha=_OTHER_SHA)
+
+    access = code_review_steps._resolve_file_read_access(ctx, None)
+
+    assert access.allowed is False
+
+
+def test_file_read_access_blocks_dirty_checkout():
+    ctx = _read_access_ctx(dirty=True)
+
+    access = code_review_steps._resolve_file_read_access(ctx, None)
+
+    assert access.allowed is False
+
+
+def test_file_read_access_blocks_when_git_queries_fail():
+    ctx = _read_access_ctx()
+    ctx.git.get_current_commit.return_value = ClientError(
+        error_message="not a repo", error_code="GIT_ERROR"
+    )
+
+    access = code_review_steps._resolve_file_read_access(ctx, None)
+
+    assert access.allowed is False
+
+
+def test_file_read_access_blocks_without_git_client():
+    ctx = _read_access_ctx(with_git=False)
+
+    access = code_review_steps._resolve_file_read_access(ctx, None)
+
+    assert access.allowed is False
+
+
+def test_file_read_access_blocks_when_head_sha_unknown():
+    ctx = _read_access_ctx(head_sha="")
+
+    access = code_review_steps._resolve_file_read_access(ctx, None)
+
+    assert access.allowed is False
+
+
+# ---------------------------------------------------------------------------
+# Submit-time head SHA re-check: the bundle SHA is minutes old by then
+# ---------------------------------------------------------------------------
+
+
+def _drift_ctx(current_sha_result):
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.github = Mock()
+    ctx.github.get_pr_commit_sha.return_value = current_sha_result
+    return ctx
+
+
+def test_submit_sha_drift_detected_when_pr_was_pushed_to():
+    ctx = _drift_ctx(ClientSuccess(data="b" * 40, message="ok"))
+
+    drift = code_review_steps._detect_submit_time_sha_drift(ctx, 123, "a" * 40)
+
+    assert drift.drifted is True
+    assert drift.current_sha == "b" * 40
+
+
+def test_submit_sha_no_drift_when_head_is_unchanged():
+    ctx = _drift_ctx(ClientSuccess(data="a" * 40, message="ok"))
+
+    drift = code_review_steps._detect_submit_time_sha_drift(ctx, 123, "a" * 40)
+
+    assert drift.drifted is False
+
+
+def test_submit_sha_recheck_failure_does_not_block_the_submission():
+    """The publish gate already validates lines against the diff, so a failed
+    re-check must not degrade or cancel an otherwise valid review."""
+    ctx = _drift_ctx(ClientError(error_message="api down", error_code="GH_ERROR"))
+
+    drift = code_review_steps._detect_submit_time_sha_drift(ctx, 123, "a" * 40)
+
+    assert drift.drifted is False
+
+
+def test_submit_sha_drift_ignores_surrounding_whitespace():
+    ctx = _drift_ctx(ClientSuccess(data=f"  {'a' * 40}\n", message="ok"))
+
+    drift = code_review_steps._detect_submit_time_sha_drift(ctx, 123, "a" * 40)
+
+    assert drift.drifted is False

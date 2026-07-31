@@ -40,6 +40,7 @@ from ..operations.review_action_operations import (
     build_review_action_payload,
     classify_github_review_rejection,
     extract_diff_hunk_for_action,
+    extract_file_excerpt_for_action,
     resolve_action_anchors,
 )
 from ..operations.thread_resolution_operations import (
@@ -406,6 +407,7 @@ def _show_review_action_and_get_decision(
     idx: int,
     total: int,
     review_threads: Optional[List[UICommentThread]] = None,
+    file_excerpt: Optional[str] = None,
 ) -> str:
     """
     Display a ReviewActionProposal and return the user's chosen decision.
@@ -413,6 +415,9 @@ def _show_review_action_and_get_decision(
     For resolve_thread actions, shows thread context and resolve confirmation.
     For reply_to_thread actions, shows the original thread context and proposed reply.
     For new_comment actions, shows just the proposed comment.
+
+    ``file_excerpt`` carries real file content for findings the diff cannot anchor, so
+    they are shown with their code rather than as an unsupported claim.
 
     Returns:
         "approve", "edit", "skip", or "exit"
@@ -480,7 +485,9 @@ def _show_review_action_and_get_decision(
 
         # Show the action (proposed reply or new comment)
         from titan_plugin_github.widgets import CommentView
-        ctx.textual.mount(CommentView.from_action(action, diff_hunk=diff_hunk))
+        ctx.textual.mount(
+            CommentView.from_action(action, diff_hunk=diff_hunk, file_excerpt=file_excerpt)
+        )
         ctx.textual.text("")
 
         options = [
@@ -716,7 +723,7 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
     # Fetch diff. For fork PRs, gh pr diff is the source of truth because the
     # head branch usually does not exist under the local origin remote.
     with ctx.textual.loading(f"Fetching PR #{pr_number} diff..."):
-        diff_result = _get_review_diff(ctx, pr_number, pr, all_files_with_stats)
+        diff_result, diff_is_github_source = _get_review_diff(ctx, pr_number, pr, all_files_with_stats)
 
     # Validate diff — fallback to per-file patches if PR is too large
     match diff_result:
@@ -751,6 +758,13 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
             match patches_result:
                 case ClientSuccess(data=patches_diff) if patches_diff:
                     diff = patches_diff
+                    # Files-API patches ARE GitHub's diff hunks — valid as the
+                    # publishable-lines source.
+                    diff_is_github_source = True
+                case ClientError(error_message=err):
+                    ctx.textual.error_text(f"Failed to fetch file patches: {err}")
+                    ctx.textual.end_step("error")
+                    return Error(f"Could not fetch file patches: {err}")
                 case _:
                     ctx.textual.end_step("error")
                     return Error("Could not fetch file patches for large PR")
@@ -770,6 +784,26 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
     # Display file changes summary
     formatted_files, formatted_summary = compute_diff_stat(diff)
     diff_manager = get_or_create_diff_manager(diff, ctx.data)
+
+    # Attach GitHub's own diff as the publishable-lines source (D-008). The review diff
+    # may be a local `git diff -U20` whose extra context lines GitHub rejects for inline
+    # comments; publish validation must use GitHub's hunks. When unavailable, the manager
+    # falls back to added-lines-only, which GitHub always accepts.
+    github_diff = diff if diff_is_github_source else None
+    if github_diff is None:
+        github_diff_result = ctx.github.get_pr_diff(pr_number)
+        match github_diff_result:
+            case ClientSuccess(data=gh_diff) if gh_diff and gh_diff.strip():
+                github_diff = gh_diff
+            case _:
+                logger.warning(
+                    "github_diff_unavailable_for_publish_validation",
+                    pr_number=pr_number,
+                    fallback="added_lines_only",
+                )
+    if github_diff:
+        diff_manager.attach_github_diff(github_diff)
+
     ctx.textual.show_diff_stat(formatted_files, formatted_summary, title="Files affected:")
 
     # Fetch inline review threads and general comments separately
@@ -781,15 +815,17 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
         match threads_result:
             case ClientSuccess(data=threads):
                 review_threads = threads
-            case ClientError():
-                pass
+            case ClientError(error_message=err):
+                # Threads drive dedup against existing comments — reviewing without
+                # them risks re-proposing duplicates, so the degradation must be visible.
+                ctx.textual.warning_text(f"Could not fetch review threads: {err}")
 
         general_result = ctx.github.get_pr_general_comments(pr_number)
         match general_result:
             case ClientSuccess(data=general):
                 general_comments = general
-            case ClientError():
-                pass
+            case ClientError(error_message=err):
+                ctx.textual.warning_text(f"Could not fetch general comments: {err}")
 
         current_user_result = ctx.github.get_current_user()
         match current_user_result:
@@ -830,7 +866,14 @@ def _get_review_diff(
     pr: UIPullRequest,
     all_files_with_stats: list,
 ):
-    """Resolve the most trustworthy diff source for a PR review."""
+    """
+    Resolve the most trustworthy diff source for a PR review.
+
+    Returns:
+        Tuple of (diff ClientResult, is_github_source). ``is_github_source`` is True when
+        the diff came from GitHub itself (``gh pr diff``) — that diff can then double as
+        the publishable-lines source without a second fetch.
+    """
     if pr.is_cross_repository:
         logger.info(
             "review_diff_using_github",
@@ -838,11 +881,11 @@ def _get_review_diff(
             reason="cross_repository_pr",
             head_repository_owner=pr.head_repository_owner,
         )
-        return ctx.github.get_pr_diff(pr_number)
+        return ctx.github.get_pr_diff(pr_number), True
 
     if not ctx.git:
         logger.debug("Git plugin not available; using gh pr diff")
-        return ctx.github.get_pr_diff(pr_number)
+        return ctx.github.get_pr_diff(pr_number), True
 
     fetch_result = ctx.git.fetch(all=True)
     match fetch_result:
@@ -860,7 +903,7 @@ def _get_review_diff(
 
     match git_diff_result:
         case ClientSuccess(data=diff) if diff and diff.strip():
-            return git_diff_result
+            return git_diff_result, False
         case ClientSuccess(data=_):
             if all_files_with_stats:
                 logger.warning(
@@ -870,8 +913,8 @@ def _get_review_diff(
                     head_ref=pr.head_ref,
                     files_changed=len(all_files_with_stats),
                 )
-                return ctx.github.get_pr_diff(pr_number)
-            return git_diff_result
+                return ctx.github.get_pr_diff(pr_number), True
+            return git_diff_result, False
         case ClientError(error_message=err):
             logger.warning(
                 "git_diff_failed_falling_back_to_github",
@@ -880,7 +923,7 @@ def _get_review_diff(
                 head_ref=pr.head_ref,
                 error=err,
             )
-            return ctx.github.get_pr_diff(pr_number)
+            return ctx.github.get_pr_diff(pr_number), True
 
 
 def _resolve_headless_adapter(cli_preference: str):
@@ -1700,6 +1743,66 @@ def _render_findings_batch_result(
     ctx.textual.warning_text(message)
 
 
+def _attach_content_provider(diff_manager, root: Optional[str]) -> None:
+    """
+    Give the diff manager a way to read whole files from ``root``.
+
+    Only call this with a root already verified to hold the PR's head revision — the
+    provider is trusted to return the code the diff describes.
+    """
+    if diff_manager is None or not root:
+        return
+
+    from ..operations.context_resolution_operations import read_file_content
+
+    diff_manager.attach_content_provider(lambda path: read_file_content(path, root))
+
+
+def _resolve_file_read_access(ctx: WorkflowContext, worktree_path: Optional[str]):
+    """
+    Decide whether files on disk may be used as this PR's code.
+
+    Worktree creation is allowed to fail in the workflow, and the fallback root is the
+    user's own checkout — which is usually on a different branch. Query its HEAD and
+    dirty state so the decision is made on facts rather than assumed.
+    """
+    from ..operations.context_resolution_operations import resolve_file_read_access
+
+    if worktree_path:
+        return resolve_file_read_access(worktree_path)
+
+    head_sha = ctx.data.get("review_commit_sha")
+    checkout_sha = None
+    checkout_dirty = None
+
+    if ctx.git:
+        match ctx.git.get_current_commit():
+            case ClientSuccess(data=sha):
+                checkout_sha = (sha or "").strip()
+            case ClientError(error_message=err):
+                logger.debug("checkout_sha_unavailable", error=err)
+
+        match ctx.git.has_uncommitted_changes():
+            case ClientSuccess(data=dirty):
+                checkout_dirty = dirty
+            case ClientError(error_message=err):
+                logger.debug("checkout_dirty_state_unavailable", error=err)
+
+    access = resolve_file_read_access(
+        worktree_path=None,
+        head_sha=head_sha,
+        checkout_sha=checkout_sha,
+        checkout_dirty=checkout_dirty,
+    )
+    logger.debug(
+        "file_read_access_resolved",
+        allowed=access.allowed,
+        source=access.source,
+        reason=access.reason,
+    )
+    return access
+
+
 def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
     """
     Fetch the exact code context according to the validated review plan.
@@ -1749,8 +1852,17 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
     from ..operations.context_resolution_operations import build_review_context_package
     diff_manager = ctx.get("review_diff_manager")
 
-    if worktree_path:
-        ctx.textual.dim_text(f"Using worktree: {worktree_path}")
+    read_access = _resolve_file_read_access(ctx, worktree_path)
+    if read_access.allowed:
+        ctx.textual.dim_text(f"Reading files from {read_access.source} ({read_access.reason})")
+        # Same verified root powers the comment-rendering path, so a finding about
+        # pre-existing code can show that code instead of nothing.
+        _attach_content_provider(diff_manager, project_root)
+    else:
+        ctx.textual.warning_text(
+            f"Reviewing from the diff only — {read_access.reason}. "
+            "Full-file and expanded-hunk context are disabled to avoid mixing revisions."
+        )
 
     try:
         with ctx.textual.loading("Extracting code context…"):
@@ -1763,6 +1875,7 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
                 strategy=strategy,
                 cwd=project_root,
                 diff_manager=diff_manager,
+                allow_file_reads=read_access.allowed,
             )
     except Exception as e:
         ctx.textual.end_step("error")
@@ -1770,6 +1883,7 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
 
     ctx.data["review_context_package"] = package
     ctx.data["review_context_batches"] = package.batches
+    ctx.data["review_file_reads_allowed"] = read_access.allowed
 
     batch_count = len(package.batches)
     files_count = sum(len(batch.files_context) for batch in package.batches)
@@ -1791,6 +1905,7 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
         metadata={
             "review_context_package": package,
             "review_context_batches": package.batches,
+            "review_file_reads_allowed": read_access.allowed,
         },
     )
 
@@ -2311,11 +2426,15 @@ def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
 
         current = action
         diff_hunk = extract_diff_hunk_for_action(current, diff, diff_manager=diff_manager)
+        # Unanchored findings have no diff hunk by definition — read the real file so the
+        # user judges the finding against its code instead of a bare assertion.
+        file_excerpt = extract_file_excerpt_for_action(current, diff_manager=diff_manager)
 
         while True:
             choice = _show_review_action_and_get_decision(
                 ctx, current, diff_hunk or "", idx, len(sorted_actions),
-                review_threads=review_threads
+                review_threads=review_threads,
+                file_excerpt=file_excerpt,
             )
 
             if choice == "exit":
@@ -2357,6 +2476,36 @@ def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
         f"{len(approved)} action(s) approved",
         metadata={"approved_action_proposals": approved},
     )
+
+
+def _detect_submit_time_sha_drift(ctx: WorkflowContext, pr_number: int, reviewed_sha: str):
+    """
+    Re-read the PR's head SHA and compare it with the one the review was prepared against.
+
+    The bundle's SHA is captured minutes earlier, before the user inspects findings. A push
+    in that window invalidates every resolved line, so this is checked at submit time
+    rather than trusted from the bundle.
+    """
+    from ..operations.review_action_operations import detect_head_sha_drift
+
+    current_sha = ""
+    match ctx.github.get_pr_commit_sha(pr_number):
+        case ClientSuccess(data=sha):
+            current_sha = (sha or "").strip()
+        case ClientError(error_message=err):
+            # Unverifiable is not the same as drifted: the publish gate still validates
+            # every line against the diff, so proceed rather than block the submission.
+            logger.debug("submit_sha_recheck_failed", pr_number=pr_number, error=err)
+
+    drift = detect_head_sha_drift(reviewed_sha, current_sha)
+    logger.debug(
+        "submit_sha_drift_check",
+        pr_number=pr_number,
+        reviewed_sha=drift.reviewed_sha,
+        current_sha=drift.current_sha,
+        drifted=drift.drifted,
+    )
+    return drift
 
 
 def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
@@ -2438,6 +2587,27 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                 ctx.textual.end_step("error")
                 return Error(f"Missing commit SHA for inline review: {err}")
 
+    # The anchors were resolved against commit_sha's diff. If the PR has been pushed to
+    # since, every inline line describes code that moved — degrade them to the review body
+    # rather than publish comments on the wrong lines.
+    force_general_body = False
+    if comment_actions:
+        drift = _detect_submit_time_sha_drift(ctx, pr_number, commit_sha)
+        if drift.drifted:
+            ctx.textual.warning_text(f"⚠ PR head changed: {drift.message}")
+            ctx.textual.dim_text(
+                f"reviewed: {drift.reviewed_sha[:8]} · current: {drift.current_sha[:8]}"
+            )
+            ctx.textual.text(
+                f"The {len(comment_actions)} comment(s) will go in the review body instead "
+                "of inline, since their line numbers no longer match the PR's diff."
+            )
+            if not ctx.textual.ask_confirm("Publish the review anyway?", default=True):
+                ctx.textual.warning_text("Review cancelled")
+                ctx.textual.end_step("skip")
+                return Skip("User cancelled after head SHA drift")
+            force_general_body = True
+
     # Show AI's opinion and prepare action options
     ctx.textual.text("")
     if comment_actions:
@@ -2479,7 +2649,13 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
         review_body = ctx.textual.ask_multiline("General review comment:", default="")
 
     # Build payload from comment actions
-    payload = build_review_action_payload(comment_actions, commit_sha, diff, diff_manager=diff_manager)
+    payload = build_review_action_payload(
+        comment_actions,
+        commit_sha,
+        diff,
+        diff_manager=diff_manager,
+        force_general_body=force_general_body,
+    )
 
     if review_body and review_body.strip():
         existing_body = payload.get("body", "")

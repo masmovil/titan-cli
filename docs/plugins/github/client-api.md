@@ -433,7 +433,11 @@ client.reply_to_comment(
 
 ### Get general PR comments
 
-Returns PR comments that are not attached to a code line.
+Returns PR comments that are not attached to a code line: top-level conversation
+comments plus the summary bodies of submitted reviews (where findings without an
+inline anchor end up). Pending reviews and empty review bodies (plain approvals)
+are skipped. Each entry is wrapped as a pseudo-thread whose `thread_id` starts
+with `general_`.
 
 **Call:**
 
