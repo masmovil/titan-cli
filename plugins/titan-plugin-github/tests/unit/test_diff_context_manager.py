@@ -258,6 +258,15 @@ class TestBuildFocusedDiff:
         result = mgr.build_focused_diff("src/foo.py", 10, is_outdated=True)
         assert "◄" not in result
 
+    def test_outdated_large_hunk_does_not_mark_a_coincidental_new_line(self):
+        """In the outdated path target_line is an old-file number. SIMPLE_DIFF is
+        small enough to return unchanged, but a large hunk goes through
+        _rebuild_diff, where a new-file line sharing the number used to get the ◄
+        marker — pointing the reader at the wrong line."""
+        mgr = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+        result = mgr.build_focused_diff("src/foo.py", 25, is_outdated=True)
+        assert "◄" not in result
+
     def test_unknown_file_returns_empty(self):
         """Should return empty string for a file not in the diff."""
         mgr = DiffContextManager.from_diff(SIMPLE_DIFF)
@@ -505,6 +514,22 @@ index 111..222 100644
 """
 
 
+# One snippet occurrence on a context line (1) and one on an added line (3): with
+# no GitHub diff attached only added lines are publishable, so the resolver must
+# prefer 3 — anchoring to the context line would be rejected by GitHub.
+PUBLISHABLE_PREFERENCE_DIFF = """\
+diff --git a/src/pref.py b/src/pref.py
+index 111..222 100644
+--- a/src/pref.py
++++ b/src/pref.py
+@@ -1,3 +1,4 @@
+ log.debug("retry")
+ def handler(x):
++    log.debug("retry")
+ return x
+"""
+
+
 class TestResolverV2:
     def _mgr(self):
         return DiffContextManager.from_diff(DUPLICATE_SNIPPET_DIFF)
@@ -522,6 +547,13 @@ class TestResolverV2:
         resolved = self._mgr().resolve_line_anchor("src/svc.py", line=5, snippet="return None")
 
         assert resolved == 5
+
+    def test_ambiguous_snippet_with_ai_line_valid_elsewhere_keeps_the_ai_line(self):
+        """Line 51 is a valid review line but NOT among the snippet matches [5, 53]:
+        a validated AI line must win over an ambiguous guess, not be relocated."""
+        resolved = self._mgr().resolve_line_anchor("src/svc.py", line=51, snippet="return None")
+
+        assert resolved == 51
 
     def test_unique_snippet_match_still_corrects_offset_ai_line(self):
         # snippet unique in the file; AI line slightly off (52) — snippet wins
@@ -544,6 +576,17 @@ class TestResolverV2:
 
     def test_find_lines_by_snippet_returns_all_matches_in_order(self):
         assert self._mgr().find_lines_by_snippet("src/svc.py", "return None") == [5, 53]
+
+    def test_ambiguous_snippet_prefers_the_publishable_match_over_the_first(self):
+        """In DUPLICATE_SNIPPET_DIFF both matches are added lines, so the
+        publishable-preference sort key never discriminates there. Here the snippet
+        matches a context line (1) and an added line (3); with no GitHub diff
+        attached only the added line is publishable — anchoring to 1 would 422."""
+        mgr = DiffContextManager.from_diff(PUBLISHABLE_PREFERENCE_DIFF)
+
+        resolved = mgr.resolve_line_anchor("src/pref.py", line=None, snippet='log.debug("retry")')
+
+        assert resolved == 3
 
     def test_polluted_snippets_are_sanitized_before_matching(self):
         """Models copy prompt-annotation prefixes ('NN | ', 'NN [ADDED] ', '+')
@@ -589,6 +632,31 @@ DESYNCED_DIFF = (
     "@@ -1,3 +1,4 @@\n"
     " import os\n"
     "+import sys\n"
+)
+
+# A file that embeds diff text as string literals: its added lines include
+# "+++ b/..." (rendered "++++ b/...") and "@@ ..." (rendered "+@@ ..."), which a
+# naive not-startswith("+++") guard skips, desyncing every counter after them.
+EMBEDDED_DIFF_TEXT_DIFF = (
+    "diff --git a/tests/fixture_diffs.py b/tests/fixture_diffs.py\n"
+    "index 111..222 100644\n"
+    "--- a/tests/fixture_diffs.py\n"
+    "+++ b/tests/fixture_diffs.py\n"
+    "@@ -1,2 +1,14 @@\n"
+    " import textwrap\n"
+    " EMBEDDED = textwrap.dedent(\n"
+    "+    '''\n"
+    "+diff --git a/src/foo.py b/src/foo.py\n"
+    "+index abc..def 100644\n"
+    "+--- a/src/foo.py\n"
+    "++++ b/src/foo.py\n"
+    "+@@ -10,2 +10,3 @@\n"
+    "+ line10\n"
+    "++line11_added\n"
+    "+ line12\n"
+    "+    '''\n"
+    "+)\n"
+    '+MARKER = "end"\n'
 )
 
 QUOTED_PATH_DIFF = (
@@ -677,6 +745,33 @@ class TestHunkHeaderSelfCheck:
 
         assert mgr.get_publishable_lines("src/foo.py") == frozenset()
         assert mgr.get_publishable_lines("src/ok.py") == frozenset({20})
+
+
+class TestEmbeddedDiffTextCounting:
+    """Files that contain diff text as string literals (e.g. test fixtures) must
+    still count against the @@ header — the live PR #253 run degraded a correctly
+    anchorable inline comment to the general body because of this."""
+
+    def test_added_file_header_lines_keep_the_hunk_consistent(self):
+        mgr = DiffContextManager.from_diff(EMBEDDED_DIFF_TEXT_DIFF)
+
+        hunk = mgr.get_hunks("tests/fixture_diffs.py")[0]
+        assert hunk.header_consistent is True
+        assert mgr.get_file("tests/fixture_diffs.py").hunks_consistent is True
+
+    def test_lines_after_embedded_headers_are_not_shifted(self):
+        """Pre-fix, the '++++ b/...' added line was skipped, so every later line
+        resolved one short (MARKER landed on 13 instead of 14)."""
+        mgr = DiffContextManager.from_diff(EMBEDDED_DIFF_TEXT_DIFF)
+
+        assert mgr.find_line_by_snippet("tests/fixture_diffs.py", 'MARKER = "end"') == 14
+
+    def test_embedded_header_lines_are_valid_added_lines(self):
+        mgr = DiffContextManager.from_diff(EMBEDDED_DIFF_TEXT_DIFF)
+
+        publishable = mgr.get_publishable_lines("tests/fixture_diffs.py")
+        # 6/7/8 are the embedded '--- a/', '+++ b/' and '@@' lines — all added here
+        assert {6, 7, 8, 14} <= set(publishable)
 
 
 class TestQuotedPathHeaders:

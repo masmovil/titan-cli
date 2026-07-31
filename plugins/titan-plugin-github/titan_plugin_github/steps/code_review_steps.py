@@ -811,15 +811,17 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
         match threads_result:
             case ClientSuccess(data=threads):
                 review_threads = threads
-            case ClientError():
-                pass
+            case ClientError(error_message=err):
+                # Threads drive dedup against existing comments — reviewing without
+                # them risks re-proposing duplicates, so the degradation must be visible.
+                ctx.textual.warning_text(f"Could not fetch review threads: {err}")
 
         general_result = ctx.github.get_pr_general_comments(pr_number)
         match general_result:
             case ClientSuccess(data=general):
                 general_comments = general
-            case ClientError():
-                pass
+            case ClientError(error_message=err):
+                ctx.textual.warning_text(f"Could not fetch general comments: {err}")
 
         current_user_result = ctx.github.get_current_user()
         match current_user_result:

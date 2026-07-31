@@ -262,13 +262,17 @@ def extract_diff_hunk_for_action(
     Returns:
         Hunk string starting with @@, or None if not found
     """
-    if not diff or not action.path or not action.line:
+    # Gate on resolved_line, not action.line: a finding the AI reported with
+    # line=null can still be anchored via a unique snippet match, and it deserves
+    # its hunk like any other resolved action.
+    if (not diff and diff_manager is None) or not action.path:
         return None
 
-    manager = diff_manager or get_or_create_diff_manager(diff)
     resolved_line = action.resolved_line
     if resolved_line is None:
         return None
+
+    manager = diff_manager or get_or_create_diff_manager(diff)
 
     hunk = manager.get_hunk_for_line(action.path, resolved_line, allow_fallback=False)
     return hunk.content if hunk else None
@@ -311,7 +315,9 @@ def resolve_action_anchors(
     diff_manager: Optional[DiffContextManager] = None,
 ) -> List[ReviewActionProposal]:
     """Return actions enriched with resolved inline anchors for UI and submission."""
-    if not diff:
+    # An explicitly supplied manager can anchor even when the raw diff string is
+    # empty — bailing on `not diff` alone would silently unresolve every action.
+    if not diff and diff_manager is None:
         return actions
 
     manager = diff_manager or get_or_create_diff_manager(diff)

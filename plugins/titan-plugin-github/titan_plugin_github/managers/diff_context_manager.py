@@ -415,7 +415,10 @@ class DiffContextManager:
             lines = hunk.content.split("\n")
             current = hunk.new_line_start
             for line in lines[1:]:  # skip @@ header
-                if line.startswith("+") and not line.startswith("+++"):
+                # Inside a hunk body "+++" can only be an added line whose content
+                # starts with "++" (file headers precede the first @@) — a
+                # not-startswith("+++") guard here desyncs the counter on such lines.
+                if line.startswith("+"):
                     if snippet_stripped in line[1:].strip():
                         matches.append(current)
                     current += 1
@@ -725,7 +728,10 @@ def _parse_hunk(path: str, content: str) -> Optional[ParsedHunk]:
     current = new_start
 
     for line in lines[1:]:
-        if line.startswith("+") and not line.startswith("+++"):
+        # Inside a hunk body "+++" can only be an added line whose content starts
+        # with "++" (file headers precede the first @@) — guarding against it here
+        # would desync the counter on files that embed diff text.
+        if line.startswith("+"):
             valid_lines.add(current)
             added_lines.add(current)
             current += 1
@@ -790,10 +796,13 @@ def _build_focused_diff_from_hunk(
 
     parsed: list[tuple] = []  # (old_num, new_num, raw_line, idx)
     for idx, raw in enumerate(lines[1:], start=1):
-        if raw.startswith("+") and not raw.startswith("+++"):
+        # No "+++"/"---" guards: file headers precede the first @@, so inside a
+        # hunk body those prefixes are real added/deleted lines (e.g. embedded
+        # diff text) and skipping them would desync both counters.
+        if raw.startswith("+"):
             parsed.append((None, new_line, raw, idx))
             new_line += 1
-        elif raw.startswith("-") and not raw.startswith("---"):
+        elif raw.startswith("-"):
             parsed.append((old_line, None, raw, idx))
             old_line += 1
         elif raw.startswith(" ") or raw in ("", "\r"):
@@ -820,7 +829,16 @@ def _build_focused_diff_from_hunk(
     else:
         return hunk_content
 
-    return _rebuild_diff(extracted, old_start, new_start, header_suffix, target_line)
+    # In the outdated path target_line is an old-file number, but _rebuild_diff's
+    # ◄ marker compares against new-file numbers — a coincidental match would point
+    # the reader at the wrong line, so no marker is better than a lying one.
+    return _rebuild_diff(
+        extracted,
+        old_start,
+        new_start,
+        header_suffix,
+        None if is_outdated else target_line,
+    )
 
 
 def _rebuild_diff(
@@ -890,7 +908,9 @@ def _extract_lines_from_hunk(
     extracted: list[str] = []
 
     for line in lines[1:]:
-        if line.startswith("+") and not line.startswith("+++"):
+        # "+++" here is an added line starting with "++", not a file header —
+        # see _parse_hunk.
+        if line.startswith("+"):
             if current >= target_line and len(extracted) < count:
                 extracted.append(line[1:])
             current += 1

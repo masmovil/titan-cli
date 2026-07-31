@@ -261,7 +261,9 @@ class CommentView(Widget):
         """Compose the comment view: severity badge, metadata, location, code, body."""
         # 1. Severity badge (AI suggestions only)
         if self.severity:
-            yield self._severity_badge()
+            badge = self._severity_badge()
+            if badge is not None:
+                yield badge
 
         # 2. Author + date (omitted for AI suggestions that have no human author)
         if self.author_name:
@@ -300,8 +302,12 @@ class CommentView(Widget):
     # Private helpers
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _severity_badge(self) -> Text:
-        """Create severity badge widget for AI suggestions."""
+    def _severity_badge(self) -> Optional[Text]:
+        """Create severity badge widget for AI suggestions.
+
+        Returns None for severities with no badge (e.g. ThreadSeverity.NONE, which
+        is truthy as a StrEnum) — the widget must not crash on a label-less value.
+        """
         badge_labels = {
             FindingSeverity.BLOCKING: "🔴 BLOCKING",
             FindingSeverity.IMPORTANT: "🟡 IMPORTANT",
@@ -309,7 +315,9 @@ class CommentView(Widget):
             ThreadSeverity.IMPORTANT: "🟡 IMPORTANT",
             ThreadSeverity.NIT: "🔵 NIT",
         }
-        badge_text = badge_labels[self.severity]
+        badge_text = badge_labels.get(self.severity)
+        if badge_text is None:
+            return None
         badge = Text(badge_text)
         badge.add_class("severity-badge")
         badge.add_class(self.severity.value)

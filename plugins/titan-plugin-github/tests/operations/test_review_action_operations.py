@@ -471,3 +471,60 @@ def test_comment_view_renders_the_excerpt_for_an_unanchored_finding():
     # explains what the finding is about.
     assert view.line is None
     assert view.line_label == "⚠ outside this PR's diff (AI said 10)"
+
+
+# ---------------------------------------------------------------------------
+# PR #253 review feedback: gates that dropped valid context or anchors
+# ---------------------------------------------------------------------------
+
+
+def test_extract_diff_hunk_for_snippet_anchored_action_without_ai_line():
+    """A finding the AI reported with line=null can still be snippet-anchored
+    (resolved_line set) — it must get its hunk like any other resolved action."""
+    action = ReviewActionProposal(
+        action_type=ReviewActionType.NEW_COMMENT,
+        source=ReviewActionSource.NEW_FINDING,
+        path="src/foo.py",
+        line=None,
+        resolved_line=12,
+        resolution_source="snippet",
+        title="Test",
+        body="Comment body",
+        reasoning="Why",
+    )
+
+    hunk = extract_diff_hunk_for_action(action, DIFF)
+
+    assert hunk is not None
+    assert 'print("world")' in hunk
+
+
+def test_resolve_action_anchors_uses_supplied_manager_when_diff_string_is_empty():
+    """An explicitly supplied manager must anchor even with an empty diff string —
+    bailing on `not diff` alone silently unresolved every action."""
+    from titan_plugin_github.managers.diff_context_manager import DiffContextManager
+
+    manager = DiffContextManager.from_diff(DIFF)
+    action = ReviewActionProposal(
+        action_type=ReviewActionType.NEW_COMMENT,
+        source=ReviewActionSource.NEW_FINDING,
+        path="src/foo.py",
+        line=12,
+        title="Test",
+        body="Comment body",
+        reasoning="Why",
+    )
+
+    resolved = resolve_action_anchors([action], diff="", diff_manager=manager)
+
+    assert resolved[0].resolved_line == 12
+
+
+def test_severity_badge_is_skipped_for_thread_severity_none():
+    """ThreadSeverity.NONE is truthy (StrEnum "none") but has no badge label —
+    the widget must skip the badge instead of raising KeyError in compose()."""
+    from titan_plugin_github.models.review_enums import ThreadSeverity
+
+    view = CommentView(body="x", severity=ThreadSeverity.NONE)
+
+    assert view._severity_badge() is None
