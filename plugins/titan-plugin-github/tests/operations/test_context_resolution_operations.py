@@ -291,6 +291,15 @@ class TestResolveFileReadAccess:
         assert access.allowed is False
         assert "uncommitted" in access.reason
 
+    def test_unverifiable_dirty_state_at_head_is_rejected(self):
+        access = resolve_file_read_access(
+            None, head_sha=HEAD_SHA, checkout_sha=HEAD_SHA, checkout_dirty=None
+        )
+
+        assert access.allowed is False
+        assert access.source == "none"
+        assert "could not be verified" in access.reason
+
     def test_unknown_checkout_sha_is_rejected(self):
         access = resolve_file_read_access(None, head_sha=HEAD_SHA, checkout_sha=None)
 

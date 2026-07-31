@@ -83,9 +83,13 @@ def resolve_file_read_access(
             f"checkout is at {checkout_sha[:8]}, PR head is {head_sha[:8]}",
         )
 
-    if checkout_dirty:
+    if checkout_dirty or checkout_dirty is None:
         return FileReadAccess(
-            False, "none", "checkout is at the PR head but has uncommitted changes"
+            False,
+            "none",
+            "checkout is at the PR head but has uncommitted changes"
+            if checkout_dirty
+            else "checkout is at the PR head but its dirty state could not be verified",
         )
 
     return FileReadAccess(True, "checkout", f"checkout verified at PR head {head_sha[:8]}")
