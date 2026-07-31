@@ -111,6 +111,11 @@ def clear_stale_worktree(
         except OSError:
             pass
 
+    try:
+        git_client.prune_worktrees()
+    except Exception:
+        pass
+
 
 def cleanup_worktree(
     git_client,
