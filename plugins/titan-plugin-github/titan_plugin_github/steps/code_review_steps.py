@@ -761,6 +761,10 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
                     # Files-API patches ARE GitHub's diff hunks — valid as the
                     # publishable-lines source.
                     diff_is_github_source = True
+                case ClientError(error_message=err):
+                    ctx.textual.error_text(f"Failed to fetch file patches: {err}")
+                    ctx.textual.end_step("error")
+                    return Error(f"Could not fetch file patches: {err}")
                 case _:
                     ctx.textual.end_step("error")
                     return Error("Could not fetch file patches for large PR")
