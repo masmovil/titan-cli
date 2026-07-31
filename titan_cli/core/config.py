@@ -532,7 +532,11 @@ class TitanConfig:
     def get_favorite_workflows(self) -> list:
         """Return the list of favorited workflow names from the global user config."""
         config_data = self._load_toml(self._global_config_path)
-        return list(config_data.get("workflows", {}).get("favorites", []))
+        workflows = config_data.get("workflows", {})
+        if not isinstance(workflows, dict):
+            return []
+        favorites = workflows.get("favorites", [])
+        return list(favorites) if isinstance(favorites, list) else []
 
     def is_favorite_workflow(self, name: str) -> bool:
         """Return whether a workflow is marked as favorite."""
@@ -545,7 +549,14 @@ class TitanConfig:
             The new favorite state (True if now favorited, False if removed).
         """
         config_data = self._load_toml(self._global_config_path)
-        favorites = config_data.setdefault("workflows", {}).setdefault("favorites", [])
+        workflows = config_data.get("workflows")
+        if not isinstance(workflows, dict):
+            workflows = {}
+            config_data["workflows"] = workflows
+        favorites = workflows.get("favorites")
+        if not isinstance(favorites, list):
+            favorites = []
+            workflows["favorites"] = favorites
         if name in favorites:
             favorites.remove(name)
             is_now_favorite = False
