@@ -1664,3 +1664,165 @@ def test_ai_review_findings_no_rescue_when_not_suspicious(monkeypatch):
 
     assert isinstance(result, Success)
     assert len(fake_adapter.calls) == 1
+
+
+# ============================================================================
+# ai_review_findings cross-file synthesis (review-quality-004)
+# ============================================================================
+
+
+def _synthesis_diff(line: str = "added line") -> str:
+    def _file_diff(path: str) -> str:
+        return (
+            f"diff --git a/{path} b/{path}\n"
+            "index 111..222 100644\n"
+            f"--- a/{path}\n"
+            f"+++ b/{path}\n"
+            "@@ -1,2 +1,3 @@\n"
+            " context\n"
+            f"+{line}\n"
+            " context\n"
+        )
+
+    return _file_diff("a.py") + _file_diff("b.py")
+
+
+def _synthesis_ctx(
+    adapter_stdouts: list[str],
+    *,
+    enabled: bool = True,
+    batch_files: list[dict[str, int]] | None = None,
+    diff: str | None = None,
+) -> tuple[WorkflowContext, "_FakeSequentialAdapter"]:
+    fake_adapter = _FakeSequentialAdapter(adapter_stdouts)
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_profile"] = ReviewProfile(
+        findings_batch_concurrency=1, findings_synthesis_enabled=enabled
+    )
+    files = batch_files if batch_files is not None else [{"a.py": 100}, {"b.py": 100}]
+    ctx.data["review_context_batches"] = [
+        _make_findings_batch(f"batch_{index + 1}", file_chars)
+        for index, file_chars in enumerate(files)
+    ]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=20000,
+        max_comment_entries=5,
+        batching_enabled=True,
+        suspicious_empty_findings=False,
+    )
+    ctx.data["review_diff"] = diff if diff is not None else _synthesis_diff()
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+    return ctx, fake_adapter
+
+
+def test_ai_review_findings_runs_synthesis_when_enabled_and_multi_file(monkeypatch):
+    """review-quality-004: with the profile flag on and >1 focus file, one extra
+    cross-file synthesis batch runs after the per-file batches — even when the
+    per-file batches already produced findings (unlike the 007 rescue)."""
+    ctx, fake_adapter = _synthesis_ctx(
+        [
+            '[{"title": "Bug in a", "path": "a.py", "line": 5}]',  # batch_1
+            "[]",  # batch_2
+            '[{"title": "Contract mismatch", "path": "b.py", "line": 2}]',  # synthesis
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 3
+    synthesis_prompt = fake_adapter.calls[2]["prompt"]
+    assert "cross-file inconsistencies" in synthesis_prompt
+    assert "a.py" in synthesis_prompt and "b.py" in synthesis_prompt
+    assert ctx.data["raw_findings"] == [
+        {"title": "Bug in a", "path": "a.py", "line": 5},
+        {"title": "Contract mismatch", "path": "b.py", "line": 2},
+    ]
+    assert ctx.data["ai_findings_failed"] is False
+
+
+def test_ai_review_findings_synthesis_disabled_by_default(monkeypatch):
+    ctx, fake_adapter = _synthesis_ctx(["[]", "[]"], enabled=False)
+    # Same as the default profile: the flag is opt-in (D-002 token mandate).
+    assert ReviewProfile().findings_synthesis_enabled is False
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 2
+
+
+def test_ai_review_findings_no_synthesis_single_focus_file(monkeypatch):
+    ctx, fake_adapter = _synthesis_ctx(["[]"], batch_files=[{"a.py": 100}])
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 1
+
+
+def test_ai_review_findings_synthesis_skipped_over_budget(monkeypatch):
+    """Over-budget synthesis skips silently — no split/degrade machinery, no 3rd call."""
+    # Big diff hunks blow the synthesis prompt past the budget, while the per-file
+    # batches (100 chars each) still fit comfortably.
+    ctx, fake_adapter = _synthesis_ctx(
+        ["[]", "[]"], diff=_synthesis_diff(line="z" * 15000)
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 2
+    assert ctx.data["ai_findings_failed"] is False
+
+
+def test_ai_review_findings_synthesis_failure_is_best_effort(monkeypatch):
+    """A failed synthesis call must not mark an otherwise-successful review as failed."""
+    ctx, fake_adapter = _synthesis_ctx(
+        [
+            '[{"title": "Bug in a", "path": "a.py", "line": 5}]',  # batch_1
+            "[]",  # batch_2
+            "no json from the synthesis call",  # synthesis main call
+            "still no json",  # synthesis reformat retry
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert ctx.data["raw_findings"] == [{"title": "Bug in a", "path": "a.py", "line": 5}]
+    assert ctx.data["ai_findings_failed"] is False
+
+
+def test_ai_review_findings_synthesis_dedupes_against_per_file_findings(monkeypatch):
+    """Synthesis near-duplicates of per-file findings are dropped before aggregation;
+    only genuinely new cross-file findings are added."""
+    ctx, fake_adapter = _synthesis_ctx(
+        [
+            '[{"title": "Bug in a", "path": "a.py", "line": 5}]',  # batch_1
+            "[]",  # batch_2
+            (
+                '[{"title": "Bug in a", "path": "a.py", "line": 7},'
+                ' {"title": "Contract mismatch", "path": "b.py", "line": 2}]'
+            ),  # synthesis: near-dup (same path, line within 5, same title) + new
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert ctx.data["raw_findings"] == [
+        {"title": "Bug in a", "path": "a.py", "line": 5},
+        {"title": "Contract mismatch", "path": "b.py", "line": 2},
+    ]

@@ -400,3 +400,124 @@ def test_rescue_batch_returns_none_when_no_paths_have_hunks():
     from titan_plugin_github.operations.findings_operations import build_empty_findings_rescue_batch
 
     assert build_empty_findings_rescue_batch(["nope.py"], _rescue_diff(), [], None) is None
+
+
+# ============================================================================
+# build_cross_file_synthesis_batch + dedupe_synthesis_findings (review-quality-004)
+# ============================================================================
+
+
+def _synthesis_diff() -> str:
+    return (
+        _rescue_diff()
+        + _rescue_diff().replace("border.py", "second.py")
+        + _rescue_diff().replace("border.py", "third.py")
+    )
+
+
+def test_synthesis_batch_builds_hunks_only_entries_for_all_paths():
+    from titan_plugin_github.models.review_enums import FileReadMode
+    from titan_plugin_github.operations.findings_operations import (
+        SYNTHESIS_BATCH_ID,
+        build_cross_file_synthesis_batch,
+    )
+
+    batch = build_cross_file_synthesis_batch(
+        ["border.py", "second.py", "third.py"], _synthesis_diff(), None
+    )
+
+    assert batch is not None
+    assert batch.batch_id == SYNTHESIS_BATCH_ID
+    # No file cap: unlike the rescue batch, every path with hunks gets an entry.
+    assert set(batch.files_context) == {"border.py", "second.py", "third.py"}
+    for entry in batch.files_context.values():
+        assert entry.read_mode == FileReadMode.HUNKS_ONLY
+        assert entry.full_content is None
+        assert entry.expanded_hunks == []
+        assert entry.approximate_chars > 0
+    assert batch.checklist_applicable == []
+
+
+def test_synthesis_batch_skips_paths_without_hunks():
+    from titan_plugin_github.operations.findings_operations import (
+        build_cross_file_synthesis_batch,
+    )
+
+    batch = build_cross_file_synthesis_batch(
+        ["missing.py", "border.py", "second.py"], _synthesis_diff(), None
+    )
+
+    assert batch is not None
+    assert set(batch.files_context) == {"border.py", "second.py"}
+
+
+def test_synthesis_batch_returns_none_with_fewer_than_two_hunk_files():
+    from titan_plugin_github.operations.findings_operations import (
+        build_cross_file_synthesis_batch,
+    )
+
+    # Only one path with hunks (plus one without): a synthesis over one file is
+    # meaningless.
+    assert (
+        build_cross_file_synthesis_batch(["border.py", "missing.py"], _rescue_diff(), None)
+        is None
+    )
+
+
+def test_build_findings_prompt_parts_instructions_override():
+    from titan_plugin_github.operations.findings_operations import (
+        SYNTHESIS_INSTRUCTIONS,
+        build_cross_file_synthesis_batch,
+        build_findings_prompt_parts,
+        summarize_findings_prompt_parts,
+    )
+
+    batch = build_cross_file_synthesis_batch(
+        ["border.py", "second.py"], _synthesis_diff(), None
+    )
+    parts = build_findings_prompt_parts(batch, instructions_override=SYNTHESIS_INSTRUCTIONS)
+
+    assert parts["instructions"] == SYNTHESIS_INSTRUCTIONS
+    assert "cross-file inconsistencies" in parts["prompt"]
+    assert "Only report actionable issues" not in parts["prompt"]
+    # The summarizer's hardcoded keys must keep working on overridden parts.
+    summary = summarize_findings_prompt_parts(parts)
+    assert summary["instructions_chars"] == len(SYNTHESIS_INSTRUCTIONS)
+
+    default_parts = build_findings_prompt_parts(batch)
+    assert "Only report actionable issues" in default_parts["instructions"]
+
+
+def test_dedupe_synthesis_findings_drops_similar_and_keeps_distinct():
+    from titan_plugin_github.operations.findings_operations import dedupe_synthesis_findings
+
+    existing = [
+        {"path": "a.py", "line": 10, "title": "Null pointer risk in parse_config"},
+        {"path": "b.py", "line": None, "title": "Missing error handling"},
+        "not-a-dict",
+    ]
+    synthesis = [
+        # Exact duplicate (same path/line/title) -> dropped.
+        {"path": "a.py", "line": 10, "title": "Null pointer risk in parse_config"},
+        # Near-duplicate: line within window, very similar title -> dropped.
+        {"path": "a.py", "line": 12, "title": "Null pointer risk in parse_config()"},
+        # Same title but different path -> kept.
+        {"path": "c.py", "line": 10, "title": "Null pointer risk in parse_config"},
+        # Same path/title but line far outside the window -> kept.
+        {"path": "a.py", "line": 200, "title": "Null pointer risk in parse_config"},
+        # Both lines None with similar title -> dropped.
+        {"path": "b.py", "line": None, "title": "Missing error handling"},
+        # One line None, the other not -> kept.
+        {"path": "b.py", "line": 5, "title": "Missing error handling"},
+        # Non-dict synthesis item tolerated and kept for normalize to reject later.
+        42,
+    ]
+
+    unique = dedupe_synthesis_findings(synthesis, existing)
+
+    assert unique == [
+        {"path": "c.py", "line": 10, "title": "Null pointer risk in parse_config"},
+        {"path": "a.py", "line": 200, "title": "Null pointer risk in parse_config"},
+        {"path": "b.py", "line": 5, "title": "Missing error handling"},
+        42,
+    ]

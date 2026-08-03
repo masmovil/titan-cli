@@ -10,8 +10,16 @@ from .ai_response_parsing_operations import extract_json_payload
 from .prompt_formatting_operations import comment_context_to_json, extract_pr_intent_line
 
 
-def build_findings_prompt_parts(batch: FocusContextBatch) -> dict[str, str]:
-    """Build prompt parts separately so callers can log size breakdowns."""
+def build_findings_prompt_parts(
+    batch: FocusContextBatch, *, instructions_override: str | None = None
+) -> dict[str, str]:
+    """Build prompt parts separately so callers can log size breakdowns.
+
+    `instructions_override` replaces the default instructions block while keeping the
+    rest of the prompt skeleton (PR context, existing comments, axes, code, schema)
+    identical — used by the cross-file synthesis batch, whose review target is
+    different from a normal per-file batch.
+    """
     checklist_json = _checklist_to_json(batch.checklist_applicable)
     comments_json = comment_context_to_json(batch.comment_context)
     files_text = _files_context_to_text(batch.files_context)
@@ -19,7 +27,7 @@ def build_findings_prompt_parts(batch: FocusContextBatch) -> dict[str, str]:
     pr_context = _pr_context_to_text(batch)
     schema = _finding_schema()
 
-    instructions = """- Only report actionable issues: correctness, error handling, security, validation, API, concurrency, meaningful semantic correctness, state consistency, or missing regression coverage when clearly required
+    instructions = instructions_override or """- Only report actionable issues: correctness, error handling, security, validation, API, concurrency, meaningful semantic correctness, state consistency, or missing regression coverage when clearly required
 - Also report changes that preserve execution but alter the observable meaning of data, events, labels, classifications, or results
 - Also report changes that degrade fidelity of recorded, serialized, converted, or displayed data even if the code still runs
 - Also report changes that remove an important previous guarantee such as success/failure signaling, fallback behavior, or state consistency
@@ -355,6 +363,125 @@ def build_empty_findings_rescue_batch(
         checklist_applicable=checklist[:4],
         pr_manifest=pr_manifest,
     )
+
+
+SYNTHESIS_BATCH_ID = "synthesis_1"
+
+FINDINGS_SYNTHESIS_EFFORT = "medium"
+"""The synthesis prompt is the largest findings prompt shape (every hunk of the PR at
+once); cap reasoning at medium like worktree_reference batches — big context, bounded
+reasoning."""
+
+SYNTHESIS_INSTRUCTIONS = """- This batch shows ALL changed hunks of this PR together. Look ONLY for cross-file inconsistencies introduced by this PR
+- Report contract mismatches: a signature, return shape, field, event, or error contract changed in one file while a caller/consumer in another file shown here still uses the old contract
+- Report missed call sites: a rename, parameter change, or behavior change applied in some of these files but not in others shown here
+- Report inconsistent naming or semantics for the same concept across the changed files
+- Do NOT report single-file issues of any kind — those were already reviewed in earlier batches
+- Do not repeat issues already covered by Existing Comments
+- Do not report deleted lines as findings
+- Do not speculate beyond the shown hunks; unchanged call sites outside this diff are out of scope
+- Include a short `snippet` copied from the exact added/context line that should anchor the comment; use null only if no stable inline anchor exists
+- If there are no cross-file inconsistencies, return []"""
+
+
+def build_cross_file_synthesis_batch(
+    focus_paths: list[str],
+    diff: str,
+    pr_manifest,
+    diff_manager=None,
+) -> FocusContextBatch | None:
+    """Build the cross-file synthesis batch: every focus file's hunks together.
+
+    Per-file batches are structurally blind to interactions between the PR's own
+    changes; this batch re-combines all reviewed paths in hunks_only mode (no
+    expansion, no full files) so the model can look for cross-file inconsistencies.
+    ">1 focus file" means >1 distinct path — a single batch holding several files
+    qualifies. Paths without diff hunks (binary, rename-only) are skipped. Returns
+    None when fewer than 2 paths end up with hunks: a synthesis over one file is
+    meaningless. There is deliberately no file cap — the caller's budget check is
+    the cap (over budget -> skip, no split/degrade).
+
+    `checklist_applicable` stays empty: the synthesis instructions are the single
+    review axis, and this batch already re-sends every hunk (D-002 token mandate).
+    """
+    from ..models.review_enums import FileReadMode
+    from ..models.review_models import FileContextEntry
+    from .context_resolution_operations import extract_hunks_only
+
+    files_context: dict[str, FileContextEntry] = {}
+    for path in focus_paths:
+        hunks = extract_hunks_only(diff, path, diff_manager=diff_manager)
+        if not hunks:
+            continue
+        files_context[path] = FileContextEntry(
+            path=path,
+            read_mode=FileReadMode.HUNKS_ONLY,
+            hunks=hunks,
+            approximate_chars=sum(len(hunk) for hunk in hunks),
+        )
+
+    if len(files_context) < 2:
+        return None
+
+    return FocusContextBatch(
+        batch_id=SYNTHESIS_BATCH_ID,
+        files_context=files_context,
+        checklist_applicable=[],
+        pr_manifest=pr_manifest,
+    )
+
+
+def dedupe_synthesis_findings(
+    synthesis_raw: list,
+    existing_raw: list,
+    *,
+    line_window: int = 5,
+    title_similarity_threshold: float = 0.75,
+) -> list:
+    """Drop synthesis findings that duplicate a per-file batch finding.
+
+    Works on raw (pre-normalization) dicts because it runs inside the findings step,
+    before Finding models exist. A synthesis finding is a duplicate when an existing
+    raw finding has the same path AND a line within the window (both-None counts as
+    close, one-None does not) AND a similar title (exact lowercase match or
+    SequenceMatcher ratio above the threshold). Thresholds mirror
+    `validators.is_duplicate`, which cannot be reused directly — it compares a Finding
+    against an existing-comment index entry, not two findings. Non-dict items in
+    either list are tolerated: raw AI output is untrusted.
+    """
+    from difflib import SequenceMatcher
+
+    def _lines_close(line_a, line_b) -> bool:
+        if line_a is None and line_b is None:
+            return True
+        if line_a is None or line_b is None:
+            return False
+        try:
+            return abs(int(line_a) - int(line_b)) <= line_window
+        except (TypeError, ValueError):
+            return False
+
+    def _titles_similar(title_a: str, title_b: str) -> bool:
+        if title_a == title_b:
+            return True
+        return SequenceMatcher(None, title_a, title_b).ratio() > title_similarity_threshold
+
+    existing = [item for item in existing_raw if isinstance(item, dict)]
+    unique: list = []
+    for candidate in synthesis_raw:
+        if not isinstance(candidate, dict):
+            unique.append(candidate)
+            continue
+        candidate_title = str(candidate.get("title", "")).lower()
+        is_duplicate = any(
+            candidate.get("path") == item.get("path")
+            and _lines_close(candidate.get("line"), item.get("line"))
+            and _titles_similar(candidate_title, str(item.get("title", "")).lower())
+            for item in existing
+        )
+        if not is_duplicate:
+            unique.append(candidate)
+    return unique
 
 
 def summarize_findings_prompt_parts(parts: dict[str, str]) -> dict[str, Any]:

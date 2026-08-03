@@ -1971,6 +1971,11 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     by total AI failure must not look like a clean review — while still publishing
     empty raw_findings so downstream steps run via the workflow's on_error: continue.
 
+    When ReviewProfile.findings_synthesis_enabled is on and the PR touches more than
+    one focus file, one extra best-effort cross-file synthesis batch (all hunks
+    together, hunks_only) runs after the per-file batches; its findings are deduped
+    against theirs before aggregation.
+
     Requires (from ctx.data):
         review_context_package (ReviewContextPackage)
         cli_preference (str): "claude" | "gemini" | "codex" | "auto"
@@ -2271,6 +2276,88 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
             ctx.textual.dim_text(
                 "No findings from main batches; borderline files remain unreviewed (no diff hunks)."
             )
+
+    # Cross-file synthesis (off by default): per-file batches are structurally blind to
+    # interactions between the PR's own changes, so re-combine every reviewed path's
+    # hunks into one extra batch that looks ONLY for cross-file inconsistencies. Runs
+    # after the rescue block so the rescue's empty-findings gate is unaffected, and
+    # best-effort like it: failure never marks the review as failed, and it stays
+    # outside the attempted/succeeded counters.
+    if _get_review_profile(ctx).findings_synthesis_enabled and strategy:
+        from ..operations.findings_operations import (
+            FINDINGS_SYNTHESIS_EFFORT,
+            SYNTHESIS_INSTRUCTIONS,
+            build_cross_file_synthesis_batch,
+            dedupe_synthesis_findings,
+        )
+
+        focus_paths = sorted({path for batch in batches for path in batch.files_context})
+        synthesis_batch = (
+            build_cross_file_synthesis_batch(
+                focus_paths,
+                ctx.get("review_diff", ""),
+                batches[0].pr_manifest if batches else None,
+                diff_manager=ctx.get("review_diff_manager"),
+            )
+            if len(focus_paths) > 1
+            else None
+        )
+        if synthesis_batch:
+            synthesis_prompt = build_findings_prompt_parts(
+                synthesis_batch, instructions_override=SYNTHESIS_INSTRUCTIONS
+            )["prompt"]
+            if len(synthesis_prompt) > strategy.max_prompt_chars:
+                # No split/degrade machinery for this batch: the whole point is seeing
+                # every hunk together, so a partial synthesis is not worth the spend.
+                logger.debug(
+                    "synthesis_batch_over_budget",
+                    prompt_actual_chars=len(synthesis_prompt),
+                    prompt_budget_target_chars=strategy.max_prompt_chars,
+                )
+                ctx.textual.dim_text("Cross-file synthesis skipped (combined hunks over budget).")
+            else:
+                _log_ai_prompt(
+                    step_name="ai_review_findings",
+                    cli_name=adapter.cli_name.value,
+                    prompt=synthesis_prompt,
+                    batch_id=synthesis_batch.batch_id,
+                    files_context=len(synthesis_batch.files_context),
+                    prompt_budget_target_chars=strategy.max_prompt_chars,
+                    prompt_actual_chars=len(synthesis_prompt),
+                )
+                _render_findings_batch_started(ctx, synthesis_batch)
+                synthesis_effort = (
+                    FINDINGS_SYNTHESIS_EFFORT if adapter.supports_effort_control else None
+                )
+                with ctx.textual.loading(
+                    f"Asking {cli_display} to run the cross-file synthesis batch…"
+                ):
+                    synthesis_outcome = _run((synthesis_batch, synthesis_prompt, synthesis_effort))
+                if synthesis_outcome["status"] == "success":
+                    unique_findings = dedupe_synthesis_findings(
+                        synthesis_outcome["raw"], aggregated_raw
+                    )
+                    aggregated_raw.extend(unique_findings)
+                    logger.info(
+                        "synthesis_batch_result",
+                        findings_count_raw=len(synthesis_outcome["raw"]),
+                        findings_count_unique=len(unique_findings),
+                        focus_files=len(synthesis_batch.files_context),
+                    )
+                    _render_findings_batch_result(
+                        ctx,
+                        synthesis_batch.batch_id,
+                        status="success",
+                        findings_count=len(unique_findings),
+                    )
+                else:
+                    logger.debug("synthesis_batch_failed", detail=synthesis_outcome["detail"])
+                    _render_findings_batch_result(
+                        ctx,
+                        synthesis_batch.batch_id,
+                        status="failed",
+                        detail=synthesis_outcome["detail"],
+                    )
 
     ctx.data["raw_findings"] = aggregated_raw or build_default_findings()
     ctx.data["ai_findings_failed"] = findings_failed

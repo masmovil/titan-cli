@@ -1391,6 +1391,14 @@ How to read these contracts:
 ??? info "`ai_review_findings`"
     Second AI call: find actionable problems in the exact code context.
 
+    When `findings_synthesis_enabled` is `true` in the project review profile
+    (`.titan/review/profile.yaml`, default `false`) and the PR touches more than one
+    focus file, one extra best-effort cross-file synthesis batch runs after the
+    per-file batches: every reviewed file's hunks together (hunks_only, no expansion),
+    instructed to look only for cross-file inconsistencies introduced by the PR.
+    Skipped silently when the combined hunks exceed the prompt budget; its findings
+    are deduped against the per-file batches' findings before aggregation.
+
     **Workflow usage**
 
     ```yaml

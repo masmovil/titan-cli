@@ -51,6 +51,13 @@ class ReviewProfile(BaseModel):
         "cost — only wall time. Keep low: each worker is a full CLI session and "
         "provider-side rate limits apply.",
     )
+    findings_synthesis_enabled: bool = Field(
+        default=False,
+        description="Run one extra cross-file synthesis batch (all changed hunks "
+        "together, hunks_only) when the PR touches more than one focus file. It "
+        "re-sends every hunk already reviewed per-file, so it adds one full AI call "
+        "per review; off by default until real cost data justifies it.",
+    )
 
 
 class ReviewChecklistFile(BaseModel):
