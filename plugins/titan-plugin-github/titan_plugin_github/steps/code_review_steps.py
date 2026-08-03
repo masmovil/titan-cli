@@ -580,7 +580,7 @@ def select_pr_for_code_review(ctx: WorkflowContext) -> WorkflowResult:
     ]
 
     assigned_count = len(assigned_numbers)
-    question = f"Select a PR to review ({len(all_prs_list)} total{f', {assigned_count} asignados ⭐' if assigned_count else ''}):"
+    question = f"Select a PR to review ({len(all_prs_list)} total{f', {assigned_count} assigned to you ⭐' if assigned_count else ''}):"
 
     try:
         selected = ctx.textual.ask_option(question, options)
@@ -947,17 +947,14 @@ def build_change_manifest(ctx: WorkflowContext) -> WorkflowResult:
         + (f" ({test_count} test files)" if test_count else "")
         + f" · +{manifest.total_additions} -{manifest.total_deletions}"
     )
-    ctx.textual.dim_text(
-        " · ".join(
-            [
-                f"tests: {test_count}",
-                f"docs: {docs_count}",
-                f"config: {config_count}",
-                f"generated: {generated_count}",
-                f"lockfiles: {lockfile_count}",
-                f"rename-only: {rename_only_count}",
-            ]
-        )
+    logger.debug(
+        "change_manifest_census",
+        tests=test_count,
+        docs=docs_count,
+        config=config_count,
+        generated=generated_count,
+        lockfiles=lockfile_count,
+        rename_only=rename_only_count,
     )
     ctx.textual.end_step("success")
     return Success("Change manifest built", metadata={"change_manifest": manifest})
@@ -1011,9 +1008,6 @@ def build_existing_comments_index(ctx: WorkflowContext) -> WorkflowResult:
     if resolved_count:
         msg += f" ({resolved_count} resolved)"
     ctx.textual.success_text(msg)
-    ctx.textual.dim_text(
-        f"prompt comments: {len(comment_context)} · adjudicated threads: {adjudicated_count}"
-    )
     logger.debug(
         "existing_comments_index_built",
         existing_comments_total=len(index),
@@ -1265,15 +1259,17 @@ def select_review_strategy(ctx: WorkflowContext) -> WorkflowResult:
         max_prompt_chars=strategy.max_prompt_chars,
         max_comment_entries=strategy.max_comment_entries,
     )
+    # Speak outcome, not mechanics: strategy enum names and prompt budgets in chars
+    # mean nothing to the reviewer — what matters is how the review will proceed and
+    # how many files it will focus on. Mechanics stay in the debug log above.
+    strategy_labels = {
+        "direct_findings": "direct review in one pass",
+        "light_plan": "lightweight plan, then focused review",
+        "batched_findings": "planned review in batches",
+    }
+    approach = strategy_labels.get(strategy.strategy.value, strategy.strategy.value)
     ctx.textual.success_text(
-        f"✓ {strategy.strategy.value} · focus {strategy.max_focus_files} · "
-        f"prompt budget {strategy.max_prompt_chars} chars"
-    )
-    ctx.textual.text(" ")
-    ctx.textual.dim_text(
-        f"up to {strategy.max_focus_files} focus files per plan · "
-        f"{strategy.max_prompt_chars} chars per batch"
-        + (" · batching enabled" if strategy.batching_enabled else "")
+        f"✓ Review approach: {approach} · up to {strategy.max_focus_files} focus file(s)"
     )
     if strategy.reason:
         ctx.textual.dim_text(strategy.reason)
@@ -1538,37 +1534,37 @@ def _get_review_profile(ctx: WorkflowContext) -> ReviewProfile:
 
 
 def _render_pr_classification(ctx: WorkflowContext, classification: PRClassification) -> None:
-    """Render deterministic PR classification in a compact, structured format."""
-    roles_text = ", ".join(classification.roles) if classification.roles else "none"
-    rationale = classification.rationale or "Classification derived from deterministic PR composition signals."
+    """Render the classification as one human-readable summary.
 
+    On screen: the size class, the two numbers that explain it, and the signals that
+    change how the review will behave. Scoring internals (complexity score, roles,
+    repeated call sites, machine-composed rationale) go to the debug log — they help
+    diagnose a misclassification, not decide anything during a review.
+    """
     ctx.textual.success_text(f"✓ PR classified as {classification.size_class.value.upper()}")
-
-    ctx.textual.text(" ")
-    ctx.textual.text("Scope")
-    ctx.textual.dim_text(f"Files changed: {classification.files_changed}")
-    ctx.textual.dim_text(f"Lines changed: {classification.total_lines_changed}")
     ctx.textual.dim_text(
-        f"Review activity: {classification.comment_threads} threads, {classification.comment_entries} comment entries"
+        f"{classification.files_changed} file(s) · "
+        f"{classification.total_lines_changed} changed line(s)"
     )
-
-    ctx.textual.text(" ")
-    ctx.textual.text("Signals")
-    ctx.textual.dim_text(f"High-signal files: {classification.high_signal_files}")
-    ctx.textual.dim_text(f"Repeated call sites: {classification.repeated_callsite_files}")
-    ctx.textual.dim_text(f"Roles: {roles_text}")
-    ctx.textual.dim_text(f"Complexity score: {classification.complexity_score}/20")
-
-    ctx.textual.text(" ")
-    ctx.textual.text("Flags")
-    ctx.textual.dim_text(
-        f"Repetitive migration: {'yes' if classification.is_repetitive_migration else 'no'}"
+    signals = []
+    if classification.high_signal_files:
+        signals.append(f"{classification.high_signal_files} critical file(s) touched")
+    if classification.is_repetitive_migration:
+        signals.append("repetitive change pattern (many similar call sites)")
+    if classification.active_review:
+        signals.append(f"review already in progress ({classification.comment_threads} thread(s))")
+    if signals:
+        ctx.textual.dim_text("Signals: " + " · ".join(signals))
+    logger.debug(
+        "pr_classification_detail",
+        size_class=classification.size_class.value,
+        complexity_score=classification.complexity_score,
+        roles=classification.roles,
+        repeated_callsite_files=classification.repeated_callsite_files,
+        comment_threads=classification.comment_threads,
+        comment_entries=classification.comment_entries,
+        rationale=classification.rationale,
     )
-    ctx.textual.dim_text(f"Active review: {'yes' if classification.active_review else 'no'}")
-
-    ctx.textual.text(" ")
-    ctx.textual.text("Why")
-    ctx.textual.dim_text(rationale)
 
 
 def _build_review_checklist_preview(ctx: WorkflowContext, checklist: list) -> set[str]:
@@ -1594,7 +1590,8 @@ def _render_review_checklist(
     )
     ctx.textual.text(" ")
     for item in checklist:
-        label = f"{item.id}"
+        # Show the human-readable name, not the snake_case category id.
+        label = item.name or str(item.id)
         if str(item.id) in applicable_preview_ids:
             ctx.textual.bold_text(label)
         else:
@@ -1606,16 +1603,16 @@ def _show_review_context_batches(ctx: WorkflowContext, batches: list) -> None:
     for batch in batches:
         file_paths = list(getattr(batch, "files_context", {}).keys())
         related_count = len(getattr(batch, "related_files", {}) or {})
-        checklist_count = len(getattr(batch, "checklist_applicable", []) or [])
         degraded = getattr(batch, "degraded_context", False)
 
         ctx.textual.text(" ")
-        ctx.textual.bold_text(batch.batch_id)
-        ctx.textual.dim_text(
-            f"files: {len(file_paths)} · checklist: {checklist_count}"
-            + (f" · related: {related_count}" if related_count else "")
-            + (" · degraded" if degraded else "")
-        )
+        # Keep the raw batch_id as the label: the findings step references the same
+        # ids ("Reviewing batch_1…", "✓ batch_1 complete"), so the user can correlate.
+        ctx.textual.bold_text(f"{batch.batch_id} · {len(file_paths)} file(s)")
+        if related_count:
+            ctx.textual.dim_text(f"  +{related_count} related file(s) included for context")
+        if degraded:
+            ctx.textual.dim_text("  context reduced to fit the AI prompt size limit")
         for path in file_paths:
             ctx.textual.dim_text(f"  {path}")
 
@@ -1667,14 +1664,14 @@ def _retry_findings_batch_reformat(
 
 def _render_findings_batch_split(ctx: WorkflowContext, batch_id: str, produced_batches: list[str]) -> None:
     """Render a batch split caused by prompt budget constraints."""
-    ctx.textual.warning_text(
-        f"{batch_id} exceeded prompt budget and was split into {', '.join(produced_batches)}"
+    ctx.textual.dim_text(
+        f"{batch_id} was too large for one AI call — split into {', '.join(produced_batches)}"
     )
 
 
 def _render_findings_batch_degraded(ctx: WorkflowContext, batch_id: str) -> None:
     """Render an in-place context reduction (no new batches) caused by prompt budget constraints."""
-    ctx.textual.warning_text(f"{batch_id} exceeded prompt budget and was degraded to fit")
+    ctx.textual.dim_text(f"{batch_id} was too large — file context reduced to fit the AI call")
 
 
 def _render_findings_batch_result(
@@ -1846,10 +1843,21 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
         f"✓ Context: {files_count} focus file(s) in {batch_count} batch(es)"
         + (f" · {related_count} related file(s)" if related_count else "")
     )
-    trimmed_count = sum(len(batch.excluded_files) for batch in package.batches)
-    ctx.textual.dim_text(
-        f"comments in context: {sum(len(batch.comment_context) for batch in package.batches)} · "
-        f"trimmed by budget: {trimmed_count}"
+    # Coverage honesty: name the files that will NOT be reviewed instead of hiding
+    # them behind a count — silent coverage loss is indistinguishable from a full
+    # review otherwise.
+    trimmed_paths = sorted(
+        {entry.path for batch in package.batches for entry in batch.excluded_files}
+    )
+    if trimmed_paths:
+        ctx.textual.warning_text(
+            f"⚠ {len(trimmed_paths)} file(s) will NOT be reviewed (context budget exceeded): "
+            + ", ".join(trimmed_paths)
+        )
+    logger.debug(
+        "review_context_summary",
+        comments_in_context=sum(len(batch.comment_context) for batch in package.batches),
+        trimmed_paths=trimmed_paths,
     )
     _show_review_context_batches(ctx, package.batches)
     ctx.textual.end_step("success")
@@ -2094,14 +2102,10 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
                 prompt_budget_target_chars=strategy.max_prompt_chars,
                 prompt_actual_chars=len(prompt),
             )
+            skipped_paths = ", ".join(sorted(batch.files_context)) or "unknown files"
             ctx.textual.warning_text(
-                f"Skipping {batch.batch_id}: prompt still too large ({len(prompt)} chars > {strategy.max_prompt_chars})"
-            )
-            _render_findings_batch_result(
-                ctx,
-                batch.batch_id,
-                status="skipped",
-                detail="prompt still too large",
+                f"⚠ {batch.batch_id} skipped — too large even after reduction. "
+                f"NOT reviewed: {skipped_paths}"
             )
             continue
         worktree_reference_count = sum(
@@ -2495,7 +2499,16 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
 
     summary = f"✓ {len(deduped)} finding(s) ready"
     if removed:
-        summary += f" ({removed} duplicate(s) removed)"
+        # Say WHY findings were dropped: "already commented on the PR" explains why a
+        # re-run reports different things than the first pass — "duplicates removed"
+        # does not.
+        if removed_existing:
+            summary += f" ({removed_existing} skipped: already commented on this PR"
+            if removed > removed_existing:
+                summary += f"; {removed - removed_existing} internal duplicate(s)"
+            summary += ")"
+        else:
+            summary += f" ({removed} internal duplicate(s) removed)"
     ctx.textual.success_text(summary)
     logger.debug(
         "findings_deduplicated",
@@ -2766,7 +2779,7 @@ def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     if not ctx.textual:
         return Error("Textual UI context is not available for this step.")
 
-    ctx.textual.begin_step("Validate Review Actions")
+    ctx.textual.begin_step("Validate & Approve Actions")
 
     actions: List[ReviewActionProposal] = ctx.get("review_action_proposals", [])
 
