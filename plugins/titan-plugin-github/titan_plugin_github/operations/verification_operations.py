@@ -91,14 +91,22 @@ def build_verification_prompt_parts(
     for path in sorted(relevant_paths):
         content = code_by_path.get(path)
         if not content:
+            # The finding still gets a verdict slot, so the model must know there is
+            # no code to judge it against — otherwise it can read absence as
+            # contradiction and refute a real finding.
+            code_parts.append(
+                f"### {path}\n(no code context available for this file — "
+                'verdicts for its findings must be "uncertain")'
+            )
             continue
-        code_parts.append(f"### {path}\n```\n{content[:code_cap_chars]}\n```")
+        code_parts.append(f"### {path}\n```\n{_cap_code(content, code_cap_chars)}\n```")
     code_text = "\n".join(code_parts) if code_parts else "(no code context available)"
 
     instructions = """- For EACH finding, actively try to REFUTE it against the code shown
 - Verdict "refuted": the code visibly contradicts the finding's claim (e.g. the claimed-missing check/handler/parameter is present, the claimed behavior cannot occur in the shown code) — quote the contradicting line in `reasoning`
 - Verdict "confirmed": the code supports the claim
 - Verdict "uncertain": the shown code is insufficient to judge — do NOT refute on missing context
+- The code blocks may be truncated: never treat something as absent because it is not visible in the shown excerpt
 - Judge only what is claimed; do not invent new findings or re-review the code
 - Return exactly one verdict per finding index"""
 
@@ -123,6 +131,16 @@ Respond ONLY with a valid JSON array matching this schema. Do not include any pr
         "instructions": instructions,
         "prompt": prompt,
     }
+
+
+_TRUNCATION_MARKER = "\n… [code truncated here — anything beyond this point is NOT shown, not absent]"
+
+
+def _cap_code(content: str, cap_chars: int) -> str:
+    """Cap a code block, marking the cut so the verifier can't read it as complete."""
+    if len(content) <= cap_chars:
+        return content
+    return content[:cap_chars] + _TRUNCATION_MARKER
 
 
 def _verdict_schema() -> str:
@@ -181,12 +199,16 @@ def apply_verification_verdicts(
     verified_candidates: list[Finding],
     raw_verdicts: list,
     exempt: list[Finding],
+    *,
+    paths_with_code: set[str] | None = None,
 ) -> VerificationOutcome:
     """Apply AI verdicts to the finding set, fail-open.
 
     Only an explicit "refuted" verdict with non-empty reasoning removes a finding.
     Findings with no verdict, an out-of-range index, an unknown verdict value, or a
-    reasoning-less refutation are all kept.
+    reasoning-less refutation are all kept. When `paths_with_code` is given, a
+    refutation of a finding whose path had NO code in the prompt is also ignored —
+    the model cannot legitimately contradict code it never saw.
     """
     verdict_by_index: dict[int, VerificationVerdict] = {}
     for item in raw_verdicts or []:
@@ -202,7 +224,8 @@ def apply_verification_verdicts(
     refuted_reasons: list[str] = []
     for i, finding in enumerate(verified_candidates):
         verdict = verdict_by_index.get(i)
-        if verdict and verdict.verdict == "refuted" and verdict.reasoning.strip():
+        refutable = paths_with_code is None or finding.path in paths_with_code
+        if refutable and verdict and verdict.verdict == "refuted" and verdict.reasoning.strip():
             refuted.append(finding)
             refuted_reasons.append(verdict.reasoning.strip())
         else:
@@ -211,13 +234,13 @@ def apply_verification_verdicts(
     return VerificationOutcome(kept=kept, refuted=refuted, refuted_reasons=refuted_reasons)
 
 
-def build_verification_code_map(
-    findings: list[Finding], batches: list, *, cap_chars: int = _CODE_BLOCK_CAP_CHARS
-) -> dict[str, str]:
+def build_verification_code_map(findings: list[Finding], batches: list) -> dict[str, str]:
     """Map each finding's path to its focused hunks from the review batches.
 
     Uses hunks (or expanded hunks) only — never `full_content` — so the verification
-    prompt stays small regardless of how the finding's batch read the file.
+    prompt stays small regardless of how the finding's batch read the file. Capping
+    (with a visible truncation marker) happens once, in
+    `build_verification_prompt_parts` — not here, or the marker could never fire.
     """
     relevant_paths = {finding.path for finding in findings}
     code_map: dict[str, str] = {}
@@ -227,7 +250,7 @@ def build_verification_code_map(
                 continue
             hunks = entry.expanded_hunks or entry.hunks
             if hunks:
-                code_map[path] = "\n".join(hunks)[:cap_chars]
+                code_map[path] = "\n".join(hunks)
     return code_map
 
 

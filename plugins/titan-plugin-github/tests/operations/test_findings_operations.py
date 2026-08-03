@@ -509,7 +509,8 @@ def test_dedupe_synthesis_findings_drops_similar_and_keeps_distinct():
         {"path": "b.py", "line": None, "title": "Missing error handling"},
         # One line None, the other not -> kept.
         {"path": "b.py", "line": 5, "title": "Missing error handling"},
-        # Non-dict synthesis item tolerated and kept for normalize to reject later.
+        # Non-dict synthesis item dropped (it would inflate the unique count and
+        # normalize would reject it anyway).
         42,
     ]
 
@@ -519,5 +520,55 @@ def test_dedupe_synthesis_findings_drops_similar_and_keeps_distinct():
         {"path": "c.py", "line": 10, "title": "Null pointer risk in parse_config"},
         {"path": "a.py", "line": 200, "title": "Null pointer risk in parse_config"},
         {"path": "b.py", "line": 5, "title": "Missing error handling"},
-        42,
     ]
+
+
+# ============================================================================
+# build_timeout_fallback_batch (worktree_reference timeout fallback)
+# ============================================================================
+
+
+def test_timeout_fallback_batch_builds_hunks_only_from_original():
+    from titan_plugin_github.models.review_enums import FileReadMode
+    from titan_plugin_github.models.review_models import FileContextEntry, FocusContextBatch
+    from titan_plugin_github.operations.findings_operations import build_timeout_fallback_batch
+
+    original = FocusContextBatch(
+        batch_id="batch_2",
+        files_context={
+            "border.py": FileContextEntry(
+                path="border.py",
+                read_mode=FileReadMode.WORKTREE_REFERENCE,
+                worktree_reference=True,
+                review_hint="huge file",
+            )
+        },
+    )
+
+    fallback = build_timeout_fallback_batch(original, _rescue_diff())
+
+    assert fallback is not None
+    assert fallback.batch_id == "batch_2_retry"
+    entry = fallback.files_context["border.py"]
+    assert entry.read_mode == FileReadMode.HUNKS_ONLY
+    assert entry.worktree_reference is False
+    assert any("added line" in hunk for hunk in entry.hunks)
+
+
+def test_timeout_fallback_batch_returns_none_without_hunks():
+    from titan_plugin_github.models.review_enums import FileReadMode
+    from titan_plugin_github.models.review_models import FileContextEntry, FocusContextBatch
+    from titan_plugin_github.operations.findings_operations import build_timeout_fallback_batch
+
+    original = FocusContextBatch(
+        batch_id="batch_9",
+        files_context={
+            "binary.bin": FileContextEntry(
+                path="binary.bin",
+                read_mode=FileReadMode.WORKTREE_REFERENCE,
+                worktree_reference=True,
+            )
+        },
+    )
+
+    assert build_timeout_fallback_batch(original, _rescue_diff()) is None

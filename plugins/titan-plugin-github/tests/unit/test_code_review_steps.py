@@ -1826,3 +1826,272 @@ def test_ai_review_findings_synthesis_dedupes_against_per_file_findings(monkeypa
         {"title": "Bug in a", "path": "a.py", "line": 5},
         {"title": "Contract mismatch", "path": "b.py", "line": 2},
     ]
+
+
+# ============================================================================
+# Fixes from the 2026-08-03 validation-run findings
+# ============================================================================
+
+
+def test_verify_findings_mixed_nit_and_non_nit_index_remapping(monkeypatch):
+    """Verdict indices address the FILTERED (non-nit) list. With nits mixed in, a
+    refutation of filtered-index 0 must drop the right non-nit finding while every
+    nit rides through untouched."""
+    nit_first = _make_finding_model("Style nit", severity=FindingSeverity.NIT)
+    false_positive = _make_finding_model("False positive")
+    real_bug = _make_finding_model("Real bug")
+    nit_last = _make_finding_model("Another nit", severity=FindingSeverity.NIT)
+    stdout = (
+        '{"verdicts": [{"index": 0, "verdict": "refuted", "reasoning": "check exists"},'
+        ' {"index": 1, "verdict": "confirmed", "reasoning": "holds"}]}'
+    )
+    fake_adapter = _FakeStructuredOutputAdapter(stdout)
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([nit_first, false_positive, real_bug, nit_last])
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Success)
+    # Index 0 of the filtered list is "False positive", NOT the leading nit.
+    assert ctx.data["refuted_findings"] == [false_positive]
+    assert set(f.title for f in ctx.data["deduped_findings"]) == {
+        "Style nit",
+        "Real bug",
+        "Another nit",
+    }
+    # Only the 2 non-nit findings were sent to the verifier.
+    prompt = fake_adapter.calls[0]["prompt"]
+    assert "Style nit" not in prompt
+    assert "False positive" in prompt
+
+
+def test_verify_findings_refutation_ignored_when_path_has_no_code(monkeypatch):
+    """A refutation for a finding whose path has no hunks in any batch is ignored:
+    the model never saw that code, so its contradiction is worthless."""
+    orphan = _make_finding_model("Orphan finding", path="not_in_batches.py")
+    stdout = '{"verdicts": [{"index": 0, "verdict": "refuted", "reasoning": "no such code"}]}'
+    fake_adapter = _FakeStructuredOutputAdapter(stdout)
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([orphan])
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert ctx.data["deduped_findings"] == [orphan]
+    assert ctx.data["refuted_findings"] == []
+
+
+def _three_file_diff() -> str:
+    def _file_diff(path: str) -> str:
+        return (
+            f"diff --git a/{path} b/{path}\n"
+            "index 111..222 100644\n"
+            f"--- a/{path}\n"
+            f"+++ b/{path}\n"
+            "@@ -1,2 +1,3 @@\n"
+            " context\n"
+            "+added line\n"
+            " context\n"
+        )
+
+    return _file_diff("a.py") + _file_diff("b.py") + _file_diff("c.py")
+
+
+def test_ai_review_findings_synthesis_excludes_failed_batches_paths(monkeypatch):
+    """A failed batch's files were NOT reviewed — the synthesis prompt must not
+    include them under instructions claiming their single-file issues were already
+    covered (that would suppress findings nobody ever looked for)."""
+    ctx, fake_adapter = _synthesis_ctx(
+        [
+            "[]",  # batch_1 (a.py) ok
+            "[]",  # batch_2 (b.py) ok
+            "no json from batch_3",  # batch_3 (c.py) main call
+            "still no json",  # batch_3 reformat retry -> failed
+            "[]",  # synthesis over a.py + b.py only
+        ],
+        batch_files=[{"a.py": 100}, {"b.py": 100}, {"c.py": 100}],
+        diff=_three_file_diff(),
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 5
+    synthesis_prompt = fake_adapter.calls[4]["prompt"]
+    assert "### a.py" in synthesis_prompt
+    assert "### b.py" in synthesis_prompt
+    assert "c.py" not in synthesis_prompt
+
+
+def test_ai_review_findings_no_synthesis_when_only_one_batch_succeeded(monkeypatch):
+    """With 2 focus files but only 1 reviewed (other batch failed), synthesis is
+    skipped: there is nothing cross-file among a single reviewed path."""
+    ctx, fake_adapter = _synthesis_ctx(
+        [
+            "[]",  # batch_1 (a.py) ok
+            "no json",  # batch_2 (b.py) main call
+            "still no json",  # batch_2 reformat retry -> failed
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    # 3 calls: batch_1 + batch_2 + retry. No 4th (synthesis) call.
+    assert len(fake_adapter.calls) == 3
+
+
+# ============================================================================
+# Timeout fallback for worktree_reference batches (+ early worktree release)
+# ============================================================================
+
+
+class _FakeExitCodeAdapter:
+    """Fake adapter scripted with (exit_code, stdout) tuples, one per call."""
+
+    cli_name = SupportedCLI.CLAUDE
+    supports_structured_output = False
+    supports_tool_restriction = False
+    supports_effort_control = False
+
+    def __init__(self, script: list[tuple[int, str]]):
+        self._script = list(script)
+        self.calls: list[dict] = []
+
+    def is_available(self) -> bool:
+        return True
+
+    def execute(self, prompt: str, cwd=None, timeout=None, json_schema=None, disallowed_tools=None, effort=None) -> HeadlessResponse:
+        self.calls.append({"prompt": prompt, "effort": effort})
+        exit_code, stdout = self._script[len(self.calls) - 1]
+        return HeadlessResponse(stdout=stdout, stderr="", exit_code=exit_code)
+
+
+def _timeout_ctx(adapter_script: list[tuple[int, str]], *, worktree_reference: bool = True):
+    fake_adapter = _FakeExitCodeAdapter(adapter_script)
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.data["review_profile"] = ReviewProfile(findings_batch_concurrency=1)
+    if worktree_reference:
+        ctx.data["review_context_batches"] = [
+            _make_worktree_reference_batch("batch_1", "border.py")
+        ]
+    else:
+        ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"border.py": 100})]
+    ctx.data["review_strategy"] = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=20000,
+        max_comment_entries=5,
+        batching_enabled=True,
+    )
+    ctx.data["review_diff"] = (
+        "diff --git a/border.py b/border.py\n"
+        "index 111..222 100644\n"
+        "--- a/border.py\n"
+        "+++ b/border.py\n"
+        "@@ -1,2 +1,3 @@\n"
+        " context\n"
+        "+added line\n"
+        " context\n"
+    )
+    ctx.data["cli_preference"] = "auto"
+    ctx.data["project_root"] = "/tmp/project"
+    return ctx, fake_adapter
+
+
+def test_ai_review_findings_retries_timed_out_worktree_batch_with_hunks(monkeypatch):
+    """A timed-out worktree_reference batch reviewed NOTHING — one bounded retry with
+    inline hunks turns a total loss into guaranteed coverage of the batch's files."""
+    ctx, fake_adapter = _timeout_ctx(
+        [
+            (124, ""),  # batch_1: CLI timeout while exploring the worktree
+            (0, '[{"title": "Found on retry", "path": "border.py"}]'),  # batch_1_retry
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Success)
+    assert len(fake_adapter.calls) == 2
+    retry_prompt = fake_adapter.calls[1]["prompt"]
+    assert "added line" in retry_prompt  # inline hunks, no worktree exploration
+    assert "Read from worktree" not in retry_prompt
+    assert ctx.data["raw_findings"] == [{"title": "Found on retry", "path": "border.py"}]
+    assert ctx.data["ai_findings_failed"] is False
+
+
+def test_ai_review_findings_no_timeout_retry_for_inline_batches(monkeypatch):
+    """Timeouts on batches that already had inline hunks don't retry — the fallback
+    only exists for worktree_reference exploration blowups."""
+    ctx, fake_adapter = _timeout_ctx([(124, "")], worktree_reference=False)
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Error)  # 0/1 batches produced output (005)
+    assert len(fake_adapter.calls) == 1
+
+
+def test_ai_review_findings_timeout_retry_failure_keeps_batch_failed(monkeypatch):
+    ctx, fake_adapter = _timeout_ctx(
+        [
+            (124, ""),  # batch_1 timeout
+            (1, ""),  # retry also fails
+        ]
+    )
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    result = ai_review_findings(ctx)
+
+    assert isinstance(result, Error)  # still 0/N succeeded
+    assert len(fake_adapter.calls) == 2
+
+
+def test_release_review_worktree_cleans_and_clears_context(monkeypatch):
+    import titan_plugin_github.operations as gh_operations
+
+    removed = []
+    monkeypatch.setattr(
+        gh_operations, "cleanup_worktree", lambda git, path: removed.append(path) or True
+    )
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.git = Mock()
+    ctx.data["worktree_created"] = True
+    ctx.data["worktree_path"] = "/tmp/wt/titan-review-9"
+
+    code_review_steps._release_review_worktree(ctx)
+
+    assert removed == ["/tmp/wt/titan-review-9"]
+    assert ctx.data["worktree_created"] is False
+    assert ctx.data["worktree_path"] is None
+
+
+def test_validate_review_actions_releases_worktree_even_with_no_actions(monkeypatch):
+    """The early-release must also cover the no-actions path: the user can still quit
+    at the submit prompt afterwards, and the worktree must not depend on reaching the
+    final cleanup step."""
+    import titan_plugin_github.operations as gh_operations
+
+    removed = []
+    monkeypatch.setattr(
+        gh_operations, "cleanup_worktree", lambda git, path: removed.append(path) or True
+    )
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.textual = _FakeTextual()
+    ctx.git = Mock()
+    ctx.data["review_action_proposals"] = []
+    ctx.data["worktree_created"] = True
+    ctx.data["worktree_path"] = "/tmp/wt/titan-review-9"
+
+    result = code_review_steps.validate_review_actions(ctx)
+
+    assert isinstance(result, Skip)
+    assert removed == ["/tmp/wt/titan-review-9"]

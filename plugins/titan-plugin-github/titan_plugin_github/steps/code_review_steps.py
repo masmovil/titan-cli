@@ -1698,6 +1698,42 @@ def _render_findings_batch_degraded(ctx: WorkflowContext, batch_id: str) -> None
     ctx.textual.dim_text(f"{batch_id} was too large — file context reduced to fit the AI call")
 
 
+def _retry_timed_out_worktree_batch(ctx: WorkflowContext, batch, run, strategy) -> Optional[tuple]:
+    """Retry a timed-out worktree_reference batch once in bounded hunks_only mode.
+
+    Runs on the step thread (UI access is fine). Returns (fallback_batch, outcome)
+    when the retry was executed, or None when no bounded fallback was possible
+    (no hunks, or the fallback prompt itself exceeds the budget) — the caller then
+    keeps the original failed outcome.
+    """
+    from ..operations.findings_operations import (
+        build_findings_prompt_parts,
+        build_timeout_fallback_batch,
+    )
+
+    fallback = build_timeout_fallback_batch(
+        batch, ctx.get("review_diff", ""), diff_manager=ctx.get("review_diff_manager")
+    )
+    if not fallback:
+        return None
+    prompt = build_findings_prompt_parts(fallback)["prompt"]
+    if strategy and len(prompt) > strategy.max_prompt_chars:
+        return None
+
+    ctx.textual.dim_text(
+        f"{batch.batch_id} timed out exploring the worktree — retrying with inline diff hunks only"
+    )
+    logger.info(
+        "findings_batch_timeout_fallback",
+        batch_id=batch.batch_id,
+        fallback_batch_id=fallback.batch_id,
+        prompt_actual_chars=len(prompt),
+    )
+    with ctx.textual.loading(f"Retrying {batch.batch_id} with inline hunks…"):
+        outcome = run((fallback, prompt, None))
+    return fallback, outcome
+
+
 def _render_findings_batch_result(
     ctx: WorkflowContext,
     batch_id: str,
@@ -1965,7 +2001,12 @@ def _execute_findings_batch(
 
     if not response.succeeded:
         logger.debug("findings_batch_failed", batch_id=batch.batch_id, exit_code=response.exit_code)
-        return {"status": "failed", "raw": None, "detail": f"CLI exit {response.exit_code}"}
+        return {
+            "status": "failed",
+            "raw": None,
+            "detail": f"CLI exit {response.exit_code}",
+            "timed_out": response.exit_code == 124,
+        }
 
     match parse_findings_response(response.stdout, structured=use_structured_output):
         case ClientSuccess(data=raw) if isinstance(raw, list):
@@ -2067,6 +2108,9 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     findings_failed = False
     batches_attempted = 0
     batches_succeeded = 0
+    # Paths whose batch actually produced output — a failed/skipped batch's files were
+    # NOT reviewed, and downstream passes (synthesis) must not claim they were.
+    reviewed_paths: set[str] = set()
     batch_queue = list(batches)
     ctx.textual.dim_text(f"Reviewing {len(batch_queue)} batch(es) with {cli_display}")
 
@@ -2194,8 +2238,21 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
                     ]
 
         for batch, outcome in outcomes:
+            if (
+                outcome["status"] == "failed"
+                and outcome.get("timed_out")
+                and any(entry.worktree_reference for entry in batch.files_context.values())
+            ):
+                # A timed-out worktree_reference batch means the CLI spent the whole
+                # budget exploring a (usually huge) file and reviewed NOTHING. One
+                # bounded retry with inline hunks trades depth for guaranteed
+                # coverage of the batch's files.
+                retried = _retry_timed_out_worktree_batch(ctx, batch, _run, strategy)
+                if retried:
+                    batch, outcome = retried
             if outcome["status"] == "success":
                 batches_succeeded += 1
+                reviewed_paths.update(batch.files_context)
                 aggregated_raw.extend(outcome["raw"])
                 _render_findings_batch_result(
                     ctx,
@@ -2279,6 +2336,7 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
                 with ctx.textual.loading(f"Asking {cli_display} to review the rescue batch…"):
                     rescue_outcome = _run((rescue_batch, rescue_prompt, None))
                 if rescue_outcome["status"] == "success":
+                    reviewed_paths.update(rescue_batch.files_context)
                     aggregated_raw.extend(rescue_outcome["raw"])
                     _render_findings_batch_result(
                         ctx,
@@ -2323,7 +2381,12 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
             dedupe_synthesis_findings,
         )
 
-        focus_paths = sorted({path for batch in batches for path in batch.files_context})
+        # Only paths whose batch actually SUCCEEDED: the synthesis instructions tell
+        # the model "single-file issues in these files were already reviewed" — that
+        # claim must not cover files whose batch failed or was skipped over budget
+        # (their single-file issues would be silently suppressed with no one having
+        # looked at them).
+        focus_paths = sorted(reviewed_paths)
         synthesis_batch = (
             build_cross_file_synthesis_batch(
                 focus_paths,
@@ -2703,7 +2766,9 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
             ctx.textual.end_step("skip")
             return Skip("Verification response unparseable")
 
-    outcome = apply_verification_verdicts(to_verify, raw_verdicts, exempt)
+    outcome = apply_verification_verdicts(
+        to_verify, raw_verdicts, exempt, paths_with_code=set(code_map)
+    )
     ctx.data["deduped_findings"] = outcome.kept
     ctx.data["refuted_findings"] = outcome.refuted
 
@@ -2793,6 +2858,26 @@ def build_new_comment_actions(ctx: WorkflowContext) -> WorkflowResult:
     return Success("Actions built")
 
 
+def _release_review_worktree(ctx: WorkflowContext) -> None:
+    """Remove the review worktree as soon as nothing will read from it again.
+
+    The workflow's final cleanup step only runs when the workflow reaches it —
+    abandoning the review at an interactive gate (exit button, quitting the app at
+    the submit prompt) used to leave the worktree on disk. Failure here is fine:
+    the final cleanup step remains as backstop.
+    """
+    if not ctx.get("worktree_created") or not ctx.get("worktree_path") or not ctx.git:
+        return
+    from ..operations import cleanup_worktree as cleanup_worktree_operation
+
+    if cleanup_worktree_operation(ctx.git, ctx.data["worktree_path"]):
+        ctx.textual.dim_text("Review worktree removed (no longer needed).")
+        ctx.data["worktree_created"] = False
+        ctx.data["worktree_path"] = None
+    else:
+        logger.warning("early_worktree_release_failed", worktree_path=ctx.data.get("worktree_path"))
+
+
 def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     """
     Present each ReviewActionProposal to the user for approval, editing, or skipping.
@@ -2818,6 +2903,7 @@ def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
 
     if not actions:
         ctx.textual.dim_text("No actions to validate.")
+        _release_review_worktree(ctx)
         ctx.textual.end_step("skip")
         return Skip("No actions to validate")
 
@@ -2834,19 +2920,29 @@ def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
         key=lambda a: severity_order.get(a.severity.value if a.severity else "", 99),
     )
 
+    # Precompute every action's code context NOW: anchors are resolved and the diff
+    # hunks / file excerpts below are the last reads from the worktree. Releasing it
+    # before the interactive loop means abandoning the review mid-gate (exit button,
+    # quitting the app at the submit prompt) can no longer leave a stale worktree —
+    # the final cleanup_worktree step becomes a no-op backstop.
+    prepared: List[tuple] = []
+    for action in sorted_actions:
+        diff_hunk = extract_diff_hunk_for_action(action, diff, diff_manager=diff_manager)
+        # Unanchored findings have no diff hunk by definition — read the real file so the
+        # user judges the finding against its code instead of a bare assertion.
+        file_excerpt = extract_file_excerpt_for_action(action, diff_manager=diff_manager)
+        prepared.append((action, diff_hunk, file_excerpt))
+    _release_review_worktree(ctx)
+
     approved: List[ReviewActionProposal] = []
     skipped = 0
     exit_requested = False
 
-    for idx, action in enumerate(sorted_actions):
+    for idx, (action, diff_hunk, file_excerpt) in enumerate(prepared):
         if exit_requested:
             break
 
         current = action
-        diff_hunk = extract_diff_hunk_for_action(current, diff, diff_manager=diff_manager)
-        # Unanchored findings have no diff hunk by definition — read the real file so the
-        # user judges the finding against its code instead of a bare assertion.
-        file_excerpt = extract_file_excerpt_for_action(current, diff_manager=diff_manager)
 
         while True:
             choice = _show_review_action_and_get_decision(

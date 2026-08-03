@@ -61,7 +61,8 @@ def test_prompt_includes_findings_and_capped_code():
 
 def test_prompt_survives_missing_code_context():
     parts = build_verification_prompt_parts([_make_finding(path="gone.py")], {})
-    assert "(no code context available)" in parts["code"]
+    assert "### gone.py" in parts["code"]
+    assert "no code context available for this file" in parts["code"]
 
 
 def test_parse_structured_response_unwraps_verdicts():
@@ -145,7 +146,7 @@ def test_code_map_uses_hunks_never_full_content():
     assert "FULL FILE CONTENT" not in code_map["a.py"]
 
 
-def test_code_map_only_includes_finding_paths_and_caps():
+def test_code_map_only_includes_finding_paths_without_truncating():
     batch = FocusContextBatch(
         batch_id="batch_1",
         files_context={
@@ -154,10 +155,11 @@ def test_code_map_only_includes_finding_paths_and_caps():
         },
     )
 
-    code_map = build_verification_code_map([_make_finding(path="a.py")], [batch], cap_chars=100)
+    code_map = build_verification_code_map([_make_finding(path="a.py")], [batch])
 
+    # Capping (with its visible marker) happens at prompt build, not here.
     assert set(code_map) == {"a.py"}
-    assert len(code_map["a.py"]) == 100
+    assert len(code_map["a.py"]) == 9000
 
 
 def test_schema_and_telemetry_shapes():
@@ -172,3 +174,78 @@ def test_schema_and_telemetry_shapes():
     parts = build_verification_prompt_parts([_make_finding()], {"a.py": "code"})
     telemetry = summarize_verification_prompt_parts(parts)
     assert set(telemetry) == {"findings_chars", "code_chars", "instructions_chars"}
+
+
+# ============================================================================
+# Fixes from the 2026-08-03 validation-run findings
+# ============================================================================
+
+
+def test_prompt_marks_paths_without_code_context():
+    """A finding whose path has no code must not silently share the prompt with other
+    files' code — the model could read absence as contradiction and refute it."""
+    parts = build_verification_prompt_parts(
+        [_make_finding(path="missing.py"), _make_finding(path="a.py")],
+        {"a.py": "some code"},
+    )
+
+    assert "### missing.py" in parts["code"]
+    assert "no code context available for this file" in parts["code"]
+    assert 'must be "uncertain"' in parts["code"]
+
+
+def test_prompt_marks_truncated_code_blocks():
+    parts = build_verification_prompt_parts(
+        [_make_finding(path="a.py")], {"a.py": "x" * 5000}, code_cap_chars=100
+    )
+
+    assert "code truncated here" in parts["code"]
+
+    intact = build_verification_prompt_parts(
+        [_make_finding(path="a.py")], {"a.py": "short"}, code_cap_chars=100
+    )
+    assert "code truncated here" not in intact["code"]
+
+
+def test_apply_verdicts_ignores_refutation_without_code_context():
+    """The model cannot legitimately contradict code it never saw: a refutation for a
+    path outside `paths_with_code` is dropped (finding kept), deterministically."""
+    no_code = _make_finding("No code one", path="missing.py")
+    with_code = _make_finding("With code one", path="a.py")
+
+    outcome = apply_verification_verdicts(
+        [no_code, with_code],
+        [
+            {"index": 0, "verdict": "refuted", "reasoning": "not present in the code"},
+            {"index": 1, "verdict": "refuted", "reasoning": "check exists at line 12"},
+        ],
+        exempt=[],
+        paths_with_code={"a.py"},
+    )
+
+    assert no_code in outcome.kept
+    assert with_code in outcome.refuted
+    assert outcome.refuted_reasons == ["check exists at line 12"]
+
+
+def test_apply_verdicts_keeps_uncertain_findings():
+    """`uncertain` is a declared verdict value and must behave as keep, not drop."""
+    finding = _make_finding("Uncertain one")
+
+    outcome = apply_verification_verdicts(
+        [finding],
+        [{"index": 0, "verdict": "uncertain", "reasoning": "not enough code shown"}],
+        exempt=[],
+    )
+
+    assert outcome.refuted == []
+    assert finding in outcome.kept
+
+
+def test_parse_verification_response_handles_non_json_and_empty():
+    """Fail-open depends on parse returning an error, never raising, on prose or
+    empty output — the most likely real-world CLI failure shapes."""
+    for stdout in ("I could not verify these findings, sorry.", "", "   \n"):
+        for structured in (True, False):
+            result = parse_verification_response(stdout, structured=structured)
+            assert isinstance(result, ClientError)

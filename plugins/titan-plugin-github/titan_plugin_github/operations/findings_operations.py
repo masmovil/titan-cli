@@ -431,6 +431,50 @@ def build_cross_file_synthesis_batch(
     )
 
 
+TIMEOUT_FALLBACK_BATCH_SUFFIX = "_retry"
+
+
+def build_timeout_fallback_batch(
+    batch,
+    diff: str,
+    diff_manager=None,
+):
+    """Rebuild a timed-out worktree_reference batch in bounded hunks_only mode.
+
+    A worktree_reference batch sends a small prompt and lets the CLI explore the
+    file in the worktree — on very large files that exploration can eat the whole
+    timeout and the file ends up with ZERO review. The fallback trades depth for a
+    guaranteed bounded review: same files, inline diff hunks only, no exploration.
+    Returns None when no path has diff hunks (nothing bounded to retry with).
+    """
+    from ..models.review_enums import FileReadMode
+    from ..models.review_models import FileContextEntry, FocusContextBatch
+    from .context_resolution_operations import extract_hunks_only
+
+    files_context: dict[str, FileContextEntry] = {}
+    for path in batch.files_context:
+        hunks = extract_hunks_only(diff, path, diff_manager=diff_manager)
+        if not hunks:
+            continue
+        files_context[path] = FileContextEntry(
+            path=path,
+            read_mode=FileReadMode.HUNKS_ONLY,
+            hunks=hunks,
+            approximate_chars=sum(len(hunk) for hunk in hunks),
+        )
+
+    if not files_context:
+        return None
+
+    return FocusContextBatch(
+        batch_id=f"{batch.batch_id}{TIMEOUT_FALLBACK_BATCH_SUFFIX}",
+        files_context=files_context,
+        checklist_applicable=batch.checklist_applicable,
+        comment_context=batch.comment_context,
+        pr_manifest=batch.pr_manifest,
+    )
+
+
 def dedupe_synthesis_findings(
     synthesis_raw: list,
     existing_raw: list,
@@ -470,7 +514,8 @@ def dedupe_synthesis_findings(
     unique: list = []
     for candidate in synthesis_raw:
         if not isinstance(candidate, dict):
-            unique.append(candidate)
+            # Garbage items would be dropped by normalize anyway, but keeping them
+            # here would inflate the "unique findings" count shown/logged.
             continue
         candidate_title = str(candidate.get("title", "")).lower()
         is_duplicate = any(
