@@ -33,6 +33,7 @@ def create_worktree_step(ctx: WorkflowContext) -> WorkflowResult:
     head_branch = ctx.get("selected_pr_head_branch") or ctx.get("review_pr_head") or ""
 
     if not pr_number:
+        ctx.textual.error_text("Missing required data")
         ctx.textual.end_step("error")
         return Error("Missing required data")
 

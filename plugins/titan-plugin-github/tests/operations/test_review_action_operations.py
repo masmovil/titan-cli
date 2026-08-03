@@ -162,7 +162,7 @@ def test_comment_view_from_action_prefers_resolved_line_label():
     view = CommentView.from_action(action, diff_hunk="@@ -10,1 +10,2 @@")
 
     assert view.line == 12
-    assert view.line_label == "Line 12 (AI 999 via snippet)"
+    assert view.line_label == "Line 12 (adjusted from AI's line 999)"
 
 
 # ---------------------------------------------------------------------------

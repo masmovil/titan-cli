@@ -438,11 +438,12 @@ def _build_action_line_label(action: Any) -> Optional[str]:
     """
     resolved_line = getattr(action, "resolved_line", None)
     original_line = getattr(action, "original_line", None) or getattr(action, "line", None)
-    resolution_source = getattr(action, "resolution_source", None)
 
     if resolved_line and original_line and resolved_line != original_line:
-        suffix = f" via {resolution_source}" if resolution_source else ""
-        return f"Line {resolved_line} (AI {original_line}{suffix})"
+        # resolution_source is an internal classifier value ("snippet", "evidence",
+        # "validated_line"…) — what the reviewer needs is that the AI's line was
+        # corrected against the diff, not which mechanism did it.
+        return f"Line {resolved_line} (adjusted from AI's line {original_line})"
     if resolved_line:
         return f"Line {resolved_line}"
 

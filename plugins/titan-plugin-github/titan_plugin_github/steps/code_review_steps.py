@@ -530,6 +530,7 @@ def select_pr_for_code_review(ctx: WorkflowContext) -> WorkflowResult:
     ctx.textual.begin_step("Select PR to Review")
 
     if not ctx.github:
+        ctx.textual.error_text("GitHub client not available")
         ctx.textual.end_step("error")
         return Error("GitHub client not available")
 
@@ -585,6 +586,7 @@ def select_pr_for_code_review(ctx: WorkflowContext) -> WorkflowResult:
     try:
         selected = ctx.textual.ask_option(question, options)
     except Exception as e:
+        ctx.textual.error_text(str(e))
         ctx.textual.end_step("error")
         return Error(str(e))
 
@@ -595,6 +597,7 @@ def select_pr_for_code_review(ctx: WorkflowContext) -> WorkflowResult:
 
     selected_pr = next((pr for pr in sorted_prs if pr.number == selected), None)
     if not selected_pr:
+        ctx.textual.error_text(f"PR #{selected} not found in list")
         ctx.textual.end_step("error")
         return Error(f"PR #{selected} not found in list")
 
@@ -642,10 +645,12 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
 
     pr_number = ctx.get("review_pr_number")
     if not pr_number:
+        ctx.textual.error_text("No PR number in context (run select_pr_for_code_review first)")
         ctx.textual.end_step("error")
         return Error("No PR number in context (run select_pr_for_code_review first)")
 
     if not ctx.github:
+        ctx.textual.error_text("GitHub client not available")
         ctx.textual.end_step("error")
         return Error("GitHub client not available")
 
@@ -927,12 +932,14 @@ def build_change_manifest(ctx: WorkflowContext) -> WorkflowResult:
     files = ctx.get("review_changed_files_with_stats", [])
 
     if not pr:
+        ctx.textual.error_text("No PR data in context (run fetch_pr_review_bundle first)")
         ctx.textual.end_step("error")
         return Error("No PR data in context (run fetch_pr_review_bundle first)")
 
     try:
         manifest = build_change_manifest_operation(pr, files)
     except Exception as e:
+        ctx.textual.error_text(f"Failed to build change manifest: {e}")
         ctx.textual.end_step("error")
         return Error(f"Failed to build change manifest: {e}")
 
@@ -999,6 +1006,7 @@ def build_existing_comments_index(ctx: WorkflowContext) -> WorkflowResult:
             bug_risk_only=True,
         )
     except Exception as e:
+        ctx.textual.error_text(f"Failed to build comments index: {e}")
         ctx.textual.end_step("error")
         return Error(f"Failed to build comments index: {e}")
 
@@ -1059,6 +1067,7 @@ def classify_pr(ctx: WorkflowContext) -> WorkflowResult:
     review_profile = _get_review_profile(ctx)
 
     if not manifest:
+        ctx.textual.error_text("No change manifest in context")
         ctx.textual.end_step("error")
         return Error("No change manifest in context")
 
@@ -1116,6 +1125,7 @@ def score_review_candidates(ctx: WorkflowContext) -> WorkflowResult:
     manifest = ctx.get("change_manifest")
     review_profile = _get_review_profile(ctx)
     if not manifest:
+        ctx.textual.error_text("No change manifest in context")
         ctx.textual.end_step("error")
         return Error("No change manifest in context")
 
@@ -1177,6 +1187,8 @@ def build_review_checklist(ctx: WorkflowContext) -> WorkflowResult:
     ctx.textual.begin_step("Build Review Checklist")
 
     if not ctx.github_managers:
+        ctx.textual.error_text("GitHub managers are not available in workflow context.")
+        ctx.textual.end_step("error")
         return Error("GitHub managers are not available in workflow context.")
 
     checklist = ctx.github_managers.checklist.get_effective_checklist()
@@ -1242,6 +1254,7 @@ def select_review_strategy(ctx: WorkflowContext) -> WorkflowResult:
 
     classification = ctx.get("pr_classification")
     if not classification:
+        ctx.textual.error_text("No pr_classification in context")
         ctx.textual.end_step("error")
         return Error("No pr_classification in context")
 
@@ -1321,6 +1334,7 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
     project_root = ctx.data.get("project_root")
 
     if not manifest or not strategy:
+        ctx.textual.error_text("Missing change_manifest or review_strategy in context")
         ctx.textual.end_step("error")
         return Error("Missing change_manifest or review_strategy in context")
 
@@ -1402,9 +1416,13 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
     )
 
     if not response.succeeded:
-        ctx.textual.warning_text(f"CLI call failed (exit {response.exit_code}) — using default plan")
-        if response.stderr:
-            ctx.textual.dim_text(response.stderr[:200])
+        # Raw stderr means nothing to the reviewer; the actionable fact is that the
+        # AI plan failed and a deterministic plan takes over. Details go to the log
+        # (already captured in full by _log_ai_response above).
+        ctx.textual.warning_text(
+            "The AI couldn't produce a review plan — falling back to the automatic plan "
+            "(top-scored files)."
+        )
         fallback = build_default_review_plan(
             candidates,
             excluded_files,
@@ -1429,7 +1447,12 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
             parse_error = err
 
     if parse_error is not None:
-        ctx.textual.warning_text(f"Plan parsing failed ({parse_error}) — using default plan")
+        # Same as the CLI-failure path: no raw pydantic/JSON error dumps on screen.
+        logger.debug("review_plan_parse_failed", parse_error=parse_error)
+        ctx.textual.warning_text(
+            "The AI's review plan couldn't be read — falling back to the automatic plan "
+            "(top-scored files)."
+        )
         fallback = build_default_review_plan(
             candidates,
             excluded_files,
@@ -1483,6 +1506,7 @@ def validate_review_plan(ctx: WorkflowContext) -> WorkflowResult:
     review_profile = _get_review_profile(ctx)
 
     if not plan or not manifest:
+        ctx.textual.error_text("Missing review_plan or change_manifest in context")
         ctx.textual.end_step("error")
         return Error("Missing review_plan or change_manifest in context")
 
@@ -1792,10 +1816,12 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
     project_root = worktree_path or ctx.data.get("project_root")
 
     if not plan or not manifest or not strategy:
+        ctx.textual.error_text("Missing validated_review_plan, change_manifest or review_strategy in context")
         ctx.textual.end_step("error")
         return Error("Missing validated_review_plan, change_manifest or review_strategy in context")
 
     if not diff:
+        ctx.textual.error_text("No diff in context (run fetch_pr_review_bundle first)")
         ctx.textual.end_step("error")
         return Error("No diff in context (run fetch_pr_review_bundle first)")
 
@@ -1828,6 +1854,7 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
                 allow_file_reads=read_access.allowed,
             )
     except Exception as e:
+        ctx.textual.error_text(f"Failed to resolve review context: {e}")
         ctx.textual.end_step("error")
         return Error(f"Failed to resolve review context: {e}")
 
@@ -2005,6 +2032,7 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     project_root = ctx.data.get("worktree_path") or ctx.data.get("project_root")
 
     if not batches:
+        ctx.textual.error_text("No review_context_batches in context (run resolve_review_context first)")
         ctx.textual.end_step("error")
         return Error("No review_context_batches in context (run resolve_review_context first)")
 
@@ -2402,6 +2430,7 @@ def normalize_findings(ctx: WorkflowContext) -> WorkflowResult:
     raw = ctx.get("raw_findings")
 
     if raw is None:
+        ctx.textual.error_text("No raw_findings in context (run ai_review_findings first)")
         ctx.textual.end_step("error")
         return Error("No raw_findings in context (run ai_review_findings first)")
 
@@ -2414,10 +2443,12 @@ def normalize_findings(ctx: WorkflowContext) -> WorkflowResult:
         try:
             raw = json.loads(raw)
         except json.JSONDecodeError as e:
+            ctx.textual.error_text(f"Failed to parse raw_findings JSON: {e}")
             ctx.textual.end_step("error")
             return Error(f"Failed to parse raw_findings JSON: {e}")
 
     if not isinstance(raw, list):
+        ctx.textual.error_text(f"raw_findings must be a list, got {type(raw).__name__}")
         ctx.textual.end_step("error")
         return Error(f"raw_findings must be a list, got {type(raw).__name__}")
 
@@ -2470,6 +2501,7 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
     existing_index = ctx.get("existing_comments_index", [])
 
     if findings is None:
+        ctx.textual.error_text("No normalized_findings in context (run normalize_findings first)")
         ctx.textual.end_step("error")
         return Error("No normalized_findings in context (run normalize_findings first)")
 
@@ -2555,6 +2587,7 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
 
     findings = ctx.get("deduped_findings")
     if findings is None:
+        ctx.textual.error_text("No deduped_findings in context (run dedupe_findings first)")
         ctx.textual.end_step("error")
         return Error("No deduped_findings in context (run dedupe_findings first)")
 
@@ -2923,10 +2956,12 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     diff_manager = ctx.get("review_diff_manager")
 
     if not pr_number:
+        ctx.textual.error_text("No PR number in context")
         ctx.textual.end_step("error")
         return Error("No PR number in context")
 
     if not ctx.github:
+        ctx.textual.error_text("GitHub client not available")
         ctx.textual.end_step("error")
         return Error("GitHub client not available")
 
@@ -3019,6 +3054,7 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     try:
         event = ctx.textual.ask_option("Select review type:", event_options)
     except Exception as e:
+        ctx.textual.error_text(str(e))
         ctx.textual.end_step("error")
         return Error(str(e))
 
@@ -3049,6 +3085,13 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     has_inline_comments = bool(payload.get("comments"))
     has_body = bool(payload.get("body"))
     is_empty_payload = not has_inline_comments and not has_body
+    # Human label for the GitHub review event ('COMMENT'/'APPROVE'/'REQUEST_CHANGES').
+    event_labels = {
+        "COMMENT": "Comment",
+        "APPROVE": "Approve",
+        "REQUEST_CHANGES": "Request Changes",
+    }
+    event_label = event_labels.get(event, event)
 
     if is_empty_payload:
         ctx.textual.dim_text("Submitting review without comments...")
@@ -3056,7 +3099,7 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
             submit_result = ctx.github.submit_review(pr_number, None, event, "")
         match submit_result:
             case ClientSuccess():
-                ctx.textual.success_text(f"✓ Review submitted as '{event}' on PR #{pr_number}")
+                ctx.textual.success_text(f"✓ Review submitted ({event_label}) on PR #{pr_number}")
                 ctx.textual.end_step("success")
                 return Success(f"Review submitted on PR #{pr_number}")
             case ClientError(error_message=err, error_code="PENDING_REVIEW_EXISTS"):
@@ -3082,7 +3125,9 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                 inline_comment_count=len(payload.get("comments", [])),
             )
             if payload.get("comments"):
-                ctx.textual.warning_text("Draft review failed. Probing inline comments individually...")
+                ctx.textual.warning_text(
+                    "GitHub rejected the review — checking which comments it will accept…"
+                )
                 filtered_payload, rejected_comments = _filter_invalid_inline_comments(ctx, pr_number, payload)
                 if rejected_comments:
                     rejection_breakdown: dict[str, int] = {}
@@ -3090,12 +3135,12 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                         kind = classify_github_review_rejection(comment.get("error", ""))
                         rejection_breakdown[kind] = rejection_breakdown.get(kind, 0) + 1
                     ctx.textual.warning_text(
-                        f"Filtered out {len(rejected_comments)} inline comment(s) rejected by GitHub"
+                        f"⚠ {len(rejected_comments)} comment(s) can't be placed inline and will be "
+                        "left out:"
                     )
                     for comment in rejected_comments:
-                        rejection_kind = classify_github_review_rejection(comment.get("error", ""))
                         ctx.textual.dim_text(
-                            f"Rejected inline: {comment.get('path')}:{comment.get('line')} -> {rejection_kind}"
+                            f"  {comment.get('path')}:{comment.get('line')}"
                         )
                     logger.debug(
                         "inline_comments_filtered_after_422",
@@ -3112,9 +3157,6 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                         valid_count=len(filtered_payload.get("comments", [])),
                         rejection_breakdown=rejection_breakdown,
                     )
-                    ctx.textual.dim_text(
-                        f"Inline submit success rate: {len(filtered_payload.get('comments', []))}/{len(payload.get('comments', []))}"
-                    )
                     if filtered_payload.get("comments") or filtered_payload.get("body"):
                         payload = filtered_payload
                         with ctx.textual.loading("Retrying review creation with valid comments only..."):
@@ -3122,7 +3164,7 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                         match retry_result:
                             case ClientSuccess(data=review_id):
                                 ctx.textual.success_text(
-                                    f"✓ Review #{review_id} created after filtering invalid comments"
+                                    f"✓ Review #{review_id} created without the rejected comment(s)"
                                 )
                             case ClientError(error_message=retry_err):
                                 ctx.textual.error_text(f"Failed to create review: {retry_err}")
@@ -3149,7 +3191,7 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     match submit_result:
         case ClientSuccess():
             ctx.textual.success_text(
-                f"✓ Review submitted as '{event}' on PR #{pr_number}"
+                f"✓ Review submitted ({event_label}) on PR #{pr_number}"
                 + (f" with {len(comment_actions)} comment(s)" if comment_actions else "")
             )
             ctx.textual.end_step("success")
@@ -3469,10 +3511,12 @@ def normalize_thread_decisions(ctx: WorkflowContext) -> WorkflowResult:
         try:
             raw = json.loads(raw)
         except json.JSONDecodeError as e:
+            ctx.textual.error_text(f"Failed to parse raw_thread_decisions JSON: {e}")
             ctx.textual.end_step("error")
             return Error(f"Failed to parse raw_thread_decisions JSON: {e}")
 
     if not isinstance(raw, list):
+        ctx.textual.error_text(f"raw_thread_decisions must be a list, got {type(raw).__name__}")
         ctx.textual.end_step("error")
         return Error(f"raw_thread_decisions must be a list, got {type(raw).__name__}")
 
