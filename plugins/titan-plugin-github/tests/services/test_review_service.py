@@ -314,3 +314,119 @@ def test_submit_review_pending_review_exists(review_service, mock_gh_network):
     assert result.error_code == "PENDING_REVIEW_EXISTS"
     assert "review in progress" in result.error_message.lower()
     assert result.log_level == "warning"
+
+
+# ---------------------------------------------------------------------------
+# get_pr_general_comments: issue comments + submitted review bodies
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_general_comments_graphql_response():
+    """Issue comments plus reviews: one with findings, one pending, one empty approval."""
+    return {
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "comments": {
+                        "nodes": [
+                            {
+                                "databaseId": 2001,
+                                "body": "General question about the approach",
+                                "author": {"login": "human", "name": "Human"},
+                                "createdAt": "2026-07-31T06:00:00Z",
+                                "updatedAt": "2026-07-31T06:00:00Z",
+                            }
+                        ]
+                    },
+                    "reviews": {
+                        "nodes": [
+                            {
+                                "databaseId": 3001,
+                                "body": "**src/foo.py** (line 866):\nFinding text",
+                                "state": "COMMENTED",
+                                "author": {"login": "titan", "name": "Titan"},
+                                "createdAt": "2026-07-31T06:11:00Z",
+                                "updatedAt": "2026-07-31T06:11:00Z",
+                            },
+                            {
+                                "databaseId": 3002,
+                                "body": "",
+                                "state": "APPROVED",
+                                "author": {"login": "human", "name": "Human"},
+                                "createdAt": "2026-07-31T07:00:00Z",
+                                "updatedAt": "2026-07-31T07:00:00Z",
+                            },
+                            {
+                                "databaseId": 3003,
+                                "body": "draft notes",
+                                "state": "PENDING",
+                                "author": {"login": "human", "name": "Human"},
+                                "createdAt": None,
+                                "updatedAt": None,
+                            },
+                        ]
+                    },
+                }
+            }
+        }
+    }
+
+
+def test_get_pr_general_comments_includes_submitted_review_bodies(
+    review_service, mock_graphql_network, sample_general_comments_graphql_response
+):
+    """Review bodies are where unanchorable findings end up — the respond
+    workflow must see them, not just issue comments."""
+    mock_graphql_network.run_query.return_value = sample_general_comments_graphql_response
+
+    result = review_service.get_pr_general_comments(42)
+
+    assert isinstance(result, ClientSuccess)
+    bodies = [t.main_comment.body for t in result.data]
+    assert "General question about the approach" in bodies
+    assert "**src/foo.py** (line 866):\nFinding text" in bodies
+
+
+def test_get_pr_general_comments_skips_pending_and_empty_reviews(
+    review_service, mock_graphql_network, sample_general_comments_graphql_response
+):
+    mock_graphql_network.run_query.return_value = sample_general_comments_graphql_response
+
+    result = review_service.get_pr_general_comments(42)
+
+    assert isinstance(result, ClientSuccess)
+    assert len(result.data) == 2  # 1 issue comment + 1 submitted review with body
+    assert all(t.is_general_comment for t in result.data)
+
+
+def test_get_pr_general_comments_without_reviews_key_still_works(
+    review_service, mock_graphql_network
+):
+    """Defensive: a response missing the reviews connection must not break."""
+    mock_graphql_network.run_query.return_value = {
+        "data": {"repository": {"pullRequest": {"comments": {"nodes": []}}}}
+    }
+
+    result = review_service.get_pr_general_comments(42)
+
+    assert isinstance(result, ClientSuccess)
+    assert result.data == []
+
+
+# ---------------------------------------------------------------------------
+# add_issue_comment: body must travel via stdin, not as a literal "-"
+# ---------------------------------------------------------------------------
+
+
+def test_add_issue_comment_reads_body_from_stdin(review_service, mock_gh_network):
+    """gh api needs "body=@-" to read the field from stdin — a bare "body=-" is
+    taken literally and every general reply gets posted as a one-dash comment
+    (live-observed on PR #253, 2026-07-31)."""
+    result = review_service.add_issue_comment(42, "Actual reply text")
+
+    assert isinstance(result, ClientSuccess)
+    args, kwargs = mock_gh_network.run_command.call_args
+    assert "body=@-" in args[0]
+    assert "body=-" not in args[0]
+    assert kwargs.get("stdin_input") == "Actual reply text"

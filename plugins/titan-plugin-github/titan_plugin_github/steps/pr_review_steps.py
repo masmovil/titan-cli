@@ -17,6 +17,7 @@ from ..models import UICommentThread
 from ..operations import (
     fetch_pr_threads,
     fetch_pr_general_comments,
+    build_quote_reply,
     build_ai_review_context,
     build_ai_review_prompt,
     find_ai_response_file,
@@ -978,8 +979,18 @@ def send_comment_replies_step(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("skip")
         return Skip("No replies sent")
 
-    # Split replies: general comments use add_issue_comment, review comments use reply_to_comment
-    general_replies = {cid: text for cid, text in final_replies.items() if cid in general_comment_ids}
+    # Split replies: general comments use add_issue_comment, review comments use reply_to_comment.
+    # A general comment has no thread for the reply to land in, so quote the
+    # original (GitHub's "quote reply") to tie the new issue comment back to it.
+    general_replies = {}
+    for cid, text in final_replies.items():
+        if cid not in general_comment_ids:
+            continue
+        thread = thread_by_id.get(cid)
+        if thread and thread.main_comment and thread.main_comment.body:
+            general_replies[cid] = build_quote_reply(thread.main_comment.body, text)
+        else:
+            general_replies[cid] = text
     review_replies = {cid: text for cid, text in final_replies.items() if cid not in general_comment_ids}
 
     with ctx.textual.loading(f"Sending {len(final_replies)} reply(s)..."):
