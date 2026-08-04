@@ -2465,6 +2465,17 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
                         status="failed",
                         detail=synthesis_outcome["detail"],
                     )
+        else:
+            # Nothing to synthesize: fewer than 2 reviewed paths, or the reviewed paths
+            # have no diff hunks (unavailable diff, binary, rename-only). Surfaced so a
+            # skipped synthesis never looks like one that ran clean.
+            logger.debug(
+                "synthesis_batch_skipped",
+                focus_paths_count=len(focus_paths),
+            )
+            ctx.textual.dim_text(
+                "Cross-file synthesis skipped (fewer than 2 reviewed files with diff hunks)."
+            )
 
     ctx.data["raw_findings"] = aggregated_raw or build_default_findings()
     ctx.data["ai_findings_failed"] = findings_failed
