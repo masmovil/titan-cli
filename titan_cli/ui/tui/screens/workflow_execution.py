@@ -236,7 +236,12 @@ class WorkflowExecutionScreen(BaseScreen):
 
     def action_toggle_favorite(self) -> None:
         """Toggle favorite status for this workflow and update the header."""
-        new_state = self.config.toggle_favorite_workflow(self.workflow_name)
+        try:
+            new_state = self.config.toggle_favorite_workflow(self.workflow_name)
+        except Exception as exc:
+            self.notify(f"Could not save favorite: {exc}", severity="error")
+            return
+
         self.is_favorite = new_state
         try:
             header = self.query_one(HeaderWidget)
