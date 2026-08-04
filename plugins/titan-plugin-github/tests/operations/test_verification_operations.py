@@ -249,3 +249,50 @@ def test_parse_verification_response_handles_non_json_and_empty():
         for structured in (True, False):
             result = parse_verification_response(stdout, structured=structured)
             assert isinstance(result, ClientError)
+
+
+def test_apply_verdicts_conflicting_duplicate_indices_prefer_keep():
+    """Duplicate indices are malformed output — whichever order they arrive in, the
+    verdict that KEEPS the finding must win (fail-open)."""
+    finding = _make_finding("Contested one")
+
+    for verdicts in (
+        [
+            {"index": 0, "verdict": "refuted", "reasoning": "stray refutation"},
+            {"index": 0, "verdict": "confirmed", "reasoning": "holds"},
+        ],
+        [
+            {"index": 0, "verdict": "confirmed", "reasoning": "holds"},
+            {"index": 0, "verdict": "refuted", "reasoning": "stray refutation"},
+        ],
+    ):
+        outcome = apply_verification_verdicts([finding], verdicts, exempt=[])
+        assert outcome.refuted == []
+        assert finding in outcome.kept
+
+
+def test_parse_structured_response_accepts_bare_array():
+    """The shared prompt text asks for a bare JSON array (the unstructured shape);
+    a model honoring the prompt over the schema must still be parseable."""
+    stdout = '[{"index": 0, "verdict": "confirmed", "reasoning": "holds"}]'
+    result = parse_verification_response(stdout, structured=True)
+    assert isinstance(result, ClientSuccess)
+    assert result.data[0]["verdict"] == "confirmed"
+
+
+def test_code_map_prefers_expanded_hunks_over_hunks():
+    batch = FocusContextBatch(
+        batch_id="batch_1",
+        files_context={
+            "a.py": FileContextEntry(
+                path="a.py",
+                read_mode=FileReadMode.EXPANDED_HUNKS,
+                hunks=["plain hunk"],
+                expanded_hunks=["expanded hunk with surrounding context"],
+            ),
+        },
+    )
+
+    code_map = build_verification_code_map([_make_finding(path="a.py")], [batch])
+
+    assert code_map["a.py"] == "expanded hunk with surrounding context"

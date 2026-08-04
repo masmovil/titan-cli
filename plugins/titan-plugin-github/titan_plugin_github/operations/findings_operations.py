@@ -1,6 +1,7 @@
 """Operations for building AI prompts for focused findings review."""
 
 import json
+import re
 from typing import Any
 
 from titan_cli.core.result import ClientError, ClientResult, ClientSuccess
@@ -384,6 +385,82 @@ SYNTHESIS_INSTRUCTIONS = """- This batch shows ALL changed hunks of this PR toge
 - If there are no cross-file inconsistencies, return []"""
 
 
+SYNTHESIS_HUNK_CONTEXT_LINES = 3
+"""Context lines kept around each change in synthesis hunks. The review diff is
+fetched with -U20; combining EVERY hunk of the PR at that width blew the synthesis
+prompt to 225k chars on a real 15-file PR (12.5x any budget) — the synthesis looks
+for cross-file contract mismatches, not line-level detail, so minimal context is
+the right trade."""
+
+_HUNK_HEADER_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+
+
+def trim_hunks_for_synthesis(
+    hunks: list[str], context_lines: int = SYNTHESIS_HUNK_CONTEXT_LINES
+) -> list[str]:
+    """Re-cut wide-context hunks down to `context_lines` around each change.
+
+    Widely separated changes inside one hunk become separate sub-hunks, each with a
+    RECALCULATED `@@` header — line numbering must stay exact because the prompt
+    annotator derives displayed line numbers from the header, and findings carry
+    those numbers back.
+    """
+    trimmed: list[str] = []
+    for hunk in hunks:
+        trimmed.extend(_retrim_hunk(hunk, context_lines))
+    return trimmed
+
+
+def _retrim_hunk(hunk: str, context_lines: int) -> list[str]:
+    lines = hunk.splitlines()
+    header_match = _HUNK_HEADER_RE.match(lines[0]) if lines else None
+    if not header_match:
+        return [hunk]
+
+    old_no = int(header_match.group(1))
+    new_no = int(header_match.group(3))
+    infos: list[tuple[str, int | None, int | None, bool]] = []
+    for line in lines[1:]:
+        if line.startswith("+"):
+            infos.append((line, None, new_no, True))
+            new_no += 1
+        elif line.startswith("-"):
+            infos.append((line, old_no, None, True))
+            old_no += 1
+        else:
+            infos.append((line, old_no, new_no, False))
+            old_no += 1
+            new_no += 1
+
+    changed_indices = [i for i, info in enumerate(infos) if info[3]]
+    if not changed_indices:
+        return [hunk]
+
+    clusters: list[tuple[int, int]] = []
+    start = end = changed_indices[0]
+    for index in changed_indices[1:]:
+        if index - end <= 2 * context_lines + 1:
+            end = index
+        else:
+            clusters.append((start, end))
+            start = end = index
+    clusters.append((start, end))
+
+    sub_hunks: list[str] = []
+    for cluster_start, cluster_end in clusters:
+        lo = max(0, cluster_start - context_lines)
+        hi = min(len(infos) - 1, cluster_end + context_lines)
+        segment = infos[lo : hi + 1]
+        old_lines = [info[1] for info in segment if info[1] is not None]
+        new_lines = [info[2] for info in segment if info[2] is not None]
+        header = (
+            f"@@ -{old_lines[0] if old_lines else 0},{len(old_lines)} "
+            f"+{new_lines[0] if new_lines else 0},{len(new_lines)} @@"
+        )
+        sub_hunks.append("\n".join([header] + [info[0] for info in segment]))
+    return sub_hunks
+
+
 def build_cross_file_synthesis_batch(
     focus_paths: list[str],
     diff: str,
@@ -413,6 +490,9 @@ def build_cross_file_synthesis_batch(
         hunks = extract_hunks_only(diff, path, diff_manager=diff_manager)
         if not hunks:
             continue
+        # The review diff carries -U20 context; at synthesis scale (every hunk of
+        # the PR at once) that context is what blows the budget, not the changes.
+        hunks = trim_hunks_for_synthesis(hunks)
         files_context[path] = FileContextEntry(
             path=path,
             read_mode=FileReadMode.HUNKS_ONLY,
@@ -445,7 +525,9 @@ def build_timeout_fallback_batch(
     file in the worktree — on very large files that exploration can eat the whole
     timeout and the file ends up with ZERO review. The fallback trades depth for a
     guaranteed bounded review: same files, inline diff hunks only, no exploration.
-    Returns None when no path has diff hunks (nothing bounded to retry with).
+    Checklist, comment context, PR manifest and related files carry over from the
+    original batch. Returns None when no path has diff hunks (nothing bounded to
+    retry with).
     """
     from ..models.review_enums import FileReadMode
     from ..models.review_models import FileContextEntry, FocusContextBatch
@@ -471,6 +553,7 @@ def build_timeout_fallback_batch(
         files_context=files_context,
         checklist_applicable=batch.checklist_applicable,
         comment_context=batch.comment_context,
+        related_files=batch.related_files,
         pr_manifest=batch.pr_manifest,
     )
 
@@ -495,17 +578,25 @@ def dedupe_synthesis_findings(
     """
     from difflib import SequenceMatcher
 
-    def _lines_close(line_a, line_b) -> bool:
+    def _is_duplicate_pair(candidate: dict, item: dict) -> bool:
+        if candidate.get("path") != item.get("path"):
+            return False
+        line_a, line_b = candidate.get("line"), item.get("line")
+        title_a = str(candidate.get("title", "")).lower()
+        title_b = str(item.get("title", "")).lower()
         if line_a is None and line_b is None:
-            return True
+            # With no line information at all, proximity says nothing — only an
+            # exact title repeat is safe to drop; similarity alone could kill a
+            # genuinely distinct cross-file finding.
+            return title_a == title_b
         if line_a is None or line_b is None:
             return False
         try:
-            return abs(int(line_a) - int(line_b)) <= line_window
+            lines_close = abs(int(line_a) - int(line_b)) <= line_window
         except (TypeError, ValueError):
             return False
-
-    def _titles_similar(title_a: str, title_b: str) -> bool:
+        if not lines_close:
+            return False
         if title_a == title_b:
             return True
         return SequenceMatcher(None, title_a, title_b).ratio() > title_similarity_threshold
@@ -517,15 +608,11 @@ def dedupe_synthesis_findings(
             # Garbage items would be dropped by normalize anyway, but keeping them
             # here would inflate the "unique findings" count shown/logged.
             continue
-        candidate_title = str(candidate.get("title", "")).lower()
-        is_duplicate = any(
-            candidate.get("path") == item.get("path")
-            and _lines_close(candidate.get("line"), item.get("line"))
-            and _titles_similar(candidate_title, str(item.get("title", "")).lower())
-            for item in existing
-        )
-        if not is_duplicate:
-            unique.append(candidate)
+        # Compare against the per-file findings AND the synthesis items already
+        # accepted — the synthesis list can repeat itself too.
+        if any(_is_duplicate_pair(candidate, item) for item in existing + unique):
+            continue
+        unique.append(candidate)
     return unique
 
 

@@ -179,12 +179,24 @@ def verification_json_schema() -> dict[str, Any]:
 
 
 def parse_verification_response(stdout: str, *, structured: bool) -> ClientResult[list]:
-    """Parse the verification CLI response into a list of verdict dicts."""
+    """Parse the verification CLI response into a list of verdict dicts.
+
+    Structured mode expects the schema's object wrapper, but the shared prompt text
+    asks for a bare JSON array (the unstructured shape) — a model that honors the
+    prompt over the schema must still be parseable, so structured mode falls back
+    to array extraction before giving up. Fail-open downstream depends on
+    recovering verdicts wherever they are.
+    """
     if not structured:
         return extract_json_payload(stdout, kind="array")
-    match extract_json_payload(stdout, kind="object"):
+    object_result = extract_json_payload(stdout, kind="object")
+    match object_result:
         case ClientSuccess(data=payload) if isinstance(payload, dict) and isinstance(payload.get("verdicts"), list):
             return ClientSuccess(data=payload["verdicts"])
+    match extract_json_payload(stdout, kind="array"):
+        case ClientSuccess(data=payload) if isinstance(payload, list):
+            return ClientSuccess(data=payload)
+    match object_result:
         case ClientSuccess():
             return ClientError(
                 error_message="Structured response missing 'verdicts' list",
@@ -216,7 +228,14 @@ def apply_verification_verdicts(
             verdict = VerificationVerdict.model_validate(item)
         except Exception:
             continue
-        if 0 <= verdict.index < len(verified_candidates):
+        if not (0 <= verdict.index < len(verified_candidates)):
+            continue
+        existing = verdict_by_index.get(verdict.index)
+        if existing is None:
+            verdict_by_index[verdict.index] = verdict
+        elif existing.verdict == "refuted" and verdict.verdict != "refuted":
+            # Duplicate indices are malformed output; when they conflict, fail-open
+            # means the verdict that KEEPS the finding wins, regardless of order.
             verdict_by_index[verdict.index] = verdict
 
     kept: list[Finding] = list(exempt)

@@ -342,7 +342,11 @@ def _is_derived_from_central(finding, central) -> bool:
         token in finding_text and token in central_text
         for token in ("launchcustomtab", "openurlordialog", "checkinternalorexternaluri", "ishostallowed", "onopenfailed", "onopensuccess")
     )
-    mentions_central = central_stem in finding_text or central_stem in central_text
+    # Only the FINDING mentioning the central file counts as a derivation signal —
+    # the central finding mentions its own file stem practically by definition, so
+    # checking central_text here would make this clause always true and reduce the
+    # whole collapse condition to a 0.32 title similarity.
+    mentions_central = central_stem in finding_text
     title_similarity = SequenceMatcher(None, finding.title.lower(), central.title.lower()).ratio()
 
     return (shared_api or mentions_central) and title_similarity >= 0.32
@@ -2091,8 +2095,15 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     if not adapter:
         ctx.textual.warning_text("No headless CLI available — skipping AI findings")
         ctx.data["raw_findings"] = build_default_findings()
+        # Keep the outputs consistent with every other exit of this step: downstream
+        # reads ai_findings_failed, and it must be explicitly False here (nothing
+        # failed — nothing ran).
+        ctx.data["ai_findings_failed"] = False
         ctx.textual.end_step("success")
-        return Success("No findings (no CLI available)", metadata={"raw_findings": []})
+        return Success(
+            "No findings (no CLI available)",
+            metadata={"raw_findings": [], "ai_findings_failed": False},
+        )
 
     # Structured output forces the CLI to return findings via a schema-validated tool
     # call instead of relying on the model to follow a "respond only with JSON" prompt
@@ -2292,9 +2303,10 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         from ..operations.findings_operations import build_empty_findings_rescue_batch
 
         candidates = ctx.get("review_candidates", [])
-        already_reviewed = {fp.path for batch in batches for fp in batch.files_context.values()}
+        # "Already reviewed" means a batch actually PRODUCED output for the path — a
+        # failed/skipped batch's files are as unreviewed as any borderline candidate.
         borderline_paths = [
-            candidate.path for candidate in candidates if candidate.path not in already_reviewed
+            candidate.path for candidate in candidates if candidate.path not in reviewed_paths
         ]
         rescue_batch = (
             build_empty_findings_rescue_batch(
@@ -2766,8 +2778,13 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
             ctx.textual.end_step("skip")
             return Skip("Verification response unparseable")
 
+    # Truthy contents only — the prompt builder treats an empty block as "no code
+    # available", so the refutation guard must agree with it.
     outcome = apply_verification_verdicts(
-        to_verify, raw_verdicts, exempt, paths_with_code=set(code_map)
+        to_verify,
+        raw_verdicts,
+        exempt,
+        paths_with_code={path for path, content in code_map.items() if content},
     )
     ctx.data["deduped_findings"] = outcome.kept
     ctx.data["refuted_findings"] = outcome.refuted

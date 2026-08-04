@@ -572,3 +572,155 @@ def test_timeout_fallback_batch_returns_none_without_hunks():
     )
 
     assert build_timeout_fallback_batch(original, _rescue_diff()) is None
+
+
+# ============================================================================
+# trim_hunks_for_synthesis (synthesis budget fix)
+# ============================================================================
+
+
+def test_trim_hunks_keeps_line_numbering_exact():
+    from titan_plugin_github.operations.findings_operations import (
+        _annotate_diff_hunk,
+        trim_hunks_for_synthesis,
+    )
+
+    # One change buried in 8 context lines each side (like -U20 diffs).
+    body = [f" ctx{i}" for i in range(8)] + ["+added line"] + [f" ctx{i + 8}" for i in range(8)]
+    hunk = "@@ -100,16 +100,17 @@\n" + "\n".join(body)
+
+    [trimmed] = trim_hunks_for_synthesis([hunk], context_lines=3)
+
+    # 3 context lines each side survive; header is recalculated so the annotator
+    # still numbers the added line as 108 (100 + 8 lines above it originally).
+    assert trimmed.startswith("@@ -105,6 +105,7 @@")
+    annotated = _annotate_diff_hunk(trimmed)
+    assert "108 [ADDED] added line" in annotated
+    assert "ctx0" not in trimmed
+    assert "ctx5" in trimmed
+
+
+def test_trim_hunks_splits_distant_changes_into_sub_hunks():
+    from titan_plugin_github.operations.findings_operations import trim_hunks_for_synthesis
+
+    body = (
+        ["+first change"]
+        + [f" gap{i}" for i in range(20)]
+        + ["+second change"]
+    )
+    hunk = "@@ -1,20 +1,22 @@\n" + "\n".join(body)
+
+    trimmed = trim_hunks_for_synthesis([hunk], context_lines=3)
+
+    assert len(trimmed) == 2
+    assert "first change" in trimmed[0] and "second change" not in trimmed[0]
+    assert "second change" in trimmed[1]
+    # Bulk of the gap is gone.
+    assert sum(len(t) for t in trimmed) < len(hunk)
+
+
+def test_trim_hunks_passes_through_short_or_headerless_hunks():
+    from titan_plugin_github.operations.findings_operations import trim_hunks_for_synthesis
+
+    short = "@@ -1,2 +1,3 @@\n context\n+added\n context"
+    headerless = "not a hunk at all"
+
+    assert trim_hunks_for_synthesis([short]) == [short]
+    assert trim_hunks_for_synthesis([headerless]) == [headerless]
+
+
+def test_synthesis_batch_trims_wide_context_hunks():
+    from titan_plugin_github.operations.findings_operations import build_cross_file_synthesis_batch
+
+    def _wide_diff(path: str) -> str:
+        body = [f" pad{i}" for i in range(20)] + ["+added line"] + [f" pad{i + 20}" for i in range(20)]
+        return (
+            f"diff --git a/{path} b/{path}\n"
+            "index 111..222 100644\n"
+            f"--- a/{path}\n"
+            f"+++ b/{path}\n"
+            "@@ -1,40 +1,41 @@\n" + "\n".join(body) + "\n"
+        )
+
+    diff = _wide_diff("a.py") + _wide_diff("b.py")
+    batch = build_cross_file_synthesis_batch(["a.py", "b.py"], diff, None)
+
+    assert batch is not None
+    for entry in batch.files_context.values():
+        assert entry.approximate_chars < 200  # vs ~360 chars of untrimmed padding
+        assert all("pad0" not in hunk for hunk in entry.hunks)
+
+
+def test_timeout_fallback_batch_propagates_batch_context():
+    """The bounded retry must not silently lose the original batch's guidance:
+    checklist, existing-comment context, related files and PR manifest carry over."""
+    from titan_plugin_github.models.review_enums import FileReadMode
+    from titan_plugin_github.models.review_models import (
+        FileContextEntry,
+        FocusContextBatch,
+        PullRequestManifest,
+        ReviewChecklistItem,
+    )
+    from titan_plugin_github.models.review_enums import ChecklistCategory
+    from titan_plugin_github.operations.findings_operations import build_timeout_fallback_batch
+
+    manifest = PullRequestManifest(
+        number=7, title="T", base="main", head="feat", author="a", description=""
+    )
+    checklist = [
+        ReviewChecklistItem(id=ChecklistCategory.ERROR_HANDLING, name="Errors", description="d")
+    ]
+    original = FocusContextBatch(
+        batch_id="batch_2",
+        files_context={
+            "border.py": FileContextEntry(
+                path="border.py",
+                read_mode=FileReadMode.WORKTREE_REFERENCE,
+                worktree_reference=True,
+            )
+        },
+        checklist_applicable=checklist,
+        related_files={"helper.py": "def helper(): ..."},
+        pr_manifest=manifest,
+    )
+
+    fallback = build_timeout_fallback_batch(original, _rescue_diff())
+
+    assert fallback is not None
+    assert fallback.checklist_applicable == checklist
+    assert fallback.related_files == {"helper.py": "def helper(): ..."}
+    assert fallback.pr_manifest is manifest
+
+
+def test_dedupe_synthesis_findings_dedupes_within_its_own_list():
+    from titan_plugin_github.operations.findings_operations import dedupe_synthesis_findings
+
+    synthesis = [
+        {"path": "a.py", "line": 10, "title": "Contract mismatch"},
+        {"path": "a.py", "line": 12, "title": "Contract mismatch!"},  # near-dup of the first
+        {"path": "b.py", "line": 3, "title": "Other issue"},
+    ]
+
+    unique = dedupe_synthesis_findings(synthesis, [])
+
+    assert unique == [
+        {"path": "a.py", "line": 10, "title": "Contract mismatch"},
+        {"path": "b.py", "line": 3, "title": "Other issue"},
+    ]
+
+
+def test_dedupe_synthesis_findings_lineless_requires_exact_title():
+    from titan_plugin_github.operations.findings_operations import dedupe_synthesis_findings
+
+    existing = [{"path": "a.py", "line": None, "title": "Missing error handling"}]
+    synthesis = [
+        # Similar-but-not-identical title with no line info on either side: kept —
+        # proximity says nothing, similarity alone must not drop it.
+        {"path": "a.py", "line": None, "title": "Missing error handling in retries"},
+        # Exact title repeat with no lines: dropped.
+        {"path": "a.py", "line": None, "title": "Missing error handling"},
+    ]
+
+    unique = dedupe_synthesis_findings(synthesis, existing)
+
+    assert unique == [{"path": "a.py", "line": None, "title": "Missing error handling in retries"}]
