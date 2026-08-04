@@ -402,6 +402,37 @@ def test_rescue_batch_returns_none_when_no_paths_have_hunks():
     assert build_empty_findings_rescue_batch(["nope.py"], _rescue_diff(), [], None) is None
 
 
+def test_rescue_batch_carries_capped_checklist_and_manifest():
+    from titan_plugin_github.models.review_enums import ChecklistCategory
+    from titan_plugin_github.models.review_models import PullRequestManifest, ReviewChecklistItem
+    from titan_plugin_github.operations.findings_operations import build_empty_findings_rescue_batch
+
+    checklist = [
+        ReviewChecklistItem(id=category, name=category.value, description="d")
+        for category in (
+            ChecklistCategory.FUNCTIONAL_CORRECTNESS,
+            ChecklistCategory.ERROR_HANDLING,
+            ChecklistCategory.SEMANTIC_CORRECTNESS,
+            ChecklistCategory.STATE_CONSISTENCY,
+            ChecklistCategory.TEST_COVERAGE,
+            ChecklistCategory.SECURITY,
+        )
+    ]
+    manifest = PullRequestManifest(
+        number=7, title="T", base="main", head="feat", author="a", description=""
+    )
+
+    batch = build_empty_findings_rescue_batch(
+        ["border.py"], _rescue_diff(), checklist, manifest
+    )
+
+    # The rescue batch must still run with review axes: only the first 4 items travel.
+    assert batch is not None
+    assert batch.checklist_applicable == checklist[:4]
+    assert len(batch.checklist_applicable) == 4
+    assert batch.pr_manifest is manifest
+
+
 # ============================================================================
 # build_cross_file_synthesis_batch + dedupe_synthesis_findings (review-quality-004)
 # ============================================================================
