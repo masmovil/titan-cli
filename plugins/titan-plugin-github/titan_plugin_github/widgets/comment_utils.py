@@ -49,6 +49,65 @@ CommentElement = Union[TextElement, SuggestionElement, CodeBlockElement]
 _HUNK_HEADER_RE = re.compile(r'@@ -\d+,?\d* \+(\d+),?\d* @@')
 
 
+_HTML_BLOCK_HINT = re.compile(r"<\s*(table|tbody|tr|td|div|p|span|a|img|picture|details|br)\b", re.I)
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_HTML_TAG = re.compile(r"<[^>]+>")
+_BLANK_RUN = re.compile(r"\n{3,}")
+
+_LINE_BREAK_TAGS = re.compile(r"<\s*/?\s*(br|/tr|/p|/div|/li|/h[1-6])\b[^>]*>", re.I)
+_CELL_END = re.compile(r"<\s*/\s*(td|th)\s*>", re.I)
+_CODE_SPAN = re.compile(r"<\s*code\s*[^>]*>(.*?)<\s*/\s*code\s*>", re.DOTALL | re.I)
+
+_EMOJI_SHORTCODES = {
+    ":warning:": "⚠️",
+    ":x:": "❌",
+    ":no_entry_sign:": "🚫",
+    ":heavy_check_mark:": "✅",
+    ":white_check_mark:": "✅",
+    ":bangbang:": "‼️",
+    ":information_source:": "ℹ️",
+    ":bulb:": "💡",
+    ":memo:": "📝",
+}
+
+
+def html_body_to_text(body: str) -> str:
+    """Flatten an HTML comment body into readable text.
+
+    Linter and CI bots (github-actions, Danger, Wiz…) post their findings as HTML
+    tables. Textual's Markdown widget has no `html_block`/`html_inline` handling, so
+    such a body renders as NOTHING and the comment looks empty — the reader can see
+    the thread but not what it says. Converting to text keeps the message readable;
+    the exact HTML layout is irrelevant in a terminal.
+    """
+    text = _HTML_COMMENT.sub("", body)
+    text = _CODE_SPAN.sub(lambda m: f"`{m.group(1).strip()}`", text)
+    text = _LINE_BREAK_TAGS.sub("\n", text)
+    # Cells on one source line would otherwise be glued together ("⚠️Unit tests…").
+    text = _CELL_END.sub(" ", text)
+    text = _HTML_TAG.sub("", text)
+    text = (
+        text.replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", '"')
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+    )
+    for shortcode, emoji in _EMOJI_SHORTCODES.items():
+        text = text.replace(shortcode, emoji)
+    lines = [line.strip() for line in text.splitlines()]
+    # A severity marker alone on its line (bots put it in its own table cell) reads
+    # better attached to the message it qualifies.
+    merged: List[str] = []
+    for line in lines:
+        if merged and merged[-1] in _EMOJI_SHORTCODES.values() and line:
+            merged[-1] = f"{merged[-1]} {line}"
+        else:
+            merged.append(line)
+    return _BLANK_RUN.sub("\n\n", "\n".join(merged)).strip()
+
+
 def parse_comment_body(
     body: str,
     diff_hunk: Optional[str] = None,
@@ -69,6 +128,11 @@ def parse_comment_body(
         return []
 
     body = body.replace("\r\n", "\n")
+    if _HTML_BLOCK_HINT.search(body) or body.lstrip().startswith("<!--"):
+        # Bot bodies are HTML; without this they render as an empty comment.
+        body = html_body_to_text(body)
+        if not body:
+            return []
     elements: List[CommentElement] = []
 
     code_block_pattern = re.compile(r"```(\w+)?\n(.*?)```", re.DOTALL)
