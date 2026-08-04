@@ -574,17 +574,27 @@ def dedupe_synthesis_findings(
     *,
     line_window: int = 5,
     title_similarity_threshold: float = 0.75,
+    same_category_similarity_threshold: float = 0.5,
 ) -> list:
     """Drop synthesis findings that duplicate a per-file batch finding.
 
     Works on raw (pre-normalization) dicts because it runs inside the findings step,
     before Finding models exist. A synthesis finding is a duplicate when an existing
     raw finding has the same path AND a line within the window (both-None counts as
-    close, one-None does not) AND either the same category or a similar title (exact
-    lowercase match or SequenceMatcher ratio above the threshold). Path/line/title
-    thresholds match `validators.is_duplicate`, which cannot be reused directly — it
-    compares a Finding against an existing-comment index entry, not two findings, and
-    its resolved/adjudicated branches have no meaning between two fresh findings.
+    close, one-None does not) AND the titles match: exactly, or above
+    `title_similarity_threshold`, or above the lower
+    `same_category_similarity_threshold` when both findings share a category.
+
+    Sharing a category is a hint, never proof on its own: cross-file findings land on
+    the call site, so they routinely sit within the window of a per-file finding in
+    the same category while describing a completely different defect — exactly what
+    the synthesis pass exists to surface. `validators.is_duplicate` does treat
+    same-category as decisive, but it compares against an ALREADY PUBLISHED comment
+    (and only an unresolved one); between two fresh findings of the same run that
+    would silently drop real cross-file findings. That validator can't be reused here
+    anyway: it takes a Finding plus an existing-comment index entry, and its
+    resolved/adjudicated branches are meaningless between two fresh findings.
+
     Non-dict items in either list are tolerated: raw AI output is untrusted.
     """
     from difflib import SequenceMatcher
@@ -610,13 +620,15 @@ def dedupe_synthesis_findings(
             return False
         if title_a == title_b:
             return True
+        similarity = SequenceMatcher(None, title_a, title_b).ratio()
         category_a = str(candidate.get("category", "")).lower()
         category_b = str(item.get("category", "")).lower()
         if category_a and category_a == category_b:
-            # Same defect class at the same spot: a restatement in different words,
-            # which title similarity alone would let through.
-            return True
-        return SequenceMatcher(None, title_a, title_b).ratio() > title_similarity_threshold
+            # Same defect class at the same spot: accept a looser wording match (a
+            # restatement in different words), but still require the titles to be
+            # talking about the same thing.
+            return similarity > same_category_similarity_threshold
+        return similarity > title_similarity_threshold
 
     existing = [item for item in existing_raw if isinstance(item, dict)]
     unique: list = []

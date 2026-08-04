@@ -49,9 +49,17 @@ CommentElement = Union[TextElement, SuggestionElement, CodeBlockElement]
 _HUNK_HEADER_RE = re.compile(r'@@ -\d+,?\d* \+(\d+),?\d* @@')
 
 
-_HTML_BLOCK_HINT = re.compile(r"<\s*(table|tbody|tr|td|div|p|span|a|img|picture|details|br)\b", re.I)
+# The tag name must follow `<` immediately and be closed like a real tag: prose such as
+# "check that x < a and y > b" must NOT be mistaken for markup, or the tag-stripping
+# below would delete everything between the two comparison operators.
+_HTML_BLOCK_HINT = re.compile(
+    r"</?(table|tbody|thead|tr|td|th|div|p|span|a|img|picture|source|details|summary|br|ul|ol|li|code)"
+    r"(\s[^<>]*)?/?>",
+    re.I,
+)
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-_HTML_TAG = re.compile(r"<[^>]+>")
+# Only well-formed tags: `<name>`, `</name>`, `<name attr="…">`, `<name/>`.
+_HTML_TAG = re.compile(r"</?[a-zA-Z][a-zA-Z0-9-]*(\s[^<>]*)?/?>")
 _BLANK_RUN = re.compile(r"\n{3,}")
 
 _LINE_BREAK_TAGS = re.compile(r"<\s*/?\s*(br|/tr|/p|/div|/li|/h[1-6])\b[^>]*>", re.I)
@@ -108,6 +116,18 @@ def html_body_to_text(body: str) -> str:
     return _BLANK_RUN.sub("\n\n", "\n".join(merged)).strip()
 
 
+def _flatten_html_if_needed(text: str) -> str:
+    """Flatten HTML in a PROSE segment only.
+
+    Called per text segment, never on the whole body: fenced code blocks must keep
+    their content verbatim (`List<String>` in a Kotlin snippet is not a tag, and a
+    mangled ```suggestion block would be applied to the code as-is).
+    """
+    if _HTML_BLOCK_HINT.search(text) or text.lstrip().startswith("<!--"):
+        return html_body_to_text(text)
+    return text
+
+
 def parse_comment_body(
     body: str,
     diff_hunk: Optional[str] = None,
@@ -128,22 +148,18 @@ def parse_comment_body(
         return []
 
     body = body.replace("\r\n", "\n")
-    if _HTML_BLOCK_HINT.search(body) or body.lstrip().startswith("<!--"):
-        # Bot bodies are HTML; without this they render as an empty comment.
-        body = html_body_to_text(body)
-        if not body:
-            return []
     elements: List[CommentElement] = []
 
     code_block_pattern = re.compile(r"```(\w+)?\n(.*?)```", re.DOTALL)
     matches = list(code_block_pattern.finditer(body))
 
     if not matches:
-        return [TextElement(content=body.strip())]
+        flattened = _flatten_html_if_needed(body).strip()
+        return [TextElement(content=flattened)] if flattened else []
 
     last_end = 0
     for match in matches:
-        text_before = body[last_end : match.start()].strip()
+        text_before = _flatten_html_if_needed(body[last_end : match.start()]).strip()
         if text_before:
             elements.append(TextElement(content=text_before))
 
@@ -173,7 +189,7 @@ def parse_comment_body(
 
         last_end = match.end()
 
-    text_after = body[last_end:].strip()
+    text_after = _flatten_html_if_needed(body[last_end:]).strip()
     if text_after:
         elements.append(TextElement(content=text_after))
 

@@ -791,3 +791,74 @@ def test_dedupe_synthesis_findings_lineless_requires_exact_title():
     unique = dedupe_synthesis_findings(synthesis, existing)
 
     assert unique == [{"path": "a.py", "line": None, "title": "Missing error handling in retries"}]
+
+
+def test_dedupe_synthesis_same_category_needs_a_wording_match():
+    """Sharing a category is a hint, not proof: a cross-file finding lands on the call
+    site, so it routinely sits within the line window of a per-file finding in the same
+    category while describing a DIFFERENT defect. Dropping it on category alone would
+    silently delete exactly what the synthesis pass exists to surface."""
+    from titan_plugin_github.operations.findings_operations import dedupe_synthesis_findings
+
+    existing = [
+        {
+            "path": "a.py",
+            "line": 10,
+            "category": "error_handling",
+            "title": "Missing null check on user input",
+        }
+    ]
+    distinct_cross_file = {
+        "path": "a.py",
+        "line": 12,
+        "category": "error_handling",
+        "title": "Caller does not handle the new error contract from b.py",
+    }
+
+    assert dedupe_synthesis_findings([distinct_cross_file], existing) == [distinct_cross_file]
+
+
+def test_dedupe_synthesis_same_category_drops_restatements():
+    """Same category + same spot + a loose wording match (below the 0.75 title bar but
+    above the 0.5 same-category bar) is a restatement, and gets dropped."""
+    from titan_plugin_github.operations.findings_operations import dedupe_synthesis_findings
+
+    existing = [
+        {
+            "path": "a.py",
+            "line": 10,
+            "category": "error_handling",
+            "title": "Missing null check on user input",
+        }
+    ]
+    restatement = {
+        "path": "a.py",
+        "line": 11,
+        "category": "error_handling",
+        "title": "Null check missing for user input",
+    }
+
+    assert dedupe_synthesis_findings([restatement], existing) == []
+
+
+def test_dedupe_synthesis_different_categories_keep_the_strict_title_bar():
+    """With different categories the strict 0.75 title threshold still applies, so a
+    0.71-similar title survives."""
+    from titan_plugin_github.operations.findings_operations import dedupe_synthesis_findings
+
+    existing = [
+        {
+            "path": "a.py",
+            "line": 10,
+            "category": "error_handling",
+            "title": "Missing null check on user input",
+        }
+    ]
+    other_category = {
+        "path": "a.py",
+        "line": 11,
+        "category": "security",
+        "title": "Null check missing for user input",
+    }
+
+    assert dedupe_synthesis_findings([other_category], existing) == [other_category]

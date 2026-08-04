@@ -82,3 +82,49 @@ def test_html_only_decoration_yields_no_elements():
     """A body with nothing but markup (e.g. a bare image badge) renders nothing
     instead of raw tags."""
     assert parse_comment_body(body='<img src="badge.svg">') == []
+
+
+# ============================================================================
+# Regressions caught by Titan's own review of the 014 fix (2026-08-04)
+# ============================================================================
+
+
+def test_prose_comparisons_are_not_mistaken_for_html():
+    """`< a` / `y >` in a human comment used to trigger the HTML path, and the
+    tag-stripping regex then deleted everything between them — silent content loss in
+    an ordinary review comment."""
+    body = "Check that `x < a` and `y > b` before calling this."
+
+    elements = parse_comment_body(body=body)
+
+    assert len(elements) == 1
+    assert elements[0].content == body
+
+
+def test_fenced_code_blocks_keep_generics_verbatim():
+    """Flattening used to run on the WHOLE body before fenced blocks were split, so
+    `List<String>` inside a code block lost its type argument."""
+    body = "Use this instead:\n\n```kotlin\nval names: List<String> = emptyList()\nif (a < p) return\n```"
+
+    elements = parse_comment_body(body=body)
+
+    assert isinstance(elements[1], CodeBlockElement)
+    assert elements[1].code == "val names: List<String> = emptyList()\nif (a < p) return"
+
+
+def test_suggestion_block_is_never_flattened():
+    """A mangled ```suggestion is worse than a blank one: it gets applied to the code."""
+    body = "Fix:\n\n```suggestion\nval x: Map<String, Int> = mapOf()\n```"
+
+    elements = parse_comment_body(body=body)
+
+    suggestion = elements[1]
+    assert suggestion.code == "val x: Map<String, Int> = mapOf()"
+
+
+def test_prose_mixed_with_real_html_still_flattens_the_html():
+    body = "See the table:<br><table><tr><td>:warning:</td><td>be careful</td></tr></table>"
+
+    elements = parse_comment_body(body=body)
+
+    assert elements[0].content == "See the table:\n⚠️ be careful"
