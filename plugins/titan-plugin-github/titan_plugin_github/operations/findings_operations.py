@@ -327,6 +327,7 @@ def build_empty_findings_rescue_batch(
     checklist: list[ReviewChecklistItem],
     pr_manifest,
     diff_manager=None,
+    comment_context=None,
 ) -> FocusContextBatch | None:
     """Build one extra findings batch from borderline candidate files.
 
@@ -334,6 +335,10 @@ def build_empty_findings_rescue_batch(
     suspicious-if-empty: instead of just noting that borderline files went unreviewed,
     review up to RESCUE_MAX_FILES of them in hunks_only mode. Returns None when none
     of the paths have diff hunks.
+
+    `comment_context` carries over from the main batches: the prompt tells the model
+    not to duplicate existing comments, so leaving it empty spends the call on
+    findings that dedupe throws away downstream.
     """
     from ..models.review_enums import FileReadMode
     from ..models.review_models import FileContextEntry
@@ -362,6 +367,7 @@ def build_empty_findings_rescue_batch(
         batch_id=RESCUE_BATCH_ID,
         files_context=files_context,
         checklist_applicable=checklist[:4],
+        comment_context=comment_context or [],
         pr_manifest=pr_manifest,
     )
 
@@ -466,6 +472,7 @@ def build_cross_file_synthesis_batch(
     diff: str,
     pr_manifest,
     diff_manager=None,
+    comment_context=None,
 ) -> FocusContextBatch | None:
     """Build the cross-file synthesis batch: every focus file's hunks together.
 
@@ -479,7 +486,9 @@ def build_cross_file_synthesis_batch(
     the cap (over budget -> skip, no split/degrade).
 
     `checklist_applicable` stays empty: the synthesis instructions are the single
-    review axis, and this batch already re-sends every hunk (D-002 token mandate).
+    review axis, and this batch already re-sends every hunk. `comment_context` does
+    carry over — the synthesis instructions say not to repeat issues already covered
+    by existing comments, which needs those comments in the prompt.
     """
     from ..models.review_enums import FileReadMode
     from ..models.review_models import FileContextEntry
@@ -507,6 +516,7 @@ def build_cross_file_synthesis_batch(
         batch_id=SYNTHESIS_BATCH_ID,
         files_context=files_context,
         checklist_applicable=[],
+        comment_context=comment_context or [],
         pr_manifest=pr_manifest,
     )
 

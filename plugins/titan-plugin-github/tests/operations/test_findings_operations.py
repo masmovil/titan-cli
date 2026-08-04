@@ -464,6 +464,42 @@ def test_synthesis_batch_returns_none_with_fewer_than_two_hunk_files():
     )
 
 
+def _comment_context_entry():
+    from titan_plugin_github.models.review_enums import CommentContextKind
+    from titan_plugin_github.models.review_models import CommentContextEntry
+
+    return CommentContextEntry(
+        kind=CommentContextKind.COMMENT,
+        thread_id="t1",
+        path="border.py",
+        title="Existing comment",
+        summary="Already reported here",
+    )
+
+
+def test_synthesis_and_rescue_batches_carry_comment_context():
+    from titan_plugin_github.operations.findings_operations import (
+        build_cross_file_synthesis_batch,
+        build_empty_findings_rescue_batch,
+        build_findings_prompt_parts,
+    )
+
+    comments = [_comment_context_entry()]
+
+    synthesis = build_cross_file_synthesis_batch(
+        ["border.py", "second.py"], _synthesis_diff(), None, comment_context=comments
+    )
+    rescue = build_empty_findings_rescue_batch(
+        ["border.py"], _rescue_diff(), [], None, comment_context=comments
+    )
+
+    # The prompt tells the model not to duplicate existing comments, so they must
+    # actually reach the prompt.
+    for batch in (synthesis, rescue):
+        assert batch.comment_context == comments
+        assert "Already reported here" in build_findings_prompt_parts(batch)["comments"]
+
+
 def test_build_findings_prompt_parts_instructions_override():
     from titan_plugin_github.operations.findings_operations import (
         SYNTHESIS_INSTRUCTIONS,

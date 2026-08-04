@@ -2315,6 +2315,7 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
                 ctx.get("review_checklist", []),
                 batches[0].pr_manifest if batches else None,
                 diff_manager=ctx.get("review_diff_manager"),
+                comment_context=ctx.get("comment_review_context", []),
             )
             if borderline_paths
             else None
@@ -2405,6 +2406,7 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
                 ctx.get("review_diff", ""),
                 batches[0].pr_manifest if batches else None,
                 diff_manager=ctx.get("review_diff_manager"),
+                comment_context=ctx.get("comment_review_context", []),
             )
             if len(focus_paths) > 1
             else None
