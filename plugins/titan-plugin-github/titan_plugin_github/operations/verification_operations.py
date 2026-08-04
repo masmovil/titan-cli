@@ -274,8 +274,12 @@ def build_verification_code_map(findings: list[Finding], batches: list) -> dict[
             if path not in relevant_paths or path in code_map:
                 continue
             hunks = entry.expanded_hunks or entry.hunks
-            if hunks:
-                code_map[path] = "\n".join(hunks)
+            # Only store truthy content: callers derive `paths_with_code` from these
+            # keys, and `build_verification_prompt_parts` treats an empty string as
+            # "no code context". A blank entry would let a refutation stand for a
+            # file the model was told it could not judge.
+            if joined := "\n".join(hunks or []).strip():
+                code_map[path] = joined
     return code_map
 
 
