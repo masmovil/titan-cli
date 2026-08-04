@@ -299,3 +299,22 @@ def test_code_map_prefers_expanded_hunks_over_hunks():
     code_map = build_verification_code_map([_make_finding(path="a.py")], [batch])
 
     assert code_map["a.py"] == "expanded hunk with surrounding context"
+
+
+def test_code_map_skips_entries_with_only_full_content():
+    """A hunk-less entry contributes no code, so its findings have no context to be
+    refuted against and survive verification (see `apply_verdicts`)."""
+    batch = FocusContextBatch(
+        batch_id="batch_1",
+        files_context={
+            "a.py": FileContextEntry(
+                path="a.py",
+                read_mode=FileReadMode.FULL_FILE,
+                full_content="FULL FILE CONTENT " * 500,
+            ),
+        },
+    )
+
+    code_map = build_verification_code_map([_make_finding(path="a.py")], [batch])
+
+    assert "a.py" not in code_map
