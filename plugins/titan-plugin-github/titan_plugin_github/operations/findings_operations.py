@@ -570,11 +570,12 @@ def dedupe_synthesis_findings(
     Works on raw (pre-normalization) dicts because it runs inside the findings step,
     before Finding models exist. A synthesis finding is a duplicate when an existing
     raw finding has the same path AND a line within the window (both-None counts as
-    close, one-None does not) AND a similar title (exact lowercase match or
-    SequenceMatcher ratio above the threshold). Thresholds mirror
-    `validators.is_duplicate`, which cannot be reused directly — it compares a Finding
-    against an existing-comment index entry, not two findings. Non-dict items in
-    either list are tolerated: raw AI output is untrusted.
+    close, one-None does not) AND either the same category or a similar title (exact
+    lowercase match or SequenceMatcher ratio above the threshold). Path/line/title
+    thresholds match `validators.is_duplicate`, which cannot be reused directly — it
+    compares a Finding against an existing-comment index entry, not two findings, and
+    its resolved/adjudicated branches have no meaning between two fresh findings.
+    Non-dict items in either list are tolerated: raw AI output is untrusted.
     """
     from difflib import SequenceMatcher
 
@@ -598,6 +599,12 @@ def dedupe_synthesis_findings(
         if not lines_close:
             return False
         if title_a == title_b:
+            return True
+        category_a = str(candidate.get("category", "")).lower()
+        category_b = str(item.get("category", "")).lower()
+        if category_a and category_a == category_b:
+            # Same defect class at the same spot: a restatement in different words,
+            # which title similarity alone would let through.
             return True
         return SequenceMatcher(None, title_a, title_b).ratio() > title_similarity_threshold
 
