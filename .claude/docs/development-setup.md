@@ -131,12 +131,12 @@ poetry install
 # 3. Create titan-dev launcher (automated)
 make dev-install
 
-# OR manually create the script:
-cat > ~/.local/bin/titan-dev <<'EOF'
+# OR manually create the script (mirrors what `make dev-install` generates):
+cat > ~/.local/bin/titan-dev <<EOF
 #!/bin/bash
 # titan-dev - Development version of Titan CLI
-REPO_PATH="$HOME/git/titan-cli"  # Adjust to your clone path
-exec "$REPO_PATH/.venv/bin/titan" "$@"
+export TITAN_ENV=development
+exec "$(pwd)/.venv/bin/titan" "\$@"
 EOF
 chmod +x ~/.local/bin/titan-dev
 
@@ -165,9 +165,23 @@ cd ~/git/titan-cli
 poetry run titan
 
 # Option 3: Activate virtualenv and run directly
+# (Poetry 2.x removed `poetry shell` as a core command)
 cd ~/git/titan-cli
-poetry shell
+eval $(poetry env activate)
 titan
+```
+
+### Useful Make Targets
+
+```bash
+make dev-install    # Setup development environment (creates titan-dev)
+make test           # Run all tests
+make check-github   # Ruff + pytest for titan-plugin-github only
+make install        # Install production version from local source (prefer pipx)
+make docs-serve     # Serve docs locally at http://localhost:8000
+make docs-build     # Build docs to site/
+make docs-deploy    # Deploy docs to GitHub Pages
+make clean          # Remove basic build artifacts
 ```
 
 ### Development vs Production Separation
@@ -251,33 +265,35 @@ mv ~/.titan.backup ~/.titan
 
 ### Development Mode Logging
 
-Enable verbose logging for debugging:
+Structured logging is implemented (see [Logging Guide](logging.md)). Enable verbose output for debugging:
 
 ```bash
-# When logging architecture is implemented:
-titan-dev --debug
-titan-dev --verbose
-TITAN_DEBUG=1 titan-dev
+titan-dev --debug              # DEBUG level logs
+titan-dev --verbose            # INFO level logs
+TITAN_ENV=development titan    # Force development mode
 ```
 
-**Future:** When logging is implemented (see architecture proposal), logs will be at:
-- `~/.local/state/titan/logs/titan.log` (JSON, rotating)
-- Console (colorized when `--verbose` or `--debug`)
+Note: the `titan-dev` script already sets `TITAN_ENV=development`, so it runs in development mode by default.
+
+Logs are written to:
+- `~/.local/state/titan/logs/titan.log` (JSON, rotating: 10 MB per file, 5 files kept)
+- Console (colorized in development mode; disabled while the TUI is running unless devtools are enabled)
 
 ### Textual Devtools (TUI Debugging)
 
-For debugging the Textual TUI:
+For debugging the Textual TUI, use the built-in `--devtools` flag:
 
 ```bash
 # Terminal 1: Start devtools console
 textual console
 
-# Terminal 2: Run titan-dev
-cd ~/git/titan-cli
-textual run --dev titan_cli/ui/tui/textual_workflow_executor.py TitanApp
+# Terminal 2: Run titan with devtools enabled
+titan-dev --devtools    # or: titan --devtools
 
 # Logs will appear in Terminal 1
 ```
+
+The Textual application class is `TitanApp`, defined in `titan_cli/ui/tui/app.py`.
 
 See: [Textual Devtools Guide](https://textual.textualize.io/guide/devtools/)
 
@@ -291,9 +307,12 @@ See: [Textual Devtools Guide](https://textual.textualize.io/guide/devtools/)
 │   └── bin/titan                   # Development binary
 ├── titan_cli/                      # Main package
 ├── plugins/                        # Built-in plugins
-│   ├── titan-plugin-git/
-│   ├── titan-plugin-github/
-│   └── titan-plugin-jira/
+│   ├── titan-plugin-git/           # Registered in root pyproject.toml
+│   ├── titan-plugin-github/        # Registered in root pyproject.toml
+│   ├── titan-plugin-jira/          # Registered in root pyproject.toml
+│   ├── titan-plugin-slack/         # Registered in root pyproject.toml
+│   ├── titan-plugin-docker/        # Present but NOT registered
+│   └── titan-plugin-poeditor/      # Present but NOT registered
 ├── tests/                          # Unit tests
 ├── .claude/                        # Claude Code docs
 ├── pyproject.toml                  # Poetry config
@@ -306,9 +325,9 @@ See: [Textual Devtools Guide](https://textual.textualize.io/guide/devtools/)
 ~/.titan/
 └── config.toml                     # Global config (shared)
 
-~/.local/state/titan/               # Runtime data (future)
+~/.local/state/titan/               # Runtime data
 └── logs/
-    └── titan.log                   # Application logs
+    └── titan.log                   # Application logs (JSON, rotating)
 ```
 
 ---
@@ -330,8 +349,9 @@ poetry run pytest --cov
 # Follow semantic versioning
 
 # 4. Create release (maintainers only)
-git tag v0.1.12
-git push origin v0.1.12
+# Use the version from pyproject.toml, e.g. v0.7.2
+git tag v<version>
+git push origin v<version>
 
 # 5. Build and publish (CI/CD or manual)
 poetry build
@@ -402,9 +422,10 @@ titan-dev  # Now uses the feature branch
 
 - [CLAUDE.md](../../CLAUDE.md) - AI development guide
 - [DEVELOPMENT.md](../../DEVELOPMENT.md) - Architecture overview
-- [Plugin Architecture](.claude/docs/plugin-architecture.md) - Plugin development
-- [Textual Guide](.claude/docs/textual.md) - TUI development
+- [Plugin Architecture](plugin-architecture.md) - Plugin development
+- [Textual Guide](textual.md) - TUI development
+- [Logging Guide](logging.md) - Logging architecture
 
 ---
 
-**Last updated:** 2026-02-17
+**Last updated:** 2026-08-04
