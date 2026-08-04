@@ -91,12 +91,12 @@ def test_apply_verdicts_drops_only_evidenced_refutations():
     nit = _make_finding("Nit one", severity=FindingSeverity.NIT)
 
     outcome = apply_verification_verdicts(
+        [refuted, confirmed, nit],
         [refuted, confirmed],
         [
             {"index": 0, "verdict": "refuted", "reasoning": "the check exists at line 12"},
             {"index": 1, "verdict": "confirmed", "reasoning": "claim holds"},
         ],
-        exempt=[nit],
     )
 
     assert refuted in outcome.refuted
@@ -104,6 +104,9 @@ def test_apply_verdicts_drops_only_evidenced_refutations():
     assert confirmed in outcome.kept
     assert nit in outcome.kept
     assert refuted not in outcome.kept
+    # Kept must preserve the input order (most-severe first) — exempt nits must not
+    # jump ahead of verified blocking findings in the gate or the posted comments.
+    assert outcome.kept == [confirmed, nit]
 
 
 def test_apply_verdicts_fails_open():
@@ -113,6 +116,7 @@ def test_apply_verdicts_fails_open():
 
     outcome = apply_verification_verdicts(
         findings,
+        findings,
         [
             {"index": 1, "verdict": "refuted", "reasoning": ""},  # no evidence → kept
             {"index": 2, "verdict": "maybe", "reasoning": "?"},  # unknown verdict → kept
@@ -120,7 +124,6 @@ def test_apply_verdicts_fails_open():
             {"verdict": "refuted"},  # malformed (no index) → ignored
             # index 0, 3, 4: no verdict at all → kept
         ],
-        exempt=[],
     )
 
     assert outcome.refuted == []
@@ -215,11 +218,11 @@ def test_apply_verdicts_ignores_refutation_without_code_context():
 
     outcome = apply_verification_verdicts(
         [no_code, with_code],
+        [no_code, with_code],
         [
             {"index": 0, "verdict": "refuted", "reasoning": "not present in the code"},
             {"index": 1, "verdict": "refuted", "reasoning": "check exists at line 12"},
         ],
-        exempt=[],
         paths_with_code={"a.py"},
     )
 
@@ -234,8 +237,8 @@ def test_apply_verdicts_keeps_uncertain_findings():
 
     outcome = apply_verification_verdicts(
         [finding],
+        [finding],
         [{"index": 0, "verdict": "uncertain", "reasoning": "not enough code shown"}],
-        exempt=[],
     )
 
     assert outcome.refuted == []
@@ -266,7 +269,7 @@ def test_apply_verdicts_conflicting_duplicate_indices_prefer_keep():
             {"index": 0, "verdict": "refuted", "reasoning": "stray refutation"},
         ],
     ):
-        outcome = apply_verification_verdicts([finding], verdicts, exempt=[])
+        outcome = apply_verification_verdicts([finding], [finding], verdicts)
         assert outcome.refuted == []
         assert finding in outcome.kept
 

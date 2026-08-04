@@ -2781,9 +2781,9 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     # Truthy contents only — the prompt builder treats an empty block as "no code
     # available", so the refutation guard must agree with it.
     outcome = apply_verification_verdicts(
+        findings,
         to_verify,
         raw_verdicts,
-        exempt,
         paths_with_code={path for path, content in code_map.items() if content},
     )
     ctx.data["deduped_findings"] = outcome.kept

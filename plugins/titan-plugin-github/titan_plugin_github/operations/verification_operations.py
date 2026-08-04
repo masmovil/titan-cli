@@ -208,13 +208,18 @@ def parse_verification_response(stdout: str, *, structured: bool) -> ClientResul
 
 
 def apply_verification_verdicts(
+    findings: list[Finding],
     verified_candidates: list[Finding],
     raw_verdicts: list,
-    exempt: list[Finding],
     *,
     paths_with_code: set[str] | None = None,
 ) -> VerificationOutcome:
     """Apply AI verdicts to the finding set, fail-open.
+
+    This is a pure filter over `findings`: the kept list preserves the input order
+    (most-severe first), because downstream consumers — the human gate and the
+    posted comments — render findings in that order. `verified_candidates` only
+    supplies the index space the verdicts refer to.
 
     Only an explicit "refuted" verdict with non-empty reasoning removes a finding.
     Findings with no verdict, an out-of-range index, an unknown verdict value, or a
@@ -238,17 +243,18 @@ def apply_verification_verdicts(
             # means the verdict that KEEPS the finding wins, regardless of order.
             verdict_by_index[verdict.index] = verdict
 
-    kept: list[Finding] = list(exempt)
     refuted: list[Finding] = []
     refuted_reasons: list[str] = []
+    refuted_ids: set[int] = set()
     for i, finding in enumerate(verified_candidates):
         verdict = verdict_by_index.get(i)
         refutable = paths_with_code is None or finding.path in paths_with_code
         if refutable and verdict and verdict.verdict == "refuted" and verdict.reasoning.strip():
             refuted.append(finding)
             refuted_reasons.append(verdict.reasoning.strip())
-        else:
-            kept.append(finding)
+            refuted_ids.add(id(finding))
+
+    kept = [finding for finding in findings if id(finding) not in refuted_ids]
 
     return VerificationOutcome(kept=kept, refuted=refuted, refuted_reasons=refuted_reasons)
 
