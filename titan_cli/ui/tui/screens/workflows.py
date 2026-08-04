@@ -41,7 +41,8 @@ class WorkflowsScreen(BaseScreen):
         super().__init__(config, title="⚡ Available Workflows", show_back=True)
         self.selected_plugin = "all"  # Track selected plugin filter (start with "all")
         self._is_mounting = False  # Flag to prevent auto-update during mount
-        self._all_workflows = None  # Cache for discovered workflows
+        self._all_workflows = None  # Cache for discovered workflows (sorted, favorites first)
+        self._base_workflows = None  # Cache for deduplicated workflows in pristine discovery order
         self._plugin_source_map = {}  # Map plugin names to their source identifiers
         self._favorite_names = set()  # Cache of favorited workflow names
 
@@ -73,11 +74,11 @@ class WorkflowsScreen(BaseScreen):
         refresh scoped to the one moment it's actually needed instead of
         running on every screen transition.
         """
-        if not self._all_workflows:
+        if not self._base_workflows:
             return
         self._favorite_names = set(self.config.get_favorite_workflows())
         self._all_workflows = WorkflowFilterService.sort_favorites_first(
-            self._all_workflows, self._favorite_names
+            self._base_workflows, self._favorite_names
         )
         self._plugin_source_map = WorkflowFilterService.group_by_plugin(self._all_workflows)
         self._update_workflow_list()
@@ -146,13 +147,15 @@ class WorkflowsScreen(BaseScreen):
         """
         all_workflows = self.config.workflows.discover()
 
-        # Cache and remove duplicates using service
-        self._all_workflows = WorkflowFilterService.remove_duplicates(all_workflows)
+        # Cache the deduplicated, pristine discovery order - this is what favorite
+        # sorting is always re-applied to, so toggling a favorite never compounds
+        # on top of a previous sort.
+        self._base_workflows = WorkflowFilterService.remove_duplicates(all_workflows)
 
         # Favorited workflows always sort to the top
         self._favorite_names = set(self.config.get_favorite_workflows())
         self._all_workflows = WorkflowFilterService.sort_favorites_first(
-            self._all_workflows, self._favorite_names
+            self._base_workflows, self._favorite_names
         )
 
         with Container(id="workflows-container"):
