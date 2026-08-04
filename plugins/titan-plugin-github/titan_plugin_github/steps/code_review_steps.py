@@ -2796,8 +2796,15 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
         exempt_nits=len(exempt),
         refuted=len(outcome.refuted),
         kept=len(outcome.kept),
+        invalid_verdicts=outcome.invalid_verdicts,
         duration_seconds=round(adapter_duration_seconds, 3),
     )
+    if outcome.invalid_verdicts and not outcome.refuted:
+        # Every verdict unusable looks exactly like "confirmed everything" otherwise:
+        # say it out loud so a broken prompt or schema is visible.
+        ctx.textual.warning_text(
+            f"⚠ {outcome.invalid_verdicts} unusable verdict(s) — verification may not have run correctly."
+        )
     for finding, reason in zip(outcome.refuted, outcome.refuted_reasons):
         ctx.textual.dim_text(
             f"✗ Refuted: {finding.title} @ {finding.path}:{finding.line} — {reason[:200]}"

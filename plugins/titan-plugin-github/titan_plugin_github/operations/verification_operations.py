@@ -32,6 +32,9 @@ _CODE_BLOCK_CAP_CHARS = 3000
 focused hunks only — never the full batch context (D-002 token mandate)."""
 
 
+_KNOWN_VERDICTS = {"confirmed", "refuted", "uncertain"}
+
+
 class VerificationVerdict(BaseModel):
     """AI verdict for one finding in the batched verification call."""
 
@@ -46,6 +49,11 @@ class VerificationOutcome(BaseModel):
     kept: list[Finding]
     refuted: list[Finding]
     refuted_reasons: list[str]
+    invalid_verdicts: int = 0
+    """Verdict entries discarded as unusable (unparseable, out-of-range index, or an
+    unknown verdict value). Dropping them is fail-open and silent, so this count is
+    the only signal that separates "the model confirmed everything" from "every
+    verdict was malformed" — a systematically broken prompt or schema."""
 
 
 def select_findings_for_verification(findings: list[Finding]) -> tuple[list[Finding], list[Finding]]:
@@ -226,15 +234,26 @@ def apply_verification_verdicts(
     reasoning-less refutation are all kept. When `paths_with_code` is given, a
     refutation of a finding whose path had NO code in the prompt is also ignored —
     the model cannot legitimately contradict code it never saw.
+
+    Unusable verdict entries are counted in `invalid_verdicts` so callers can tell a
+    wholly malformed response apart from one that confirmed every finding.
     """
     verdict_by_index: dict[int, VerificationVerdict] = {}
+    invalid_verdicts = 0
     for item in raw_verdicts or []:
         try:
             verdict = VerificationVerdict.model_validate(item)
         except Exception:
+            invalid_verdicts += 1
             continue
         if not (0 <= verdict.index < len(verified_candidates)):
+            invalid_verdicts += 1
             continue
+        if verdict.verdict not in _KNOWN_VERDICTS:
+            # Counted, but still stored: an unknown value must keep its fail-open
+            # weight in the duplicate-index conflict below, where any non-refutation
+            # beats a refutation.
+            invalid_verdicts += 1
         existing = verdict_by_index.get(verdict.index)
         if existing is None:
             verdict_by_index[verdict.index] = verdict
@@ -256,7 +275,12 @@ def apply_verification_verdicts(
 
     kept = [finding for finding in findings if id(finding) not in refuted_ids]
 
-    return VerificationOutcome(kept=kept, refuted=refuted, refuted_reasons=refuted_reasons)
+    return VerificationOutcome(
+        kept=kept,
+        refuted=refuted,
+        refuted_reasons=refuted_reasons,
+        invalid_verdicts=invalid_verdicts,
+    )
 
 
 def build_verification_code_map(findings: list[Finding], batches: list) -> dict[str, str]:

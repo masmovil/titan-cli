@@ -128,6 +128,24 @@ def test_apply_verdicts_fails_open():
 
     assert outcome.refuted == []
     assert len(outcome.kept) == 5
+    # unknown verdict + out-of-range + malformed; the evidence-less refutation is a
+    # well-formed verdict, so it is not counted as invalid.
+    assert outcome.invalid_verdicts == 3
+
+
+def test_apply_verdicts_counts_zero_invalid_when_all_usable():
+    findings = [_make_finding(f"f{i}") for i in range(2)]
+
+    outcome = apply_verification_verdicts(
+        findings,
+        findings,
+        [
+            {"index": 0, "verdict": "confirmed", "reasoning": "ok"},
+            {"index": 1, "verdict": "uncertain", "reasoning": "hmm"},
+        ],
+    )
+
+    assert outcome.invalid_verdicts == 0
 
 
 def test_code_map_uses_hunks_never_full_content():
