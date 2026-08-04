@@ -127,7 +127,9 @@ def test_apply_verdicts_fails_open():
     )
 
     assert outcome.refuted == []
-    assert len(outcome.kept) == 5
+    # Identity and order, not just the count: a change that duplicated, dropped or
+    # reordered findings before the human gate must fail here.
+    assert outcome.kept == findings
     # unknown verdict + out-of-range + malformed; the evidence-less refutation is a
     # well-formed verdict, so it is not counted as invalid.
     assert outcome.invalid_verdicts == 3
