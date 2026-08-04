@@ -172,6 +172,7 @@ class GitHubPlugin(TitanPlugin):
             ai_review_findings,
             normalize_findings,
             dedupe_findings,
+            verify_findings,
             build_new_comment_actions,
             validate_review_actions,
             submit_review_actions,
@@ -228,6 +229,7 @@ class GitHubPlugin(TitanPlugin):
             "ai_review_findings": ai_review_findings,
             "normalize_findings": normalize_findings,
             "dedupe_findings": dedupe_findings,
+            "verify_findings": verify_findings,
             # Phase 5: UI + submit
             "build_new_comment_actions": build_new_comment_actions,
             "validate_review_actions": validate_review_actions,

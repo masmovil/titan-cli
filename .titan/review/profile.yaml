@@ -261,3 +261,8 @@ review_axes:
       - "docs/**"
       - "README.md"
       - "DEVELOPMENT.md"
+
+# Cross-file synthesis batch (review-quality-004): one extra AI call per review that
+# looks for contract mismatches between the PR's own files. Enabled here to gather
+# real cost data — the built-in default is false.
+findings_synthesis_enabled: true

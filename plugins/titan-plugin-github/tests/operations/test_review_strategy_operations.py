@@ -341,3 +341,24 @@ def test_deterministic_plan_uses_profile_review_axes():
     plan = build_deterministic_review_plan(candidates, excluded, checklist, strategy, review_profile=profile)
 
     assert ChecklistCategory.SECURITY in plan.review_axes
+
+
+def test_classify_pr_comment_threads_do_not_change_size_class():
+    """review-quality-010: review activity must not inflate the size class — a review's
+    own published comments would otherwise push the same unchanged PR into a bigger
+    class on the next run, changing focus/budget between passes."""
+    manifest = make_manifest(
+        [
+            ChangedFileEntry(path=f"src/file_{idx}.py", status="modified", additions=40, deletions=10)
+            for idx in range(10)
+        ]
+    )
+
+    quiet = classify_pr(manifest, comment_entries=0, comment_threads=0)
+    noisy = classify_pr(manifest, comment_entries=40, comment_threads=25)
+
+    assert noisy.size_class == quiet.size_class
+    assert noisy.complexity_score == quiet.complexity_score
+    # The activity signal is still captured — just not as size.
+    assert noisy.active_review is True
+    assert quiet.active_review is False

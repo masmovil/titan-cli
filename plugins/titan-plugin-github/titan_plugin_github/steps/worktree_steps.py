@@ -27,12 +27,13 @@ def create_worktree_step(ctx: WorkflowContext) -> WorkflowResult:
     if not ctx.textual:
         return Error("Textual UI context is not available for this step.")
 
-    ctx.textual.begin_step("Create Worktree")
+    ctx.textual.begin_step("Create PR Worktree")
 
     pr_number = ctx.get("selected_pr_number") or ctx.get("review_pr_number")
     head_branch = ctx.get("selected_pr_head_branch") or ctx.get("review_pr_head") or ""
 
     if not pr_number:
+        ctx.textual.error_text("Missing required data")
         ctx.textual.end_step("error")
         return Error("Missing required data")
 
@@ -83,7 +84,7 @@ def cleanup_worktree_step(ctx: WorkflowContext) -> WorkflowResult:
     if not ctx.textual:
         return Error("Textual UI context is not available for this step.")
 
-    ctx.textual.begin_step("Cleanup Worktree")
+    ctx.textual.begin_step("Cleanup PR Worktree")
 
     worktree_created = ctx.get("worktree_created", False)
     worktree_path = ctx.get("worktree_path")

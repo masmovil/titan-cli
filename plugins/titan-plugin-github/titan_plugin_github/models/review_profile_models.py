@@ -37,6 +37,27 @@ class ReviewProfile(BaseModel):
     candidate_scoring: list[CandidateScoringRule] = Field(default_factory=list)
     candidate_exclusions: CandidateExclusions = Field(default_factory=CandidateExclusions)
     review_axes: dict[ChecklistCategory, ReviewAxisRule] = Field(default_factory=dict)
+    findings_verification_enabled: bool = Field(
+        default=True,
+        description="Run the batched refute-or-confirm AI pass over findings before the "
+        "human gate. Disable in cost-sensitive projects: it adds one extra AI call per "
+        "review when findings exist.",
+    )
+    findings_batch_concurrency: int = Field(
+        default=2,
+        ge=1,
+        le=4,
+        description="How many findings batches run against the CLI at once. Zero token "
+        "cost — only wall time. Keep low: each worker is a full CLI session and "
+        "provider-side rate limits apply.",
+    )
+    findings_synthesis_enabled: bool = Field(
+        default=False,
+        description="Run one extra cross-file synthesis batch (all changed hunks "
+        "together, hunks_only) when the PR touches more than one focus file. It "
+        "re-sends every hunk already reviewed per-file, so it adds one full AI call "
+        "per review; off by default until real cost data justifies it.",
+    )
 
 
 class ReviewChecklistFile(BaseModel):
