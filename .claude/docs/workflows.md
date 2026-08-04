@@ -20,7 +20,10 @@ params:                          # Optional. Default values available in all ste
   draft: false
   assignees: []
 
-hooks:                           # Optional. Hook points available for extension (see Extending Workflows)
+tags:                            # Optional. Arbitrary metadata (e.g. platform: android).
+  platform: android              # Used by plugins for workflow filtering.
+
+hooks:                           # Optional. Documents hook points for extension (see Extending Workflows)
   - before_commit
   - after_push
 
@@ -28,8 +31,11 @@ steps:
   - id: my_step                  # Optional. Auto-generated from name if omitted.
     name: "My Step"              # Optional. Display name.
     plugin: github               # Plugin providing the step.
-    step: create_pr              # Step function name inside the plugin.
+    step: create_pr              # Step name registered by the plugin.
     on_error: continue           # Optional. "fail" (default) or "continue".
+    requires:                    # Optional. Context variables that must exist in ctx.data
+      - pr_title                 # before this step runs. Missing variable → step fails
+      - pr_head_branch           # with an Error before executing.
     params:                      # Optional. Extra values merged into ctx.data for this step.
       draft: "${draft}"
 ```
@@ -54,7 +60,7 @@ Calls a registered step function from a plugin.
 **Special plugin values:**
 - `plugin: project` → calls a step from `.titan/steps/` in the current project
 - `plugin: user` → calls a step from `~/.titan/steps/`
-- `plugin: core` → calls a built-in Titan step (e.g., `ai_code_assistant`)
+- `plugin: core` → calls a built-in Titan step. Available core steps: `ai_code_assistant`, `select_cli`. Note: core steps have a different signature — they receive `(step_config, ctx)` instead of just `(ctx)`.
 
 ### 2. Shell Command
 
@@ -137,25 +143,45 @@ This means a project workflow can override a plugin workflow of the same name.
 
 A base workflow declares **hook points** — named injection points in its step sequence. An extending workflow injects additional steps at those points.
 
+**How hook points are defined:** a hook point is a `- hook: <name>` marker step inside `steps`. The top-level `hooks:` list in a base workflow is documentation-only — the engine derives the available hooks from the `hook:` marker steps (see `_merge_steps_with_hooks` in `titan_cli/core/workflows/workflow_registry.py`). Keep the top-level list in sync with the markers for readability, but it's the markers that matter.
+
 ### Base workflow defines hooks
 
 ```yaml
 # plugin:git/commit-ai
 name: "Commit with AI"
+description: "Create a commit with AI-generated message"
+
 hooks:
-  - before_commit    # ← injection point
+  - before_commit    # ← documents the injection point (informational)
 
 steps:
-  - plugin: git
+  - id: git_status
+    name: "Check Git Status"
+    plugin: git
     step: get_status
 
-  - hook: before_commit   # ← steps injected here at runtime
+  - hook: before_commit   # ← actual injection point; steps injected here at runtime
 
-  - plugin: git
+  - id: diff_summary
+    name: "Show Changes Summary"
+    plugin: git
+    step: show_uncommitted_diff_summary
+
+  - id: ai_commit_message
+    name: "AI Commit Message"
+    plugin: git
     step: ai_generate_commit_message
 
-  - plugin: git
+  - id: create_commit
+    name: "Create Commit"
+    plugin: git
     step: create_commit
+
+  - id: push
+    name: "Push changes to remote"
+    plugin: git
+    step: push
 ```
 
 ### Extending workflow injects steps into hooks
@@ -340,7 +366,7 @@ def my_step(ctx: WorkflowContext) -> WorkflowResult:
     ...
 ```
 
-**The function name must exactly match the `step:` field in the YAML.** No `_step` suffix is needed — the function name IS the step name.
+**For project and user steps** (`plugin: project` / `plugin: user`), the function name must exactly match the `step:` field in the YAML. No `_step` suffix is needed — the function name IS the step name.
 
 ```python
 # .titan/steps/my_step.py
@@ -352,6 +378,8 @@ def my_step(ctx: WorkflowContext) -> WorkflowResult:  # ← function name = step
 - plugin: project
   step: my_step               # ← must match exactly
 ```
+
+**Plugin steps** are different: they are mapped explicitly in the plugin's `get_steps()` dictionary, so the YAML `step:` name can differ from the function name. For example, the git plugin maps `"create_commit"` to `create_git_commit_step` in its `plugin.py`.
 
 ### Accessing context data
 
@@ -418,22 +446,30 @@ Scope:
 ### Simple linear workflow
 
 ```yaml
-# plugins/titan-plugin-github/workflows/create-issue-ai.yaml
+# plugins/titan-plugin-github/titan_plugin_github/workflows/create-issue-ai.yaml
 name: "Create GitHub Issue (AI-Powered)"
 description: "Create a GitHub issue with AI-generated description and auto-categorization"
 params:
   assignees: []
 steps:
-  - plugin: github
+  - id: prompt_for_issue_body
+    name: "Prompt for Issue Body"
+    plugin: github
     step: prompt_for_issue_body_step
 
-  - plugin: github
+  - id: ai_suggest_issue
+    name: "Categorize and Generate Issue"
+    plugin: github
     step: ai_suggest_issue_title_and_body
 
-  - plugin: github
+  - id: prompt_for_self_assign
+    name: "Prompt for Self Assign"
+    plugin: github
     step: prompt_for_self_assign
 
-  - plugin: github
+  - id: create_issue
+    name: "Create Issue"
+    plugin: github
     step: create_issue
     params:
       assignees: "${assignees}"
@@ -443,29 +479,69 @@ steps:
 ### Workflow calling another workflow
 
 ```yaml
-# plugins/titan-plugin-github/workflows/create-pr-ai.yaml
+# plugins/titan-plugin-github/titan_plugin_github/workflows/create-pr-ai.yaml
 name: "Create Pull Request with AI"
+description: "AI-powered PR creation with intelligent analysis and suggestions"
+
 params:
-  draft: false
+  draft: null
+
 hooks:
   - before_pr_generation
   - before_push
   - after_pr
-steps:
-  - workflow: "commit-ai"        # ← calls the commit-ai workflow first
 
-  - plugin: git
+steps:
+  # Use the commit-ai workflow (respects project override for linting/testing)
+  - id: commit_changes
+    name: "Commit changes with AI"
+    workflow: "commit-ai"
+
+  - id: push_branch
+    name: "Push Branch"
+    plugin: git
+    step: push
+
+  - id: get_head_branch
+    name: "Get Head Branch"
+    plugin: git
     step: get_current_branch
 
+  - id: branch_diff_summary
+    name: "Show Branch Changes Summary"
+    plugin: git
+    step: show_branch_diff_summary
+
+  # Hook for project-specific context capture
   - hook: before_pr_generation
 
-  - plugin: github
+  - id: ai_pr_description
+    name: "AI PR Description"
+    plugin: github
     step: ai_suggest_pr_description
+
+  - id: choose_pr_draft_mode
+    name: "Choose PR Draft Mode"
+    plugin: github
+    step: prompt_for_pr_draft
+
+  - id: select_pr_labels
+    name: "Select PR Labels"
+    plugin: github
+    step: prompt_for_labels
+    params:
+      output_key: pr_labels
+      prompt: "Select labels for this pull request:"
 
   - hook: before_push
 
-  - plugin: github
+  - id: create_pr
+    name: "Create Pull Request"
+    plugin: github
     step: create_pr
+    requires:                    # ← step fails early if these are missing from ctx.data
+      - pr_title
+      - pr_head_branch
 
   - hook: after_pr
 ```
@@ -473,34 +549,68 @@ steps:
 ### Workflow with cleanup guarantee
 
 ```yaml
-# plugins/titan-plugin-github/workflows/review-pr-comments.yaml
-name: "Review PR Comments"
+# plugins/titan-plugin-github/titan_plugin_github/workflows/respond-pr-comments.yaml
+name: "Respond to PR Comments"
+description: "Review and address pending comments on your pull requests"
+
+hooks:
+  - after_review
+
 steps:
-  - plugin: github
-    step: select_pr_for_review
-    # Exit here is fine — no resources created yet
-
-  - plugin: github
-    step: fetch_pending_comments
-    # Exit here is also fine — no worktree yet
-
-  - id: create_worktree
+  - id: select_pr
+    name: "Select PR for Review"
     plugin: github
-    step: create_worktree
-    on_error: continue           # ← resource created here; continue even on failure
+    step: select_pr_for_review
+    # Exit here is fine — no branch switched yet
 
-  - plugin: github
+  - id: fetch_comments
+    name: "Fetch Pending Comments"
+    plugin: github
+    step: fetch_pending_comments
+    # Exit here is also fine — still on the original branch
+
+  - id: check_clean_state
+    name: "Check Branch State"
+    plugin: github
+    step: check_clean_state
+
+  # Checkout PR branch (saves original branch for restore)
+  - id: checkout_pr_branch
+    name: "Checkout PR Branch"
+    plugin: github
+    step: checkout_pr_branch
+    on_error: continue           # ← branch switched here; continue even on failure
+
+  - id: review_comments
+    name: "Review Comments"
+    plugin: github
     step: review_comments        # ← returns Skip (not Exit) when user exits early
     on_error: continue
 
-  - plugin: github
+  # Hook point: inject linter, tests, or any validation before pushing
+  - hook: after_review
+
+  - id: push_commits
+    name: "Push Commits"
+    plugin: github
     step: push_commits           # ← returns Skip (not Exit) when no commits
     on_error: continue
 
-  - plugin: github
+  - id: send_replies
+    name: "Send Comment Replies"
+    plugin: github
     step: send_comment_replies   # ← returns Skip (not Exit) when no replies
     on_error: continue
 
-  - plugin: github
-    step: cleanup_worktree       # ← ALWAYS runs
+  - id: request_review
+    name: "Re-request Review"
+    plugin: github
+    step: request_review
+    on_error: continue
+
+  # Restore original branch ALWAYS runs
+  - id: restore_branch
+    name: "Restore Branch"
+    plugin: github
+    step: checkout_original_branch
 ```
