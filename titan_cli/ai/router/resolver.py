@@ -73,6 +73,8 @@ class AIRouteResolver:
                 preferences.tasks[task],
                 reason=f"task preference for '{task}'",
             )
+            if isinstance(resolved, AIRouteDecision):
+                return self._guard_executable(resolved, policy, task)
             if resolved is not None:
                 return resolved
 
@@ -90,6 +92,35 @@ class AIRouteResolver:
         if not self.ai_config or not self.ai_config.preferences:
             return None
         return self.ai_config.preferences
+
+    def _guard_executable(
+        self, decision: AIRouteDecision, policy: Optional[AIRoutePolicy], task: str
+    ) -> AIRouteResolution:
+        """
+        Refuse a persisted preference the step's code can't execute.
+
+        The preferences UI only offers what a step declares in `executes`, but
+        a preference can predate a step's declaration (or be shared by several
+        steps with different abilities). Handing the step a provider it can't
+        drive would fail later and further from the cause, so it is refused
+        here, by name. `off` is always honored - any step can skip. When the
+        step declared no `executes` at all, the guard does not apply and the
+        decision passes through unchanged.
+        """
+        if decision.provider == AIProviderType.OFF:
+            return decision
+        if not policy or not policy.executes:
+            return decision
+        if decision.provider in policy.executes:
+            return decision
+        return AIRouteNeedsInput(
+            reason=(
+                f"the configured provider for '{task}' is '{decision.provider}', "
+                f"which this step cannot run (it supports: "
+                f"{', '.join(str(p) for p in policy.executes)})"
+            ),
+            candidates=self._candidates(),
+        )
 
     def _candidates(self) -> List[AIProviderAvailability]:
         return (

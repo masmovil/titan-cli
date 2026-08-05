@@ -3,7 +3,8 @@ AI-powered JIRA issue analysis step
 """
 
 from titan_cli.ai.router.declaration import declare_ai_usage
-from titan_cli.ai.router.enums import AITask
+from titan_cli.ai.router.enums import AIProviderType, AITask
+from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from ..messages import msg
 from ..agents import JiraAgent
@@ -12,6 +13,10 @@ from ..formatters import IssueAnalysisMarkdownFormatter
 
 @declare_ai_usage(
     task=AITask.JIRA_ANALYSIS,
+    # JiraAgent makes several calls of its own; until a CLI-backed generator
+    # exists, a remote connection is the only thing this code can drive.
+    executes=[AIProviderType.REMOTE],
+    enforces=True,
 )
 def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
     """
@@ -44,8 +49,22 @@ def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
     # Begin step container
     ctx.textual.begin_step("AI Analyze Issue")
 
-    # Check if AI is available
-    if not ctx.ai or not ctx.ai.is_available():
+    # Use the connection the user chose for this task; the agent drives it.
+    ai_client = ctx.ai
+    if ctx.ai_router:
+        match ctx.ai_router.resolve_remote_client(policy=ai_analyze_issue_requirements_step):
+            case AIExecutionSuccess(data=resolved_client):
+                ai_client = resolved_client
+            case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
+                ctx.textual.dim_text(disabled_message)
+                ctx.textual.end_step("skip")
+                return Skip(disabled_message)
+            case AIExecutionError(error_message=err):
+                ctx.textual.error_text(err)
+                ctx.textual.end_step("error")
+                return Error(err)
+
+    if not ai_client or not ai_client.is_available():
         ctx.textual.dim_text(msg.Steps.AIIssue.AI_NOT_CONFIGURED_SKIP)
         ctx.textual.end_step("skip")
         return Skip(msg.Steps.AIIssue.AI_NOT_CONFIGURED)
@@ -59,7 +78,7 @@ def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
 
     # Create JiraAgent instance and analyze issue with loading indicator
     with ctx.textual.loading(msg.Steps.AIIssue.ANALYZING):
-        jira_agent = JiraAgent(ctx.ai, ctx.jira)
+        jira_agent = JiraAgent(ai_client, ctx.jira)
         analysis = jira_agent.analyze_issue(
             issue_key=issue.key,
             include_subtasks=True,

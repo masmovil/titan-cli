@@ -338,6 +338,111 @@ def test_needs_input_without_candidates_is_no_provider_available():
     assert result.error_code == "NO_PROVIDER_AVAILABLE"
 
 
+# --- observability --------------------------------------------------------
+
+
+def test_resolved_route_is_logged_with_task_and_identifier(monkeypatch):
+    """
+    "Did my configured CLI actually run?" must be answerable from the log alone.
+    """
+    logged = []
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.logger",
+        type("L", (), {
+            "info": lambda self, event, **kw: logged.append((event, kw)),
+            "warning": lambda self, event, **kw: None,
+            "error": lambda self, event, **kw: None,
+        })(),
+    )
+    executor = _executor(
+        AIRouteDecision(
+            provider=AIProviderType.CLI_HEADLESS, cli="claude", reason="task preference"
+        )
+    )
+    adapter = FakeAdapter()
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter", lambda cli: adapter
+    )
+
+    executor.generate_text("prompt", policy=declared_step)
+
+    events = dict(logged)
+    assert events["ai_route_resolved"]["provider"] == AIProviderType.CLI_HEADLESS
+    assert events["ai_route_resolved"]["identifier"] == "claude"
+    assert events["ai_route_resolved"]["task"] == AITask.COMMIT_MESSAGE
+    assert events["ai_headless_execute_ok"]["cli"] == "claude"
+
+
+def test_unresolved_route_is_logged(monkeypatch):
+    logged = []
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.logger",
+        type("L", (), {
+            "info": lambda self, event, **kw: logged.append((event, kw)),
+            "warning": lambda self, event, **kw: None,
+            "error": lambda self, event, **kw: None,
+        })(),
+    )
+    executor = _executor(AIRouteNeedsInput(reason="nothing configured", candidates=[]))
+
+    executor.generate_text("prompt", policy=declared_step)
+
+    assert "ai_route_unresolved" in dict(logged)
+
+
+# --- resolve_remote_client (agent-based steps) ----------------------------
+
+
+def test_resolve_remote_client_returns_the_configured_connection():
+    decision = AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="work-litellm")
+    executor = _executor(decision)
+    client = FakeAIClient()
+    executor.remote_client = lambda d: client  # type: ignore[method-assign]
+
+    result = executor.resolve_remote_client(policy=declared_step)
+
+    assert isinstance(result, AIExecutionSuccess)
+    assert result.data is client
+
+
+def test_resolve_remote_client_reports_ai_disabled():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.OFF))
+
+    result = executor.resolve_remote_client(policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "AI_DISABLED"
+
+
+def test_resolve_remote_client_refuses_a_cli_preference():
+    """An agent makes several calls - it cannot drive a CLI, and we don't pretend otherwise."""
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+
+    result = executor.resolve_remote_client(policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_NOT_CAPABLE"
+
+
+def test_resolve_remote_client_reports_unusable_connection():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="gone"))
+    executor.remote_client = lambda d: None  # type: ignore[method-assign]
+
+    result = executor.resolve_remote_client(policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_UNAVAILABLE"
+
+
+def test_resolve_remote_client_surfaces_needs_input():
+    executor = _executor(AIRouteNeedsInput(reason="nothing configured", candidates=[]))
+
+    result = executor.resolve_remote_client(policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "NO_PROVIDER_AVAILABLE"
+
+
 # --- remote_client --------------------------------------------------------
 
 

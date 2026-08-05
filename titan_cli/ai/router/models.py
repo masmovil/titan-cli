@@ -25,14 +25,16 @@ class AIRoutePolicy:
     in `enums.py` for the recommended vocabulary official plugins should
     reuse. `task` is never sent to the model; only the prompt is.
 
-    `preferred` carries two meanings at once, deliberately: it is the order
-    provider types are tried in when the user has not configured anything, and
-    it is the set of provider types this step's code can actually execute.
-    Preference UIs only offer the user what a step declares here, so never
-    declare a provider type the step cannot drive.
+    `executes` is the set of provider types this step's code can actually
+    run - preference UIs offer the user nothing outside it, and the resolver
+    refuses a persisted preference that falls outside it rather than handing
+    the step something it can't drive. `preferred` is the default try-order
+    when the user configured nothing, always a subset of `executes` (the
+    decorator enforces this at import time).
     """
 
     task: str
+    executes: List[AIProviderType] = field(default_factory=list)
     preferred: List[AIProviderType] = field(default_factory=list)
 
 

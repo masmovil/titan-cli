@@ -17,6 +17,7 @@ an `AIExecutionError` with a distinct `error_code`, never as a quiet fall back
 to a different provider.
 """
 
+import time
 from typing import Callable, Dict, Optional, Union
 
 from titan_cli.ai.client import AIClient
@@ -137,9 +138,27 @@ class AIExecutor:
             model: Optional model identifier for the chosen provider's CLI.
         """
         resolution = self.resolve(policy=policy, task=task, runtime_override=runtime_override)
+        resolved_task = self._resolve_policy(policy, task).task
 
         if isinstance(resolution, AIRouteNeedsInput):
+            logger.info(
+                "ai_route_unresolved",
+                task=resolved_task,
+                reason=resolution.reason,
+                candidates=[c.identifier for c in resolution.candidates],
+            )
             return self._needs_input_error(resolution)
+
+        # Which provider actually served a task must be answerable from the log
+        # alone - "did my configured CLI run?" is otherwise unfalsifiable.
+        logger.info(
+            "ai_route_resolved",
+            task=resolved_task,
+            provider=str(resolution.provider),
+            identifier=resolution.cli or resolution.connection_id,
+            reason=resolution.reason,
+            call="generate_text",
+        )
 
         match resolution.provider:
             case AIProviderType.OFF:
@@ -176,6 +195,75 @@ class AIExecutor:
                     error_code="PROVIDER_NOT_CAPABLE",
                     decision=resolution,
                 )
+
+    def resolve_remote_client(
+        self,
+        *,
+        policy: PolicySource = None,
+        task: Optional[str] = None,
+        runtime_override: Optional[AIProviderType] = None,
+    ) -> AIExecutionResult[AIClient]:
+        """
+        Resolve a remote `AIClient` for steps that hand one to an agent.
+
+        Agents make several calls of their own, so they need the client rather
+        than a single generated string. Same routing and same error codes as
+        `generate_text`: `AI_DISABLED` when the user turned the task off,
+        `PROVIDER_NOT_CAPABLE` when they pointed the task at a CLI (an agent
+        cannot drive one), and `PROVIDER_UNAVAILABLE`/`NO_PROVIDER_AVAILABLE`
+        when the choice can't be honored.
+        """
+        resolution = self.resolve(policy=policy, task=task, runtime_override=runtime_override)
+        resolved_task = self._resolve_policy(policy, task).task
+
+        if isinstance(resolution, AIRouteNeedsInput):
+            logger.info(
+                "ai_route_unresolved",
+                task=resolved_task,
+                reason=resolution.reason,
+                candidates=[c.identifier for c in resolution.candidates],
+            )
+            return self._needs_input_error(resolution)
+
+        logger.info(
+            "ai_route_resolved",
+            task=resolved_task,
+            provider=str(resolution.provider),
+            identifier=resolution.cli or resolution.connection_id,
+            reason=resolution.reason,
+            call="resolve_remote_client",
+        )
+
+        if resolution.provider == AIProviderType.OFF:
+            return AIExecutionError(
+                error_message="AI is turned off for this task.",
+                error_code="AI_DISABLED",
+                log_level="info",
+                decision=resolution,
+            )
+
+        if resolution.provider != AIProviderType.REMOTE:
+            return AIExecutionError(
+                error_message=(
+                    f"This step needs a remote AI connection; '{resolution.provider}' cannot serve "
+                    f"it. Choose a remote connection for this task. {CONFIG_HINT}"
+                ),
+                error_code="PROVIDER_NOT_CAPABLE",
+                decision=resolution,
+            )
+
+        client = self.remote_client(resolution)
+        if client is None:
+            return AIExecutionError(
+                error_message=(
+                    f"AI connection '{resolution.connection_id or 'default'}' could not be used. "
+                    f"{CONFIG_HINT}"
+                ),
+                error_code="PROVIDER_UNAVAILABLE",
+                decision=resolution,
+            )
+
+        return AIExecutionSuccess(decision=resolution, data=client)
 
     def remote_client(self, decision: AIRouteDecision) -> Optional[AIClient]:
         """
@@ -221,9 +309,17 @@ class AIExecutor:
             declared = get_declared_ai_policy(policy)
 
         if declared is None:
-            return AIRoutePolicy(task=task or "", preferred=list(DEFAULT_PREFERRED))
+            return AIRoutePolicy(
+                task=task or "",
+                executes=list(DEFAULT_PREFERRED),
+                preferred=list(DEFAULT_PREFERRED),
+            )
         if task and task != declared.task:
-            return AIRoutePolicy(task=task, preferred=list(declared.preferred))
+            return AIRoutePolicy(
+                task=task,
+                executes=list(declared.executes),
+                preferred=list(declared.preferred),
+            )
         return declared
 
     def _needs_input_error(self, resolution: AIRouteNeedsInput) -> AIExecutionError:
@@ -267,6 +363,7 @@ class AIExecutor:
             messages.append(AIMessage(role="system", content=system_prompt))
         messages.append(AIMessage(role="user", content=prompt))
 
+        started = time.monotonic()
         try:
             response = client.generate(messages, max_tokens=max_tokens, temperature=temperature)
         except Exception as e:
@@ -282,6 +379,13 @@ class AIExecutor:
                 details={"connection_id": client.connection_id},
             )
 
+        logger.info(
+            "ai_remote_generate_ok",
+            connection_id=client.connection_id,
+            model=getattr(response, "model", None),
+            duration=round(time.monotonic() - started, 3),
+            response_chars=len(response.content or ""),
+        )
         return AIExecutionSuccess(decision=decision, data=response.content)
 
     def _generate_headless(
@@ -317,6 +421,7 @@ class AIExecutor:
 
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
 
+        started = time.monotonic()
         try:
             response = adapter.execute(
                 full_prompt,
@@ -342,6 +447,13 @@ class AIExecutor:
                 details={"cli": cli, "exit_code": response.exit_code},
             )
 
+        logger.info(
+            "ai_headless_execute_ok",
+            cli=cli,
+            model=model,
+            duration=round(time.monotonic() - started, 3),
+            response_chars=len(response.stdout or ""),
+        )
         return AIExecutionSuccess(decision=decision, data=response.stdout)
 
 

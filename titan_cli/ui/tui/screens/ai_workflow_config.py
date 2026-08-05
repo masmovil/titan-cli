@@ -182,9 +182,6 @@ class AIStepCard(Container):
         yield DimText(f"task: {step.policy.task}", classes="step-info")
         yield DimText(f"step: {step.step}  ({enforce_label})", classes="step-info")
 
-        if step.overridden:
-            yield DimText("policy overridden by this workflow's params.ai:", classes="step-info")
-
         if isinstance(resolution, AIRouteDecision):
             identifier = resolution.cli or resolution.connection_id or ""
             suffix = f" ({identifier})" if identifier else ""
@@ -356,6 +353,10 @@ class AIWorkflowConfigScreen(BaseScreen):
             + checker.available_headless_clis()
             + checker.available_interactive_clis()
         )
+        # Offer only what this step's code can actually run ("Off" is always
+        # added by the modal itself). No declared set -> offer everything.
+        if step.policy.executes:
+            candidates = [c for c in candidates if c.provider in step.policy.executes]
 
         scope_label = f"task '{step.policy.task}'"
 

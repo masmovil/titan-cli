@@ -1,6 +1,7 @@
 # tests/engine/steps/test_ai_assistant_step.py
 import unittest
 from unittest.mock import patch, MagicMock
+from titan_cli.ai.router import AIProviderType, AIRouteDecision
 from titan_cli.external_cli.launcher import CLILauncher
 from titan_cli.engine.results import Skip, Success
 from titan_cli.engine.steps.ai_assistant_step import execute_ai_assistant_step
@@ -124,6 +125,47 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
 
         # Verify that launch_external_cli was NOT called
         self.mock_ctx.textual.launch_external_cli.assert_not_called()
+
+    @patch('shutil.which', return_value='/usr/bin/some_cli')
+    def test_configured_cli_is_used_without_asking(self, mock_which):
+        """A resolved interactive CLI means the user already chose - don't ask again."""
+        self.mock_ctx.textual.ask_confirm = MagicMock(return_value=True)
+        self.mock_ctx.textual.ask_option = MagicMock(return_value="claude")
+        self.mock_ctx.ai_router.resolve = MagicMock(
+            return_value=AIRouteDecision(
+                provider=AIProviderType.CLI_INTERACTIVE, cli="gemini", reason="task preference"
+            )
+        )
+
+        result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
+
+        self.assertIsInstance(result, Success)
+        self.mock_ctx.textual.ask_option.assert_not_called()
+        call_kwargs = self.mock_ctx.textual.launch_external_cli.call_args.kwargs
+        self.assertEqual(call_kwargs['cli_name'], 'gemini')
+
+    @patch('shutil.which', return_value='/usr/bin/some_cli')
+    def test_ai_turned_off_skips_instead_of_launching(self, mock_which):
+        self.mock_ctx.textual.ask_confirm = MagicMock(return_value=True)
+        self.mock_ctx.ai_router.resolve = MagicMock(
+            return_value=AIRouteDecision(provider=AIProviderType.OFF, reason="task preference")
+        )
+
+        result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
+
+        self.assertIsInstance(result, Skip)
+        self.mock_ctx.textual.launch_external_cli.assert_not_called()
+
+    @patch('shutil.which', return_value='/usr/bin/some_cli')
+    def test_step_never_persists_a_preference(self, mock_which):
+        """Persisting is the AI Configuration screen's job, not a step's."""
+        self.mock_ctx.textual.ask_confirm = MagicMock(return_value=True)
+        self.mock_ctx.textual.ask_option = MagicMock(return_value="gemini")
+
+        execute_ai_assistant_step(self.mock_step, self.mock_ctx)
+
+        self.mock_ctx.titan_config.upsert_task_ai_preference.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

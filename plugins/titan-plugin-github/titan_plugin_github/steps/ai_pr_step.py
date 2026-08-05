@@ -6,7 +6,8 @@ Uses PRAgent to analyze branch context and generate PR content.
 """
 
 from titan_cli.ai.router.declaration import declare_ai_usage
-from titan_cli.ai.router.enums import AITask
+from titan_cli.ai.router.enums import AIProviderType, AITask
+from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.core.logging import get_logger
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 
@@ -18,6 +19,10 @@ logger = get_logger(__name__)
 
 @declare_ai_usage(
     task=AITask.PR_DESCRIPTION,
+    # PRAgent makes several calls of its own; until a CLI-backed generator
+    # exists, a remote connection is the only thing this code can drive.
+    executes=[AIProviderType.REMOTE],
+    enforces=True,
 )
 def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     """
@@ -29,7 +34,7 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     - Appropriate detail level based on PR size
 
     Requires:
-        ctx.ai: An initialized AIClient
+        ctx.ai_router: The AI execution façade (falls back to ctx.ai)
         ctx.git: An initialized GitClient
         ctx.github: An initialized GitHubClient
 
@@ -53,8 +58,22 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     # Begin step container
     ctx.textual.begin_step("AI PR Description")
 
-    # Check if AI is configured
-    if not ctx.ai or not ctx.ai.is_available():
+    # Use the connection the user chose for this task; the agent drives it.
+    ai_client = ctx.ai
+    if ctx.ai_router:
+        match ctx.ai_router.resolve_remote_client(policy=ai_suggest_pr_description_step):
+            case AIExecutionSuccess(data=resolved_client):
+                ai_client = resolved_client
+            case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
+                ctx.textual.dim_text(disabled_message)
+                ctx.textual.end_step("skip")
+                return Skip(disabled_message)
+            case AIExecutionError(error_message=err):
+                ctx.textual.error_text(err)
+                ctx.textual.end_step("error")
+                return Error(err)
+
+    if not ai_client or not ai_client.is_available():
         ctx.textual.dim_text(msg.GitHub.AI.AI_NOT_CONFIGURED)
         ctx.textual.end_step("skip")
         return Skip(msg.GitHub.AI.AI_NOT_CONFIGURED)
@@ -81,7 +100,7 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
 
         # Create PRAgent instance
         pr_agent = PRAgent(
-            ai_client=ctx.ai,
+            ai_client=ai_client,
             git_client=ctx.git,
             github_client=ctx.github
         )

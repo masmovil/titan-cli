@@ -1,7 +1,8 @@
 """Slack target resolution and AI summary steps."""
 
-from titan_cli.ai.models import AIMessage
 from titan_cli.ai.router.declaration import declare_ai_usage
+from titan_cli.ai.router.enums import AIProviderType
+from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.core.logging import get_logger
 from titan_cli.core.result import ClientError, ClientSuccess
 from titan_cli.ui.tui.widgets import OptionItem
@@ -24,9 +25,8 @@ MAX_COMBINED_TARGET_OPTIONS = 20
 DEFAULT_SLACK_HISTORY_LIMIT = 30
 
 
-def _summarization_error_message(exc: Exception) -> str:
-    """Convert AI summary errors into a concise user-facing message."""
-    error_text = str(exc)
+def _summarization_error_message(error_text: str) -> str:
+    """Convert an AI summary failure into a concise user-facing message."""
     normalized = error_text.lower()
     if (
         "429" in normalized
@@ -339,6 +339,12 @@ def read_recent_messages_step(ctx: WorkflowContext) -> WorkflowResult:
 
 @declare_ai_usage(
     task="slack_summary",
+    # A transcript in, a summary out: a remote connection or a headless CLI can
+    # serve it. Remote stays the default - there is no repo for a CLI to read
+    # here, and it is markedly slower.
+    executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+    preferred=[AIProviderType.REMOTE],
+    enforces=True,
 )
 def ai_summarize_messages_step(ctx: WorkflowContext) -> WorkflowResult:
     """
@@ -367,7 +373,7 @@ def ai_summarize_messages_step(ctx: WorkflowContext) -> WorkflowResult:
 
     ctx.textual.begin_step("Summarize Slack Messages")
 
-    if not ctx.ai or not ctx.ai.is_available():
+    if not ctx.ai_router:
         ctx.textual.dim_text("AI not configured - skipping Slack summary.")
         ctx.textual.end_step("skip")
         return Skip("AI not configured - skipping Slack summary.")
@@ -391,33 +397,41 @@ def ai_summarize_messages_step(ctx: WorkflowContext) -> WorkflowResult:
     transcript = truncate_transcript_for_summary(transcript, max_chars=max_chars)
     prompt = build_summary_prompt(target_name, transcript)
 
-    try:
-        with ctx.textual.loading("Summarizing Slack messages with AI..."):
-            response = ctx.ai.generate(
-                [AIMessage(role="user", content=prompt)],
-                max_tokens=1024,
-                temperature=0.3,
-            )
-    except Exception as exc:
-        message = _summarization_error_message(exc)
-        logger.warning(
-            "slack_summary_ai_request_failed",
-            target_name=target_name,
-            source_count=len(messages),
-            transcript_chars=len(transcript),
-            error=str(exc),
+    with ctx.textual.loading("Summarizing Slack messages with AI..."):
+        result = ctx.ai_router.generate_text(
+            prompt,
+            policy=ai_summarize_messages_step,
+            max_tokens=1024,
+            temperature=0.3,
         )
-        ctx.textual.error_text(message)
-        ctx.textual.end_step("error")
-        return Error(message, exception=exc)
 
-    summary = response.content.strip()
+    match result:
+        case AIExecutionSuccess(data=response_text):
+            pass
+        case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
+            ctx.textual.dim_text(disabled_message)
+            ctx.textual.end_step("skip")
+            return Skip(disabled_message)
+        case AIExecutionError(error_message=err):
+            message = _summarization_error_message(err)
+            logger.warning(
+                "slack_summary_ai_request_failed",
+                target_name=target_name,
+                source_count=len(messages),
+                transcript_chars=len(transcript),
+                error=err,
+            )
+            ctx.textual.error_text(message)
+            ctx.textual.end_step("error")
+            return Error(message)
+
+    summary = (response_text or "").strip()
     logger.info(
         "slack_summary_ai_response_received",
         target_name=target_name,
         source_count=len(messages),
         transcript_chars=len(transcript),
-        response_chars=len(response.content or ""),
+        response_chars=len(response_text or ""),
         summary_chars=len(summary),
     )
     if not summary:

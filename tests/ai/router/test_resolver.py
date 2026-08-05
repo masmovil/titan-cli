@@ -203,6 +203,70 @@ def test_leftover_workflow_scope_in_config_has_no_effect(availability):
     assert decision.provider == AIProviderType.REMOTE
 
 
+def test_persisted_preference_outside_executes_is_refused(availability):
+    """
+    A preference the step's code can't run must be refused by name, not handed
+    over to fail later and further from the cause.
+    """
+    resolver = AIRouteResolver(
+        _config(generic_assistant={"provider": "remote", "connection_id": "work-litellm"}),
+        availability,
+    )
+    policy = AIRoutePolicy(
+        task="generic_assistant",
+        executes=[AIProviderType.CLI_INTERACTIVE],
+        preferred=[AIProviderType.CLI_INTERACTIVE],
+    )
+
+    resolution = resolver.resolve(task="generic_assistant", policy=policy)
+
+    assert isinstance(resolution, AIRouteNeedsInput)
+    assert "cannot run" in resolution.reason
+
+
+def test_off_preference_passes_the_executes_guard(availability):
+    """Any step can skip - 'off' is honored regardless of executes."""
+    resolver = AIRouteResolver(_config(generic_assistant={"provider": "off"}), availability)
+    policy = AIRoutePolicy(
+        task="generic_assistant", executes=[AIProviderType.CLI_INTERACTIVE]
+    )
+
+    decision = resolver.resolve(task="generic_assistant", policy=policy)
+
+    assert isinstance(decision, AIRouteDecision)
+    assert decision.provider == AIProviderType.OFF
+
+
+def test_preference_within_executes_passes_the_guard(availability):
+    resolver = AIRouteResolver(
+        _config(commit_message={"provider": "cli_headless", "cli": "claude"}),
+        availability,
+    )
+    policy = AIRoutePolicy(
+        task="commit_message",
+        executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+        preferred=[AIProviderType.REMOTE],
+    )
+
+    decision = resolver.resolve(task="commit_message", policy=policy)
+
+    assert isinstance(decision, AIRouteDecision)
+    assert decision.cli == "claude"
+
+
+def test_no_declared_executes_means_no_guard(availability):
+    """Steps that declare nothing keep the old behavior - no filtering."""
+    resolver = AIRouteResolver(
+        _config(thread_resolution={"provider": "remote", "connection_id": "work-litellm"}),
+        availability,
+    )
+
+    decision = resolver.resolve(task="thread_resolution")
+
+    assert isinstance(decision, AIRouteDecision)
+    assert decision.provider == AIProviderType.REMOTE
+
+
 def test_missing_ai_config_needs_input():
     resolver = AIRouteResolver(None, FakeAvailability())
 

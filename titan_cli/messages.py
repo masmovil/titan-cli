@@ -72,6 +72,7 @@ class Messages:
         DECLINED_ASSISTANCE_STOPPED = "User declined AI assistance - workflow stopped"
         DECLINED_ASSISTANCE_SKIPPED = "User declined AI assistance"
         NO_ASSISTANT_CLI_FOUND = "No AI coding assistant CLI found"
+        AI_DISABLED = "AI is turned off for the assistant task - skipping"
         LAUNCHING_ASSISTANT = "Launching {cli_name}..."
         PROMPT_PREVIEW = "Prompt: {prompt_preview}"
         BACK_IN_TITAN = "Back in Titan workflow"

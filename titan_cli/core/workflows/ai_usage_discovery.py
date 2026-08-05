@@ -5,19 +5,17 @@ Scans every workflow the `WorkflowRegistry` knows about, resolves each step's
 `(plugin, step)` reference to its actual callable using the same resolution
 rules `WorkflowExecutor` applies at runtime (core/project/user virtual
 plugins vs. real plugin registrations), and reads back any policy attached
-via `declare_ai_usage`. A workflow step can override specific fields of a
-step's default policy via a `params.ai:` block in its own YAML entry.
+via `declare_ai_usage`.
 
 Lives in `core.workflows` rather than `titan_cli.ai.router` because it
 depends on both `WorkflowRegistry` and `PluginRegistry` - the router package
 sits below those in the dependency graph and must not import them back.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Set
 
 from titan_cli.ai.router.declaration import declared_ai_usage_enforces, get_declared_ai_policy
-from titan_cli.ai.router.enums import AIProviderType
 from titan_cli.ai.router.models import AIRoutePolicy
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 
@@ -35,7 +33,6 @@ class DiscoveredAIStep:
     step: str
     policy: AIRoutePolicy
     enforces: bool
-    overridden: bool
 
 
 @dataclass
@@ -112,13 +109,6 @@ class AIUsageDiscoveryService:
             if policy is None:
                 continue
 
-            overridden = False
-            step_params = step_data.get("params")
-            ai_override = step_params.get("ai") if isinstance(step_params, dict) else None
-            if isinstance(ai_override, dict):
-                policy = self._apply_override(policy, ai_override)
-                overridden = True
-
             discovered.append(
                 DiscoveredAIStep(
                     workflow_name=workflow.name,
@@ -128,7 +118,6 @@ class AIUsageDiscoveryService:
                     step=step_name,
                     policy=policy,
                     enforces=declared_ai_usage_enforces(func),
-                    overridden=overridden,
                 )
             )
 
@@ -146,15 +135,6 @@ class AIUsageDiscoveryService:
         if not plugin_instance:
             return None
         return plugin_instance.get_steps().get(step_name)
-
-    def _apply_override(self, policy: AIRoutePolicy, override: dict) -> AIRoutePolicy:
-        """Return a copy of `policy` with fields replaced by a per-invocation `params.ai:` override."""
-        kwargs = {}
-        if "task" in override:
-            kwargs["task"] = override["task"]
-        if "preferred" in override:
-            kwargs["preferred"] = [AIProviderType(p) for p in override["preferred"]]
-        return replace(policy, **kwargs)
 
 
 __all__ = [

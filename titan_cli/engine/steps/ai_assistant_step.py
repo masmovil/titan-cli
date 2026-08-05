@@ -27,7 +27,9 @@ from titan_cli.messages import msg
 
 @declare_ai_usage(
     task=AITask.GENERIC_ASSISTANT,
-    preferred=[AIProviderType.CLI_INTERACTIVE],
+    # Fixing lint/test/build issues means editing files and running commands in
+    # a real terminal session - only an interactive CLI can do that.
+    executes=[AIProviderType.CLI_INTERACTIVE],
     enforces=True,
 )
 def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> WorkflowResult:
@@ -160,18 +162,25 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
         ctx.textual.end_step("skip")
         return Skip(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
 
-    remembered_cli = None
+    # This step owns its own execution (it launches an interactive session and
+    # suspends the TUI), so it resolves the route instead of asking the façade
+    # to run a prompt.
+    configured_cli = None
     if cli_preference == "auto" and ctx.ai_router:
         resolution = ctx.ai_router.resolve(policy=execute_ai_assistant_step)
-        if (
-            isinstance(resolution, AIRouteDecision)
-            and resolution.provider == AIProviderType.CLI_INTERACTIVE
-            and resolution.cli in available_launchers
-        ):
-            remembered_cli = resolution.cli
+        if isinstance(resolution, AIRouteDecision):
+            if resolution.provider == AIProviderType.OFF:
+                ctx.textual.dim_text(msg.AIAssistant.AI_DISABLED)
+                ctx.textual.end_step("skip")
+                return Skip(msg.AIAssistant.AI_DISABLED)
+            if (
+                resolution.provider == AIProviderType.CLI_INTERACTIVE
+                and resolution.cli in available_launchers
+            ):
+                configured_cli = resolution.cli
 
-    if remembered_cli:
-        cli_to_launch = remembered_cli
+    if configured_cli:
+        cli_to_launch = configured_cli
     elif len(available_launchers) == 1:
         cli_to_launch = list(available_launchers.keys())[0]
     else:
