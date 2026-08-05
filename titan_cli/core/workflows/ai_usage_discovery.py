@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 from typing import Callable, Dict, List, Optional, Set
 
 from titan_cli.ai.router.declaration import declared_ai_usage_enforces, get_declared_ai_policy
-from titan_cli.ai.router.enums import AICapability, AIProviderType
+from titan_cli.ai.router.enums import AIProviderType
 from titan_cli.ai.router.models import AIRoutePolicy
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 
@@ -152,14 +152,8 @@ class AIUsageDiscoveryService:
         kwargs = {}
         if "task" in override:
             kwargs["task"] = override["task"]
-        if "capabilities" in override:
-            kwargs["capabilities"] = {AICapability(c) for c in override["capabilities"]}
         if "preferred" in override:
             kwargs["preferred"] = [AIProviderType(p) for p in override["preferred"]]
-        if "strict" in override:
-            kwargs["strict"] = bool(override["strict"])
-        if "remember" in override:
-            kwargs["remember"] = override["remember"]
         return replace(policy, **kwargs)
 
 

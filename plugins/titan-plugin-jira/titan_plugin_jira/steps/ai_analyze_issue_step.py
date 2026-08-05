@@ -3,7 +3,7 @@ AI-powered JIRA issue analysis step
 """
 
 from titan_cli.ai.router.declaration import declare_ai_usage
-from titan_cli.ai.router.enums import AICapability, AITask
+from titan_cli.ai.router.enums import AITask
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from ..messages import msg
 from ..agents import JiraAgent
@@ -12,7 +12,6 @@ from ..formatters import IssueAnalysisMarkdownFormatter
 
 @declare_ai_usage(
     task=AITask.JIRA_ANALYSIS,
-    capabilities={AICapability.TEXT_GENERATION},
 )
 def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
     """

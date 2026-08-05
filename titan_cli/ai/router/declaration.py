@@ -5,17 +5,18 @@ Self-declaration mechanism for steps that use AI.
 community/third-party plugin - can attach to itself to announce "this step
 uses AI" without registering anywhere central. A discovery service can later
 scan registered workflows, resolve each step to its callable, and read this
-attribute back off the function object.
+attribute back off the function object. The execution façade reads the same
+attribute when a step passes its own function as `policy=`.
 
 Declaring usage (`ai_policy`) is informational only. Whether the step's
 runtime behavior actually respects the resolved provider - i.e. whether it
-calls `AIRouteResolver.resolve()` internally - is a separate claim, tracked
-via `enforces`. A step can declare without enforcing.
+routes through `ctx.ai_router` - is a separate claim, tracked via `enforces`.
+A step can declare without enforcing.
 """
 
-from typing import Callable, List, Optional, Set, TypeVar
+from typing import Callable, List, Optional, TypeVar
 
-from .enums import AICapability, AIProviderType
+from .enums import AIProviderType
 from .models import AIRoutePolicy
 
 StepFunc = TypeVar("StepFunc", bound=Callable)
@@ -27,10 +28,7 @@ AI_ENFORCES_ATTR = "ai_enforces"
 
 def declare_ai_usage(
     task: str,
-    capabilities: Optional[Set[AICapability]] = None,
     preferred: Optional[List[AIProviderType]] = None,
-    strict: bool = False,
-    remember: str = "ask",
     enforces: bool = False,
 ) -> Callable[[StepFunc], StepFunc]:
     """
@@ -39,14 +37,15 @@ def declare_ai_usage(
     Args:
         task: Routing/preference-persistence key. Reuse an `AITask` member
             for official plugins; community plugins may pass their own string.
-        capabilities: Capabilities this step's AI usage requires.
-        preferred: Provider types to try first, in order.
-        strict: If True, only capability-satisfying providers may be used.
-        remember: Default remember behavior ("ask" | "always" | "never").
-        enforces: Set True only if the step's own code actually consults
-            `AIRouteResolver`/`ctx.ai_router` at runtime, not just
-            informational self-declaration. Defaults to False so
-            undeclared/unmigrated steps never overstate what they guarantee.
+        preferred: Provider types to try first, in order, when the user has
+            not configured a preference for this task. This list is also the
+            set of provider types the step's code can execute - preference UIs
+            offer the user nothing outside it - so only declare what the step
+            can actually drive.
+        enforces: Set True only if the step's own code actually routes through
+            `ctx.ai_router` at runtime, not just informational
+            self-declaration. Defaults to False so undeclared/unmigrated steps
+            never overstate what they guarantee.
 
     Returns:
         A decorator that stashes the policy on the function and returns it
@@ -57,13 +56,7 @@ def declare_ai_usage(
         setattr(
             func,
             AI_POLICY_ATTR,
-            AIRoutePolicy(
-                task=task,
-                capabilities=capabilities or set(),
-                preferred=preferred or [],
-                strict=strict,
-                remember=remember,
-            ),
+            AIRoutePolicy(task=task, preferred=preferred or []),
         )
         setattr(func, AI_ENFORCES_ATTR, enforces)
         return func

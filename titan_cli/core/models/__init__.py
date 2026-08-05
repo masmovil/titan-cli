@@ -1,6 +1,6 @@
 # core/models/__init__.py
 from enum import StrEnum
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -120,27 +120,27 @@ class AIConfig(BaseModel):
         return self.connections
 
     preferences: Optional["AIPreferences"] = Field(
-        None, description="Persisted routing preferences for tasks/workflows"
+        None, description="Persisted routing preferences, one per AI task"
     )
 
 
 class AIProviderPreference(BaseModel):
-    """A persisted choice of which provider to use for a task or workflow."""
+    """A persisted choice of which provider to use for an AI task."""
 
     provider: str = Field(..., description="AIProviderType value, e.g. 'remote', 'cli_headless'")
-    connection_id: Optional[str] = Field(None, description="AI connection ID, for 'remote'/'remote_structured'")
+    connection_id: Optional[str] = Field(None, description="AI connection ID, for 'remote'")
     cli: Optional[str] = Field(None, description="CLI name, for 'cli_headless'/'cli_interactive'")
-    remember: bool = Field(True, description="Whether this was persisted to be reused")
-    fallback: List[str] = Field(default_factory=list, description="Ordered fallback provider values")
 
 
 class AIPreferences(BaseModel):
-    """Persisted AI routing preferences, keyed by task and by workflow."""
+    """
+    Persisted AI routing preferences, keyed by task.
 
-    default_selection_mode: str = Field("ask", description="ask | remember | auto")
-    fallback_enabled: bool = Field(True, description="Whether fallback resolution is attempted at all")
+    The task is the only scope: one choice per kind of work, applied wherever
+    that work happens.
+    """
+
     tasks: Dict[str, AIProviderPreference] = Field(default_factory=dict)
-    workflows: Dict[str, AIProviderPreference] = Field(default_factory=dict)
 
 
 AIConfig.model_rebuild()

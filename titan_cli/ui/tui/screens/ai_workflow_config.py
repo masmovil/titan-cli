@@ -2,8 +2,7 @@
 AI Workflow Configuration Screen
 
 Discovers every registered workflow's AI-using steps and lets the user
-pre-configure a provider/CLI for each one (by task or by workflow) ahead of
-running it.
+pre-configure which provider/CLI serves each step's task ahead of running it.
 """
 
 import re
@@ -94,7 +93,7 @@ class SelectProviderModal(ModalScreen[Optional[dict]]):
                 StyledOption(
                     id=OFF_OPTION_ID,
                     title="Off",
-                    description="Disable AI for this task/workflow",
+                    description="Disable AI for this task",
                 )
             )
             yield StyledOptionList(*options, id="select-provider-list")
@@ -112,7 +111,7 @@ class SelectProviderModal(ModalScreen[Optional[dict]]):
             return
 
         preference_data = {"provider": provider}
-        if provider in (AIProviderType.REMOTE, AIProviderType.REMOTE_STRUCTURED):
+        if provider == AIProviderType.REMOTE:
             preference_data["connection_id"] = identifier
         else:
             preference_data["cli"] = identifier
@@ -166,14 +165,12 @@ class AIStepCard(Container):
         row: _StepRow,
         row_key: str,
         has_task_preference: bool = False,
-        has_workflow_preference: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.row = row
         self.row_key = row_key
         self.has_task_preference = has_task_preference
-        self.has_workflow_preference = has_workflow_preference
 
     def compose(self) -> ComposeResult:
         step = self.row.step
@@ -184,10 +181,6 @@ class AIStepCard(Container):
         enforce_label = "enforces" if step.enforces else "declares only"
         yield DimText(f"task: {step.policy.task}", classes="step-info")
         yield DimText(f"step: {step.step}  ({enforce_label})", classes="step-info")
-
-        if step.policy.capabilities:
-            capability_names = ", ".join(sorted(c.value for c in step.policy.capabilities))
-            yield DimText(f"capabilities: {capability_names}", classes="step-info")
 
         if step.overridden:
             yield DimText("policy overridden by this workflow's params.ai:", classes="step-info")
@@ -206,19 +199,12 @@ class AIStepCard(Container):
 
         with Container(classes="button-column"):
             yield Button(
-                "Set Task Pref.",
+                "Set Preference",
                 variant="primary",
                 id=f"set-task-{self.row_key}",
             )
-            yield Button(
-                "Set Workflow Pref.",
-                variant="default",
-                id=f"set-workflow-{self.row_key}",
-            )
             if self.has_task_preference:
-                yield Button("Clear Task", variant="error", id=f"clear-task-{self.row_key}")
-            if self.has_workflow_preference:
-                yield Button("Clear Workflow", variant="error", id=f"clear-workflow-{self.row_key}")
+                yield Button("Clear", variant="error", id=f"clear-task-{self.row_key}")
 
 
 class AIWorkflowConfigScreen(BaseScreen):
@@ -340,16 +326,12 @@ class AIWorkflowConfigScreen(BaseScreen):
                     self._pending_step_by_id[row_key] = (workflow_name, step)
                     resolution = resolver.resolve(
                         task=step.policy.task,
-                        workflow_name=workflow_name,
                         policy=step.policy,
                     )
                     card = AIStepCard(
                         _StepRow(step=step, resolution=resolution),
                         row_key=row_key,
                         has_task_preference=bool(preferences and step.policy.task in preferences.tasks),
-                        has_workflow_preference=bool(
-                            preferences and workflow_name in preferences.workflows
-                        ),
                     )
                     row.mount(card)
 
@@ -357,19 +339,15 @@ class AIWorkflowConfigScreen(BaseScreen):
         button_id = event.button.id or ""
 
         if button_id.startswith("set-task-"):
-            self._handle_set_preference(button_id[len("set-task-"):], scope="task")
-        elif button_id.startswith("set-workflow-"):
-            self._handle_set_preference(button_id[len("set-workflow-"):], scope="workflow")
+            self._handle_set_preference(button_id[len("set-task-"):])
         elif button_id.startswith("clear-task-"):
-            self._handle_clear_preference(button_id[len("clear-task-"):], scope="task")
-        elif button_id.startswith("clear-workflow-"):
-            self._handle_clear_preference(button_id[len("clear-workflow-"):], scope="workflow")
+            self._handle_clear_preference(button_id[len("clear-task-"):])
 
-    def _handle_set_preference(self, row_key: str, scope: str) -> None:
+    def _handle_set_preference(self, row_key: str) -> None:
         pending = self._pending_step_by_id.get(row_key)
         if not pending:
             return
-        workflow_name, step = pending
+        _workflow_name, step = pending
 
         ai_config = self.config.config.ai if self.config.config else None
         checker = AIAvailabilityChecker(ai_config, self.config.secrets)
@@ -379,16 +357,13 @@ class AIWorkflowConfigScreen(BaseScreen):
             + checker.available_interactive_clis()
         )
 
-        scope_label = f"task '{step.policy.task}'" if scope == "task" else f"workflow '{workflow_name}'"
+        scope_label = f"task '{step.policy.task}'"
 
         def on_selected(preference_data: Optional[dict]) -> None:
             if preference_data is None:
                 return
             try:
-                if scope == "task":
-                    self.config.upsert_task_ai_preference(step.policy.task, preference_data)
-                else:
-                    self.config.upsert_workflow_ai_preference(workflow_name, preference_data)
+                self.config.upsert_task_ai_preference(step.policy.task, preference_data)
                 self.load_workflows()
                 self.app.notify(f"AI preference saved for {scope_label}", severity="information")
             except Exception as e:
@@ -399,17 +374,14 @@ class AIWorkflowConfigScreen(BaseScreen):
             on_selected,
         )
 
-    def _handle_clear_preference(self, row_key: str, scope: str) -> None:
+    def _handle_clear_preference(self, row_key: str) -> None:
         pending = self._pending_step_by_id.get(row_key)
         if not pending:
             return
-        workflow_name, step = pending
+        _workflow_name, step = pending
 
         try:
-            if scope == "task":
-                self.config.delete_task_ai_preference(step.policy.task)
-            else:
-                self.config.delete_workflow_ai_preference(workflow_name)
+            self.config.delete_task_ai_preference(step.policy.task)
             self.load_workflows()
             self.app.notify("AI preference cleared", severity="information")
         except Exception as e:

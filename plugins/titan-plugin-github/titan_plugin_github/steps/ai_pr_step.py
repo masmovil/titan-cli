@@ -6,7 +6,7 @@ Uses PRAgent to analyze branch context and generate PR content.
 """
 
 from titan_cli.ai.router.declaration import declare_ai_usage
-from titan_cli.ai.router.enums import AICapability, AITask
+from titan_cli.ai.router.enums import AITask
 from titan_cli.core.logging import get_logger
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 
@@ -18,7 +18,6 @@ logger = get_logger(__name__)
 
 @declare_ai_usage(
     task=AITask.PR_DESCRIPTION,
-    capabilities={AICapability.TEXT_GENERATION, AICapability.READ_REPO},
 )
 def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     """

@@ -1,55 +1,39 @@
 """
 Data models for the AI execution routing layer.
 
-Request/result/policy/decision shapes. Per D-001, AIExecutionResult
-mirrors ClientResult's success/error shape (titan_cli/core/result.py) so
-existing ClientSuccess/ClientError pattern-matching habits transfer, but it
-is its own type, not a subclass or alias of ClientResult.
+Policy/decision/result shapes. `AIExecutionResult` mirrors `ClientResult`'s
+success/error shape (titan_cli/core/result.py) so existing
+ClientSuccess/ClientError pattern-matching habits transfer, but it is its own
+type, not a subclass or alias of ClientResult.
 """
 
 from dataclasses import dataclass, field
-from typing import Generic, List, Optional, Set, TypeVar
+from typing import Generic, List, Optional, TypeVar
 
-from .enums import AICapability, AIProviderType
+from .enums import AIProviderType
 
 T = TypeVar("T")
 
 
 @dataclass
-class AIExecutionRequest:
-    """
-    A single step's request for AI execution.
-
-    `task` is a plain string (not `AITask`) so community plugins can use
-    their own task identifiers as routing/preference-persistence keys - see
-    `AITask` in `enums.py` for the recommended vocabulary official plugins
-    should reuse. `task` is never sent to the model; only `prompt` is.
-    """
-
-    task: str
-    prompt: str
-    capabilities: Set[AICapability] = field(default_factory=set)
-    mode: str = "auto"
-    interaction: str = "auto"
-    output_contract: Optional[str] = None
-    policy_scope: str = "workflow"
-
-
-@dataclass
 class AIRoutePolicy:
     """
-    Workflow/step-declared routing policy (mirrors the YAML `ai:` block).
+    A step's declared routing policy.
 
-    `strict=True` means only providers satisfying `capabilities` may be used,
-    with no silent fallback outside that set. Enforcement ships in later
-    phases; the field exists from now per decision O-003.
+    `task` is a plain string (not `AITask`) so community plugins can use their
+    own task identifiers as routing/preference-persistence keys - see `AITask`
+    in `enums.py` for the recommended vocabulary official plugins should
+    reuse. `task` is never sent to the model; only the prompt is.
+
+    `preferred` carries two meanings at once, deliberately: it is the order
+    provider types are tried in when the user has not configured anything, and
+    it is the set of provider types this step's code can actually execute.
+    Preference UIs only offer the user what a step declares here, so never
+    declare a provider type the step cannot drive.
     """
 
     task: str
-    capabilities: Set[AICapability] = field(default_factory=set)
     preferred: List[AIProviderType] = field(default_factory=list)
-    strict: bool = False
-    remember: str = "ask"  # "ask" | "always" | "never"
 
 
 @dataclass
@@ -87,12 +71,11 @@ class AIExecutionError:
     decision: Optional[AIRouteDecision] = None
 
 
-# Usage: AIExecutionResult[AIResponse], AIExecutionResult[HeadlessResponse], etc.
+# Usage: AIExecutionResult[str], AIExecutionResult[HeadlessResponse], etc.
 AIExecutionResult = AIExecutionSuccess[T] | AIExecutionError
 
 
 __all__ = [
-    "AIExecutionRequest",
     "AIRoutePolicy",
     "AIRouteDecision",
     "AIExecutionSuccess",

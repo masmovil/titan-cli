@@ -1,26 +1,25 @@
 """
 Route resolution for the AI execution routing layer.
 
-Resolves which provider a task/workflow should use given persisted
-preferences (`titan_cli.core.models.AIPreferences`) and provider availability
+Resolves which provider a task should use given persisted preferences
+(`titan_cli.core.models.AIPreferences`) and provider availability
 (`AIAvailabilityChecker`). Never picks a fallback silently: if a persisted
 preference's provider is unavailable, resolution reports that user input is
 needed instead of guessing, regardless of how many compatible candidates
-remain. Strict capability enforcement (`AIRoutePolicy.strict`) is accepted as
-input but not yet enforced - no per-provider capability matrix exists in code
-yet, only in documentation.
+remain.
 
-No workflow calls this resolver yet - it exists so a future migration phase
-has something to call.
+The task is the only persisted preference scope. Resolution has exactly three
+levels: a runtime override, the user's persisted preference for the task, and
+the step's own declared `preferred` order.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Set
+from typing import List, Optional
 
 from titan_cli.core.models import AIConfig, AIProviderPreference
 
 from .availability import AIAvailabilityChecker, AIProviderAvailability
-from .enums import AICapability, AIProviderType
+from .enums import AIProviderType
 from .models import AIRouteDecision, AIRoutePolicy
 
 
@@ -42,7 +41,7 @@ AIRouteResolution = AIRouteDecision | AIRouteNeedsInput
 
 
 class AIRouteResolver:
-    """Resolves which provider a task/workflow should use, given persisted preferences."""
+    """Resolves which provider a task should use, given persisted preferences."""
 
     def __init__(self, ai_config: Optional[AIConfig], availability: AIAvailabilityChecker):
         self.ai_config = ai_config
@@ -51,21 +50,14 @@ class AIRouteResolver:
     def resolve(
         self,
         task: str,
-        workflow_name: Optional[str] = None,
         policy: Optional[AIRoutePolicy] = None,
-        capabilities: Optional[Set[AICapability]] = None,
         runtime_override: Optional[AIProviderType] = None,
     ) -> AIRouteResolution:
         """
-        Resolve a provider following this precedence:
-        runtime override -> persisted workflow preference -> persisted task
-        preference -> workflow YAML default -> ask the user (no silent
-        fallback). Strict step/workflow capability requirements are the
-        caller's responsibility to have already narrowed `capabilities`
-        with; this method does not filter candidates by capability.
+        Resolve a provider following this precedence: runtime override ->
+        persisted task preference -> the step's declared `preferred` order ->
+        ask the user (no silent fallback).
         """
-        capabilities = capabilities or set()
-
         if runtime_override is not None:
             if self.availability.is_provider_available(runtime_override):
                 return AIRouteDecision(provider=runtime_override, reason="runtime override")
@@ -75,14 +67,6 @@ class AIRouteResolver:
             )
 
         preferences = self._preferences()
-
-        if preferences and workflow_name and workflow_name in preferences.workflows:
-            resolved = self._resolve_preference(
-                preferences.workflows[workflow_name],
-                reason=f"workflow preference for '{workflow_name}'",
-            )
-            if resolved is not None:
-                return resolved
 
         if preferences and task in preferences.tasks:
             resolved = self._resolve_preference(
@@ -95,10 +79,10 @@ class AIRouteResolver:
         if policy and policy.preferred:
             for provider in policy.preferred:
                 if self.availability.is_provider_available(provider):
-                    return AIRouteDecision(provider=provider, reason=f"workflow YAML default '{provider}'")
+                    return AIRouteDecision(provider=provider, reason=f"step default '{provider}'")
 
         return AIRouteNeedsInput(
-            reason="no persisted preference and no available workflow default",
+            reason="no persisted preference and no available step default",
             candidates=self._candidates(),
         )
 
@@ -122,10 +106,10 @@ class AIRouteResolver:
 
         Returns `AIRouteDecision` if its exact provider/cli/connection_id is
         available, `AIRouteNeedsInput` if unavailable (never a silent
-        fallback, even if `pref.fallback` is set or a *different* candidate
-        of the same provider type happens to be available), or `None` if the
-        preference's provider value doesn't map to a known `AIProviderType`
-        (caller should keep checking lower-precedence sources).
+        fallback, even when a *different* candidate of the same provider type
+        happens to be available), or `None` if the preference's provider value
+        doesn't map to a known `AIProviderType` (caller should keep checking
+        lower-precedence sources).
         """
         try:
             provider = AIProviderType(pref.provider)
@@ -156,7 +140,7 @@ class AIRouteResolver:
             candidates = self.availability.available_headless_clis()
         elif provider == AIProviderType.CLI_INTERACTIVE:
             candidates = self.availability.available_interactive_clis()
-        elif provider in (AIProviderType.REMOTE, AIProviderType.REMOTE_STRUCTURED):
+        elif provider == AIProviderType.REMOTE:
             candidates = self.availability.available_remote_connections()
         elif provider == AIProviderType.OFF:
             return True

@@ -40,6 +40,7 @@ class WorkflowContext:
 
     # Service clients (populated by builder)
     ai: Optional[Any] = None
+    # AIExecutor - resolves and runs AI calls on the provider the user chose per task
     ai_router: Optional[Any] = None
     git: Optional[Any] = None
     github: Optional[Any] = None

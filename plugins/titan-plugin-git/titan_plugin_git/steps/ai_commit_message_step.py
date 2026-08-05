@@ -1,7 +1,7 @@
 # plugins/titan-plugin-git/titan_plugin_git/steps/ai_commit_message_step.py
 from titan_cli.ai.router.declaration import declare_ai_usage
-from titan_cli.ai.router.enums import AICapability, AIProviderType, AITask
-from titan_cli.ai.router.resolver import AIRouteDecision, AIRouteResolver
+from titan_cli.ai.router.enums import AIProviderType, AITask
+from titan_cli.ai.router.resolver import AIRouteDecision
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from titan_cli.core.result import ClientSuccess, ClientError
 from titan_cli.external_cli.adapters import get_headless_adapter
@@ -26,8 +26,7 @@ def _resolve_commit_message_provider(ctx: WorkflowContext) -> tuple[AIProviderTy
     if not ctx.ai_router:
         return AIProviderType.REMOTE, None
 
-    resolver = AIRouteResolver(ctx.ai_router.ai_config, ctx.ai_router)
-    resolution = resolver.resolve(task=AITask.COMMIT_MESSAGE, workflow_name=ctx.workflow_name)
+    resolution = ctx.ai_router.resolve(policy=ai_generate_commit_message)
 
     if isinstance(resolution, AIRouteDecision) and resolution.provider == AIProviderType.CLI_HEADLESS:
         return AIProviderType.CLI_HEADLESS, resolution.cli
@@ -37,7 +36,6 @@ def _resolve_commit_message_provider(ctx: WorkflowContext) -> tuple[AIProviderTy
 
 @declare_ai_usage(
     task=AITask.COMMIT_MESSAGE,
-    capabilities={AICapability.TEXT_GENERATION, AICapability.READ_REPO},
     enforces=True,
 )
 def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:

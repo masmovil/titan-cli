@@ -11,9 +11,7 @@ errors or context that could benefit from AI assistance.
 import json
 
 from titan_cli.ai.router import (
-    AICapability,
     AIRouteDecision,
-    AIRouteResolver,
     AIProviderType,
     AITask,
     declare_ai_usage,
@@ -29,7 +27,6 @@ from titan_cli.messages import msg
 
 @declare_ai_usage(
     task=AITask.GENERIC_ASSISTANT,
-    capabilities={AICapability.TEXT_GENERATION, AICapability.INTERACTIVE_SESSION},
     preferred=[AIProviderType.CLI_INTERACTIVE],
     enforces=True,
 )
@@ -165,8 +162,7 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
 
     remembered_cli = None
     if cli_preference == "auto" and ctx.ai_router:
-        resolver = AIRouteResolver(ctx.ai_router.ai_config, ctx.ai_router)
-        resolution = resolver.resolve(task=AITask.GENERIC_ASSISTANT, workflow_name=ctx.workflow_name)
+        resolution = ctx.ai_router.resolve(policy=execute_ai_assistant_step)
         if (
             isinstance(resolution, AIRouteDecision)
             and resolution.provider == AIProviderType.CLI_INTERACTIVE
@@ -174,7 +170,6 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
         ):
             remembered_cli = resolution.cli
 
-    asked_user = False
     if remembered_cli:
         cli_to_launch = remembered_cli
     elif len(available_launchers) == 1:
@@ -196,7 +191,6 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
             msg.AIAssistant.SELECT_ASSISTANT_CLI,
             options=options,
         )
-        asked_user = True
 
         if not cli_to_launch:
             ctx.textual.dim_text(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
@@ -211,21 +205,8 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
 
     cli_name = CLI_REGISTRY[cli_to_launch].get("display_name", cli_to_launch)
 
-    # Offer to remember the choice - only when we actually asked (not when
-    # cli_preference pinned a specific CLI, and not when a remembered choice
-    # already skipped the question).
-    if asked_user and cli_preference == "auto" and ctx.titan_config:
-        should_remember = ctx.textual.ask_confirm(
-            f"Remember {cli_name} as your preferred AI assistant for this workflow?",
-            default=False,
-        )
-        if should_remember:
-            preference_data = {"provider": AIProviderType.CLI_INTERACTIVE.value, "cli": cli_to_launch, "remember": True}
-            if ctx.workflow_name:
-                ctx.titan_config.upsert_workflow_ai_preference(ctx.workflow_name, preference_data)
-            else:
-                ctx.titan_config.upsert_task_ai_preference(AITask.GENERIC_ASSISTANT.value, preference_data)
-            ctx.textual.dim_text(f"Remembered {cli_name} for this workflow")
+    # An inline pick applies to this run only. Persisting a preference is the
+    # AI Configuration screen's job, so this step never writes one.
 
     # Launch the CLI
     ctx.textual.primary_text(msg.AIAssistant.LAUNCHING_ASSISTANT.format(cli_name=cli_name))

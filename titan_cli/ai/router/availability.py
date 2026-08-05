@@ -102,7 +102,7 @@ class AIAvailabilityChecker:
 
     def is_provider_available(self, provider: AIProviderType) -> bool:
         """Whether at least one candidate exists for the given provider type."""
-        if provider in (AIProviderType.REMOTE, AIProviderType.REMOTE_STRUCTURED):
+        if provider == AIProviderType.REMOTE:
             return bool(self.available_remote_connections())
         if provider == AIProviderType.CLI_HEADLESS:
             return bool(self.available_headless_clis())

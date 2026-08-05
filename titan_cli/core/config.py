@@ -350,17 +350,14 @@ class TitanConfig:
         self.save_ai_connections_config(ai_cfg)
 
     def get_ai_preferences_config(self) -> dict:
-        """Return global AI preferences normalized to the current schema."""
+        """Return global AI preferences: one provider choice per AI task."""
         config_data = self._load_and_migrate_toml(
             self._global_config_path,
             migration_manager=self.global_migration_manager,
         )
         ai_cfg = config_data.setdefault("ai", {})
         prefs = ai_cfg.setdefault("preferences", {})
-        prefs.setdefault("default_selection_mode", "ask")
-        prefs.setdefault("fallback_enabled", True)
         prefs.setdefault("tasks", {})
-        prefs.setdefault("workflows", {})
         return prefs
 
     def save_ai_preferences_config(self, preferences: dict) -> None:
@@ -397,12 +394,6 @@ class TitanConfig:
         prefs["tasks"][task] = self._strip_none(preference_data)
         self.save_ai_preferences_config(prefs)
 
-    def upsert_workflow_ai_preference(self, workflow_name: str, preference_data: dict) -> None:
-        """Create or update a persisted preference for a specific workflow."""
-        prefs = self.get_ai_preferences_config()
-        prefs["workflows"][workflow_name] = self._strip_none(preference_data)
-        self.save_ai_preferences_config(prefs)
-
     @staticmethod
     def _strip_none(data: dict) -> dict:
         """Drop None-valued keys - TOML has no null type."""
@@ -413,13 +404,6 @@ class TitanConfig:
         prefs = self.get_ai_preferences_config()
         if task in prefs["tasks"]:
             del prefs["tasks"][task]
-            self.save_ai_preferences_config(prefs)
-
-    def delete_workflow_ai_preference(self, workflow_name: str) -> None:
-        """Delete a persisted workflow-level AI preference, if present."""
-        prefs = self.get_ai_preferences_config()
-        if workflow_name in prefs["workflows"]:
-            del prefs["workflows"][workflow_name]
             self.save_ai_preferences_config(prefs)
 
     def _write_toml(self, path: Path, data: dict) -> None:

@@ -11,7 +11,7 @@ from titan_cli.core.secrets import SecretManager
 from .context import WorkflowContext
 from titan_cli.ai.client import AIClient
 from titan_cli.ai.exceptions import AIConfigurationError
-from titan_cli.ai.router import AIAvailabilityChecker
+from titan_cli.ai.router import AIExecutor
 
 
 class WorkflowContextBuilder:
@@ -91,27 +91,26 @@ class WorkflowContextBuilder:
 
     def with_ai_router(self, ai_router: Optional[Any] = None) -> WorkflowContextBuilder:
         """
-        Add AI availability/routing checker.
+        Add the AI execution façade steps route their AI calls through.
 
         Args:
-            ai_router: Optional AIAvailabilityChecker instance (auto-created if None)
+            ai_router: Optional AIExecutor instance (auto-created if None)
 
         Note:
-            This is a detection-only checker for now (no route resolution, no
-            preferences, no fallback). `ctx.ai` remains the way steps actually
-            execute AI requests; `ctx.ai_router` is additive and not yet used
-            by any workflow.
+            `ctx.ai` stays available and unchanged for steps that talk to a
+            remote connection directly; `ctx.ai_router` is what honors the
+            user's per-task provider preference.
         """
         if ai_router:
             self._ai_router = ai_router
         else:
-            self._ai_router = AIAvailabilityChecker(self._ai_config, self._secrets)
+            self._ai_router = AIExecutor(self._ai_config, self._secrets)
         return self
 
     def with_titan_config(self, titan_config: Optional[Any] = None) -> WorkflowContextBuilder:
         """
         Add the TitanConfig instance, for steps that need to persist user
-        preferences (e.g. `upsert_task_ai_preference`/`upsert_workflow_ai_preference`).
+        preferences (e.g. `upsert_task_ai_preference`).
 
         Args:
             titan_config: The TitanConfig instance in scope at the call site.

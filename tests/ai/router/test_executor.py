@@ -1,0 +1,382 @@
+"""Tests for the AIExecutor façade."""
+
+from titan_cli.ai.models import AIResponse
+from titan_cli.ai.router import (
+    AIExecutionError,
+    AIExecutionSuccess,
+    AIProviderType,
+    AIRouteDecision,
+    AIRoutePolicy,
+    AITask,
+    declare_ai_usage,
+)
+from titan_cli.ai.router.executor import DEFAULT_PREFERRED, AIExecutor
+from titan_cli.ai.router.resolver import AIRouteNeedsInput
+from titan_cli.external_cli.adapters.base import HeadlessResponse
+
+
+@declare_ai_usage(
+    task=AITask.COMMIT_MESSAGE,
+    preferred=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
+def declared_step():
+    """Stand-in for a real step function that declares its routing."""
+    return None
+
+
+class FakeAIClient:
+    def __init__(self, response=None, error=None, connection_id="work-litellm"):
+        self.connection_id = connection_id
+        self._response = response or AIResponse(content="generated text", model="fake-model")
+        self._error = error
+        self.calls = []
+
+    def generate(self, messages, max_tokens=None, temperature=None):
+        self.calls.append((messages, max_tokens, temperature))
+        if self._error:
+            raise self._error
+        return self._response
+
+
+class FakeAdapter:
+    def __init__(self, response=None, error=None):
+        self._response = response or HeadlessResponse(stdout="cli text", stderr="", exit_code=0)
+        self._error = error
+        self.calls = []
+
+    def execute(self, prompt, cwd=None, timeout=60, json_schema=None, model=None):
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "cwd": cwd,
+                "timeout": timeout,
+                "json_schema": json_schema,
+                "model": model,
+            }
+        )
+        if self._error:
+            raise self._error
+        return self._response
+
+
+def _executor(resolution, *, headless=("claude",)):
+    """An executor whose resolution is pinned, so tests exercise execution only."""
+    executor = AIExecutor(ai_config=None, secrets=None)
+    executor.resolver.resolve = lambda **kwargs: resolution  # type: ignore[method-assign]
+    executor.availability.available_headless_clis = lambda: [  # type: ignore[method-assign]
+        type("Candidate", (), {"identifier": cli, "provider": AIProviderType.CLI_HEADLESS})()
+        for cli in headless
+    ]
+    return executor
+
+
+# --- policy normalization -------------------------------------------------
+
+
+def test_policy_read_from_decorated_callable():
+    executor = AIExecutor(ai_config=None, secrets=None)
+    seen = {}
+    executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
+        reason="stub"
+    )
+
+    executor.resolve(policy=declared_step)
+
+    assert seen["task"] == AITask.COMMIT_MESSAGE
+    assert seen["policy"].preferred == [AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS]
+
+
+def test_policy_object_passed_directly():
+    executor = AIExecutor(ai_config=None, secrets=None)
+    seen = {}
+    executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
+        reason="stub"
+    )
+    policy = AIRoutePolicy(task="custom_task", preferred=[AIProviderType.CLI_HEADLESS])
+
+    executor.resolve(policy=policy)
+
+    assert seen["task"] == "custom_task"
+    assert seen["policy"] is policy
+
+
+def test_policy_synthesized_when_none_given():
+    executor = AIExecutor(ai_config=None, secrets=None)
+    seen = {}
+    executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
+        reason="stub"
+    )
+
+    executor.resolve(task="ad_hoc_task")
+
+    assert seen["task"] == "ad_hoc_task"
+    assert seen["policy"].preferred == DEFAULT_PREFERRED
+
+
+def test_explicit_task_overrides_declared_task_but_keeps_preferred():
+    executor = AIExecutor(ai_config=None, secrets=None)
+    seen = {}
+    executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
+        reason="stub"
+    )
+
+    executor.resolve(policy=declared_step, task="secondary_task")
+
+    assert seen["task"] == "secondary_task"
+    assert seen["policy"].preferred == [AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS]
+
+
+def test_undecorated_callable_falls_back_to_default_preferred():
+    def plain_step():
+        return None
+
+    executor = AIExecutor(ai_config=None, secrets=None)
+    seen = {}
+    executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
+        reason="stub"
+    )
+
+    executor.resolve(policy=plain_step, task="fallback_task")
+
+    assert seen["policy"].preferred == DEFAULT_PREFERRED
+
+
+# --- remote execution -----------------------------------------------------
+
+
+def test_remote_success_returns_generated_content():
+    executor = _executor(
+        AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="work-litellm")
+    )
+    client = FakeAIClient()
+    executor.remote_client = lambda decision: client  # type: ignore[method-assign]
+
+    result = executor.generate_text(
+        "write a commit message",
+        policy=declared_step,
+        system_prompt="you are terse",
+        max_tokens=256,
+        temperature=0.2,
+    )
+
+    assert isinstance(result, AIExecutionSuccess)
+    assert result.data == "generated text"
+    messages, max_tokens, temperature = client.calls[0]
+    assert [m.role for m in messages] == ["system", "user"]
+    assert (max_tokens, temperature) == (256, 0.2)
+
+
+def test_remote_exception_becomes_execution_failed():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.REMOTE))
+    executor.remote_client = lambda decision: FakeAIClient(error=RuntimeError("429 rate limited"))  # type: ignore[method-assign]
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "EXECUTION_FAILED"
+    assert "429 rate limited" in result.error_message
+
+
+def test_remote_without_usable_client_is_provider_unavailable():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.REMOTE))
+    executor.remote_client = lambda decision: None  # type: ignore[method-assign]
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_UNAVAILABLE"
+
+
+# --- headless execution ---------------------------------------------------
+
+
+def test_headless_success_passes_through_execution_options(monkeypatch):
+    executor = _executor(
+        AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude")
+    )
+    adapter = FakeAdapter()
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter", lambda cli: adapter
+    )
+
+    result = executor.generate_text(
+        "review this",
+        policy=declared_step,
+        system_prompt="be strict",
+        cwd="/tmp/worktree",
+        timeout=42,
+        json_schema={"type": "object"},
+        model="sonnet",
+    )
+
+    assert isinstance(result, AIExecutionSuccess)
+    assert result.data == "cli text"
+    call = adapter.calls[0]
+    assert call["cwd"] == "/tmp/worktree"
+    assert call["timeout"] == 42
+    assert call["json_schema"] == {"type": "object"}
+    assert call["model"] == "sonnet"
+    assert call["prompt"].startswith("be strict")
+
+
+def test_headless_without_pinned_cli_uses_an_installed_one(monkeypatch):
+    executor = _executor(
+        AIRouteDecision(provider=AIProviderType.CLI_HEADLESS), headless=("gemini",)
+    )
+    used = {}
+
+    def record_adapter(cli):
+        used["cli"] = cli
+        return FakeAdapter()
+
+    monkeypatch.setattr("titan_cli.ai.router.executor.get_headless_adapter", record_adapter)
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionSuccess)
+    assert used["cli"] == "gemini"
+
+
+def test_headless_without_any_installed_cli_reports_no_provider():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS), headless=())
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "NO_PROVIDER_AVAILABLE"
+
+
+def test_headless_nonzero_exit_returns_stderr(monkeypatch):
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+    adapter = FakeAdapter(
+        response=HeadlessResponse(stdout="", stderr="model overloaded", exit_code=1)
+    )
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter", lambda cli: adapter
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "EXECUTION_FAILED"
+    assert result.error_message == "model overloaded"
+    assert result.details["exit_code"] == 1
+
+
+def test_headless_exception_becomes_execution_failed(monkeypatch):
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter",
+        lambda cli: FakeAdapter(error=TimeoutError("timed out after 180s")),
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "EXECUTION_FAILED"
+    assert "timed out" in result.error_message
+
+
+def test_unknown_cli_is_provider_unavailable(monkeypatch):
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="nope"))
+
+    def raise_unknown(cli):
+        raise ValueError(f"No headless adapter registered for '{cli}'")
+
+    monkeypatch.setattr("titan_cli.ai.router.executor.get_headless_adapter", raise_unknown)
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_UNAVAILABLE"
+
+
+# --- non-executing resolutions -------------------------------------------
+
+
+def test_off_reports_ai_disabled_at_info_level():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.OFF))
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "AI_DISABLED"
+    assert result.log_level == "info"
+
+
+def test_interactive_cli_is_not_capable_of_one_shot_text():
+    executor = _executor(
+        AIRouteDecision(provider=AIProviderType.CLI_INTERACTIVE, cli="claude")
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_NOT_CAPABLE"
+
+
+def test_needs_input_with_candidates_is_provider_unavailable():
+    candidate = type("Candidate", (), {"identifier": "claude"})()
+    executor = _executor(
+        AIRouteNeedsInput(reason="task preference is no longer available", candidates=[candidate])
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_UNAVAILABLE"
+    assert result.details["candidates"] == ["claude"]
+
+
+def test_needs_input_without_candidates_is_no_provider_available():
+    executor = _executor(AIRouteNeedsInput(reason="nothing configured", candidates=[]))
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "NO_PROVIDER_AVAILABLE"
+
+
+# --- remote_client --------------------------------------------------------
+
+
+def test_remote_client_caches_per_connection(monkeypatch):
+    from titan_cli.core.models import AIConfig
+
+    built = []
+
+    class RecordingClient:
+        def __init__(self, ai_config, secrets, connection_id=None):
+            built.append(connection_id)
+            self.connection_id = connection_id
+
+    monkeypatch.setattr("titan_cli.ai.router.executor.AIClient", RecordingClient)
+    executor = AIExecutor(ai_config=AIConfig(), secrets=object())
+
+    first = executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="a"))
+    second = executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="a"))
+    third = executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="b"))
+
+    assert first is second
+    assert third is not first
+    assert built == ["a", "b"]
+
+
+def test_remote_client_without_config_returns_none():
+    executor = AIExecutor(ai_config=None, secrets=None)
+
+    assert executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE)) is None
+
+
+def test_remote_client_returns_none_when_connection_misconfigured(monkeypatch):
+    from titan_cli.ai.exceptions import AIConfigurationError
+    from titan_cli.core.models import AIConfig
+
+    def raise_config_error(ai_config, secrets, connection_id=None):
+        raise AIConfigurationError("no such connection")
+
+    monkeypatch.setattr("titan_cli.ai.router.executor.AIClient", raise_config_error)
+    executor = AIExecutor(ai_config=AIConfig(), secrets=object())
+
+    assert executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE)) is None
