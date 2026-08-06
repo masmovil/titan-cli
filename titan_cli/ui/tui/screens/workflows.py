@@ -7,7 +7,7 @@ from typing import List
 
 from textual.app import ComposeResult
 from textual.widgets import Static, OptionList
-from textual.widgets.option_list import Option
+from textual.widgets.option_list import Option, OptionDoesNotExist
 from textual.containers import Container
 from textual.containers import Horizontal
 from textual.css.query import NoMatches
@@ -41,8 +41,10 @@ class WorkflowsScreen(BaseScreen):
         super().__init__(config, title="⚡ Available Workflows", show_back=True)
         self.selected_plugin = "all"  # Track selected plugin filter (start with "all")
         self._is_mounting = False  # Flag to prevent auto-update during mount
-        self._all_workflows = None  # Cache for discovered workflows
+        self._all_workflows = None  # Cache for discovered workflows (sorted, favorites first)
+        self._base_workflows = None  # Cache for deduplicated workflows in pristine discovery order
         self._plugin_source_map = {}  # Map plugin names to their source identifiers
+        self._favorite_names = set()  # Cache of favorited workflow names
 
     def on_mount(self) -> None:
         """Initialize the screen with first options highlighted."""
@@ -63,6 +65,23 @@ class WorkflowsScreen(BaseScreen):
         finally:
             # Re-enable auto-filtering after mount completes
             self._is_mounting = False
+
+    def refresh_favorites(self) -> None:
+        """Re-sort and re-render the workflow list to reflect updated favorite state.
+
+        Called directly by WorkflowExecutionScreen right after a favorite is
+        toggled, rather than via a screen lifecycle hook - this keeps the
+        refresh scoped to the one moment it's actually needed instead of
+        running on every screen transition.
+        """
+        if not self._base_workflows:
+            return
+        self._favorite_names = set(self.config.get_favorite_workflows())
+        self._all_workflows = WorkflowFilterService.sort_favorites_first(
+            self._base_workflows, self._favorite_names
+        )
+        self._plugin_source_map = WorkflowFilterService.group_by_plugin(self._all_workflows)
+        self._update_workflow_list()
 
     CSS = """
     WorkflowsScreen {
@@ -128,8 +147,16 @@ class WorkflowsScreen(BaseScreen):
         """
         all_workflows = self.config.workflows.discover()
 
-        # Cache and remove duplicates using service
-        self._all_workflows = WorkflowFilterService.remove_duplicates(all_workflows)
+        # Cache the deduplicated, pristine discovery order - this is what favorite
+        # sorting is always re-applied to, so toggling a favorite never compounds
+        # on top of a previous sort.
+        self._base_workflows = WorkflowFilterService.remove_duplicates(all_workflows)
+
+        # Favorited workflows always sort to the top
+        self._favorite_names = set(self.config.get_favorite_workflows())
+        self._all_workflows = WorkflowFilterService.sort_favorites_first(
+            self._base_workflows, self._favorite_names
+        )
 
         with Container(id="workflows-container"):
             if not self._all_workflows:
@@ -172,6 +199,8 @@ class WorkflowsScreen(BaseScreen):
 
         for wf_info in workflows_to_show:
             display_title = wf_info.title if wf_info.title else wf_info.name.capitalize()
+            if wf_info.name in self._favorite_names:
+                display_title = f"{Icons.STAR} {display_title}"
             styled_opt = StyledOption(
                 id=wf_info.name,
                 title=display_title,
@@ -211,9 +240,22 @@ class WorkflowsScreen(BaseScreen):
         # Get the workflow list widget and replace its options
         workflow_list = self.query_one("#workflow-list", OptionList)
 
+        # Preserve the highlighted item (by id) across the rebuild so toggling
+        # a favorite doesn't reset the user's cursor position
+        highlighted_id = None
+        if workflow_list.highlighted is not None:
+            highlighted_option = workflow_list.get_option_at_index(workflow_list.highlighted)
+            highlighted_id = highlighted_option.id
+
         # Clear and add in one operation
         workflow_list.clear_options()
         workflow_list.add_options(workflow_options)
+
+        if highlighted_id is not None:
+            try:
+                workflow_list.highlighted = workflow_list.get_option_index(highlighted_id)
+            except OptionDoesNotExist:
+                pass
 
         # Force refresh to update display
         workflow_list.refresh()

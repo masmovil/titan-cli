@@ -529,6 +529,73 @@ class TitanConfig:
 
         self._write_global_config(config_data)
 
+    def get_favorite_workflows(self) -> list:
+        """Return the list of favorited workflow names for the active project."""
+        config_data = self._load_toml(self._global_config_path)
+        project_sources = config_data.get("project_sources")
+        if not isinstance(project_sources, dict):
+            return []
+        project_key = self._find_project_source_scope_key(project_sources)
+        project_table = project_sources.get(project_key) if project_key else None
+        if not isinstance(project_table, dict):
+            return []
+        workflows = project_table.get("workflows")
+        if not isinstance(workflows, dict):
+            return []
+        favorites = workflows.get("favorites", [])
+        return list(favorites) if isinstance(favorites, list) else []
+
+    def is_favorite_workflow(self, name: str) -> bool:
+        """Return whether a workflow is marked as favorite."""
+        return name in self.get_favorite_workflows()
+
+    def toggle_favorite_workflow(self, name: str) -> bool:
+        """Toggle a workflow's favorite status for the active project in the global user config.
+
+        Returns:
+            The new favorite state (True if now favorited, False if removed).
+        """
+        config_data = self._load_toml(self._global_config_path)
+        project_sources = config_data.get("project_sources")
+        if not isinstance(project_sources, dict):
+            project_sources = {}
+            config_data["project_sources"] = project_sources
+
+        project_key = self._find_project_source_scope_key(project_sources) or self._get_project_source_scope_key()
+        project_table = project_sources.get(project_key)
+        if not isinstance(project_table, dict):
+            project_table = {}
+            project_sources[project_key] = project_table
+        project_table["project_path"] = str((self._project_root or Path.cwd()).resolve())
+
+        workflows = project_table.get("workflows")
+        if not isinstance(workflows, dict):
+            workflows = {}
+            project_table["workflows"] = workflows
+
+        favorites = workflows.get("favorites")
+        if not isinstance(favorites, list):
+            favorites = []
+            workflows["favorites"] = favorites
+        if name in favorites:
+            favorites.remove(name)
+            is_now_favorite = False
+        else:
+            favorites.append(name)
+            is_now_favorite = True
+
+        if not favorites:
+            workflows.pop("favorites", None)
+        if not workflows:
+            project_table.pop("workflows", None)
+        if self._project_source_table_empty(project_table) and project_key in project_sources:
+            project_sources.pop(project_key, None)
+        if not project_sources and "project_sources" in config_data:
+            config_data.pop("project_sources", None)
+
+        self._write_global_config(config_data)
+        return is_now_favorite
+
     def _get_project_source_scope_key(self) -> str:
         """Return the global-config key used to scope local plugin overrides per project."""
         project_path = str((self._project_root or Path.cwd()).resolve())
