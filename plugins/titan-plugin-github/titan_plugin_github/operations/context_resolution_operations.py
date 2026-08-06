@@ -1,5 +1,6 @@
 """Operations for resolving bounded review context from a focused review plan."""
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,75 @@ from ..models.review_models import (
 )
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class FileReadAccess:
+    """
+    Whether files read from a directory can be trusted to be the PR's head revision.
+
+    Attributes:
+        allowed: True when reading files from ``root`` yields the code the diff
+                 describes. False means only diff hunks may be used.
+        source: Where the trusted content comes from — "worktree", "checkout",
+                or "none" when reads are not allowed.
+        reason: Short explanation, shown in the UI and logged.
+    """
+    allowed: bool
+    source: str
+    reason: str
+
+
+def resolve_file_read_access(
+    worktree_path: Optional[str],
+    head_sha: Optional[str] = None,
+    checkout_sha: Optional[str] = None,
+    checkout_dirty: Optional[bool] = None,
+) -> FileReadAccess:
+    """
+    Decide whether file content on disk may be used as this PR's code.
+
+    A dedicated worktree is checked out at the PR head, so it is always trusted. Without
+    one, the only directory available is the user's own checkout, which sits on whatever
+    branch they happen to be on. Reading a file from there and pairing it with the PR's
+    diff silently mixes two revisions: line numbers stop matching the hunks, and the AI
+    reviews code that is not in the PR at all. So the checkout is trusted only when it is
+    provably at the head commit with nothing modified on top.
+
+    Args:
+        worktree_path: Path to a worktree created for this PR, if any
+        head_sha: The PR head commit SHA the diff was computed against
+        checkout_sha: HEAD of the user's checkout
+        checkout_dirty: Whether the user's checkout has uncommitted changes
+
+    Returns:
+        FileReadAccess with the verdict and a reason for display
+    """
+    if worktree_path:
+        return FileReadAccess(True, "worktree", f"worktree at PR head: {worktree_path}")
+
+    if not head_sha or not checkout_sha:
+        return FileReadAccess(
+            False, "none", "no worktree and the checkout revision could not be verified"
+        )
+
+    if checkout_sha != head_sha:
+        return FileReadAccess(
+            False,
+            "none",
+            f"checkout is at {checkout_sha[:8]}, PR head is {head_sha[:8]}",
+        )
+
+    if checkout_dirty or checkout_dirty is None:
+        return FileReadAccess(
+            False,
+            "none",
+            "checkout is at the PR head but has uncommitted changes"
+            if checkout_dirty
+            else "checkout is at the PR head but its dirty state could not be verified",
+        )
+
+    return FileReadAccess(True, "checkout", f"checkout verified at PR head {head_sha[:8]}")
 
 
 def extract_hunks_only(
@@ -96,7 +166,20 @@ def _find_related_context(path: str, cwd: Optional[str] = None) -> Optional[str]
     return None
 
 
-def resolve_context_requests(requests: list[ContextRequest], cwd: Optional[str] = None) -> dict[str, str]:
+def resolve_context_requests(
+    requests: list[ContextRequest],
+    cwd: Optional[str] = None,
+    allow_file_reads: bool = True,
+) -> dict[str, str]:
+    """
+    Resolve extra context requests by reading sibling files.
+
+    Returns nothing when ``allow_file_reads`` is False: these files are read whole from
+    disk, so an unverified revision would put unrelated code in the prompt.
+    """
+    if not allow_file_reads:
+        return {}
+
     result: dict[str, str] = {}
     for req in requests:
         key = f"{req.type}:{req.for_path}"
@@ -118,11 +201,30 @@ def build_review_context_package(
     strategy: ReviewStrategy,
     cwd: Optional[str] = None,
     diff_manager: Optional[DiffContextManager] = None,
+    allow_file_reads: bool = True,
 ) -> ReviewContextPackage:
+    """
+    Build the batched review context package for the AI prompt.
+
+    When ``allow_file_reads`` is False, no file is read from ``cwd``: every file falls
+    back to its diff hunks. Callers set this when the content on disk cannot be proven to
+    be the PR's head revision — see ``resolve_file_read_access``.
+    """
     manager = diff_manager or get_or_create_diff_manager(diff)
     applicable_ids = set(plan.review_axes)
     checklist_applicable = [item for item in checklist if item.id in applicable_ids] or checklist[:2]
-    related_files = resolve_context_requests(plan.extra_context_requests[:1], cwd)
+
+    if len(plan.extra_context_requests) > 1:
+        logger.info(
+            "extra_context_requests_trimmed: planned=%d resolved=%d dropped=%d",
+            len(plan.extra_context_requests),
+            1,
+            len(plan.extra_context_requests) - 1,
+        )
+
+    related_files = resolve_context_requests(
+        plan.extra_context_requests[:1], cwd, allow_file_reads=allow_file_reads
+    )
     comment_context = comment_context[: strategy.max_comment_entries]
     content_budget = get_prompt_budget_manager().content_budget(strategy)
 
@@ -133,7 +235,9 @@ def build_review_context_package(
     carry_excluded: list[ExcludedFileEntry] = []
 
     for file_plan in plan.focus_files:
-        entry = _resolve_file_context(file_plan, diff, strategy, cwd, manager)
+        entry = _resolve_file_context(
+            file_plan, diff, strategy, cwd, manager, allow_file_reads=allow_file_reads
+        )
         entry_chars = entry.approximate_chars or get_prompt_budget_manager().estimate_entry_chars(entry)
         # A worktree_reference file forces the CLI to read it from disk itself, which is
         # expensive regardless of how cheap its prompt text looks — cap how many of them
@@ -197,12 +301,23 @@ def _resolve_file_context(
     strategy: ReviewStrategy,
     cwd: Optional[str] = None,
     diff_manager: Optional[DiffContextManager] = None,
+    allow_file_reads: bool = True,
 ) -> FileContextEntry:
     manager = diff_manager or DiffContextManager.from_diff(diff)
     desired_mode = file_plan.read_mode
     hunk_headers = [hunk.header for hunk in manager.get_hunks(file_plan.path)[:5]]
     file_limits = _file_limits(strategy, file_plan.path)
     resolved_entry: FileContextEntry | None = None
+
+    if not allow_file_reads and desired_mode in (FileReadMode.FULL_FILE, FileReadMode.EXPANDED_HUNKS):
+        # Content on disk is not provably this PR's revision; hunks come from the diff
+        # itself and are always correct.
+        logger.debug(
+            "file_read_not_allowed: path=%s requested_mode=%s → hunks_only",
+            file_plan.path,
+            desired_mode,
+        )
+        desired_mode = FileReadMode.HUNKS_ONLY
 
     if desired_mode == FileReadMode.FULL_FILE:
         content = read_file_content(file_plan.path, cwd)
@@ -243,7 +358,11 @@ def _resolve_file_context(
     if desired_mode == FileReadMode.HUNKS_ONLY:
         hunks = manager.get_hunk_texts(file_plan.path)
         hunks_chars = sum(len(hunk) for hunk in hunks)
-        if hunks and hunks_chars <= file_limits["max_file_chars"]:
+        if hunks and (hunks_chars <= file_limits["max_file_chars"] or not allow_file_reads):
+            # Over-budget hunks are still preferable to the worktree_reference fallback
+            # when reads are not allowed: that mode has the CLI open the file itself, which
+            # is the same wrong-revision read, just delegated. The batching loop keeps the
+            # prompt bounded via approximate_chars.
             resolved_entry = FileContextEntry(
                 path=file_plan.path,
                 read_mode=FileReadMode.HUNKS_ONLY,
@@ -252,6 +371,20 @@ def _resolve_file_context(
                 approximate_chars=hunks_chars,
             )
             return _log_file_context(resolved_entry, file_plan.path)
+
+    if not allow_file_reads:
+        # No hunks and no trustworthy file to read: headers only, so the AI still knows
+        # the file changed but is never handed content from another revision.
+        resolved_entry = FileContextEntry(
+            path=file_plan.path,
+            read_mode=FileReadMode.HUNKS_ONLY,
+            changed_hunk_headers=hunk_headers,
+            review_hint=(
+                "File content unavailable: no PR worktree and the local checkout is not "
+                "at this PR's head commit. Review from the diff only."
+            ),
+        )
+        return _log_file_context(resolved_entry, file_plan.path)
 
     resolved_entry = FileContextEntry(
         path=file_plan.path,

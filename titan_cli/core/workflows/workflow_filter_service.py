@@ -150,3 +150,21 @@ class WorkflowFilterService:
                 unique_workflows.append(wf)
 
         return unique_workflows
+
+    @staticmethod
+    def sort_favorites_first(workflows: List[WorkflowInfo], favorite_names: Set[str]) -> List[WorkflowInfo]:
+        """
+        Sort workflows so favorited ones appear first.
+
+        Uses a stable sort, so relative order is preserved within both the
+        favorited group and the non-favorited group.
+
+        Args:
+            workflows: List of WorkflowInfo objects to sort
+            favorite_names: Set of favorited workflow names (WorkflowInfo.name)
+
+        Returns:
+            New list with favorites first, in original relative order, followed
+            by non-favorites, also in original relative order.
+        """
+        return sorted(workflows, key=lambda wf: wf.name not in favorite_names)

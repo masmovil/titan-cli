@@ -6,6 +6,7 @@ These functions wrap git worktree commands without UI dependencies.
 """
 
 import os
+import shutil
 from typing import Tuple
 from titan_cli.core.result import ClientSuccess, ClientError
 
@@ -29,13 +30,6 @@ def setup_worktree(
 
     Returns:
         Tuple of (absolute_path, created_successfully)
-
-    Example:
-        >>> abs_path, created = setup_worktree(git, 123, "feature-branch")
-        >>> abs_path
-        '/home/user/project/.titan/worktrees/titan-review-123'
-        >>> created
-        True
     """
     try:
         worktree_name = f"titan-review-{pr_number}"
@@ -43,16 +37,7 @@ def setup_worktree(
         original_cwd = os.getcwd()
         full_worktree_path = os.path.join(original_cwd, worktree_path)
 
-        # Remove worktree if it already exists
-        try:
-            result = git_client.remove_worktree(worktree_path, force=True)
-            match result:
-                case ClientSuccess():
-                    pass
-                case ClientError():
-                    pass  # Worktree might not exist
-        except Exception:
-            pass
+        clear_stale_worktree(git_client, worktree_path, full_worktree_path)
 
         # Fetch the PR ref into a stable local ref. This works for both same-repo
         # and fork-based PRs where origin/<head_branch> does not exist locally.
@@ -80,6 +65,51 @@ def setup_worktree(
 
     except Exception:
         return ("", False)
+
+
+def clear_stale_worktree(
+    git_client,
+    worktree_path: str,
+    full_worktree_path: str = "",
+) -> None:
+    """
+    Make ``worktree_path`` reusable, whatever state a previous run left it in.
+
+    Three residues can block ``git worktree add`` on the same path, and they need
+    different remedies, so all three are attempted in order:
+
+    1. A live registered worktree — ``git worktree remove --force`` handles it.
+    2. A leftover directory git commands can't touch (unregistered, or ``remove``
+       failed on it) — ``add`` refuses a non-empty path, so it is deleted directly.
+    3. Stale metadata under ``.git/worktrees`` — only ``git worktree prune`` clears
+       it, and prune only acts on entries whose directory is MISSING, so it must
+       run after the directory removal, not before.
+
+    Best-effort by design: every step is optional cleanup, so failures are ignored
+    and the caller proceeds to creation, which reports the real error if any residue
+    survived.
+
+    Args:
+        git_client: Git client instance
+        worktree_path: Worktree path as git knows it (usually repo-relative)
+        full_worktree_path: Absolute path on disk; when empty, the directory
+                            removal step is skipped
+    """
+    try:
+        git_client.remove_worktree(worktree_path, force=True)
+    except Exception:
+        pass
+
+    if full_worktree_path and os.path.isdir(full_worktree_path):
+        try:
+            shutil.rmtree(full_worktree_path)
+        except OSError:
+            pass
+
+    try:
+        git_client.prune_worktrees()
+    except Exception:
+        pass
 
 
 def cleanup_worktree(
