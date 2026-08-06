@@ -826,13 +826,14 @@ class TextualComponents:
 
         self.mount(selection_widget)
 
-        # Wait for user to submit (with timeout to handle Ctrl+C)
-        try:
-            while not result_container["ready"].wait(timeout=0.5):
-                pass  # Keep waiting in small intervals
-        except KeyboardInterrupt:
-            # User cancelled with Ctrl+C
-            result_container["result"] = []
+        # Wait for user to submit. The app-exit check is what lets this thread die when
+        # the user quits mid-prompt: this thread is a non-daemon executor thread that the
+        # interpreter joins at exit, so a wait with no escape hangs the console after the
+        # TUI is gone. (A KeyboardInterrupt handler would not help here - SIGINT is only
+        # ever delivered to the main thread, never to this one.)
+        while not result_container["ready"].wait(timeout=0.5):
+            if not self.app.is_running:
+                return []
 
         # Remove the widget
         def _remove():
@@ -903,13 +904,13 @@ class TextualComponents:
 
         self.mount(option_widget)
 
-        # Wait for user to select (with timeout to handle Ctrl+C)
-        try:
-            while not result_container["ready"].wait(timeout=0.5):
-                pass  # Keep waiting in small intervals
-        except KeyboardInterrupt:
-            # User cancelled with Ctrl+C
-            result_container["result"] = None
+        # Wait for user to select. Same app-exit escape as every other ask_* method: this
+        # runs on a non-daemon executor thread that the interpreter joins at exit, so a
+        # wait with no escape hangs the console after the TUI is gone. (KeyboardInterrupt
+        # cannot unblock it - SIGINT is only ever delivered to the main thread.)
+        while not result_container["ready"].wait(timeout=0.5):
+            if not self.app.is_running:
+                return None
 
         # Remove the widget
         def _remove():
