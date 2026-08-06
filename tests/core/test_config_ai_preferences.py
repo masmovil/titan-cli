@@ -31,12 +31,21 @@ def _written_preferences(config: TitanConfig) -> dict:
 
 
 def test_task_preference_roundtrips_to_disk(config: TitanConfig):
-    config.upsert_task_ai_preference(
-        "commit_message", {"provider": "cli_headless", "cli": "gemini", "connection_id": None}
-    )
+    config.upsert_task_ai_preference("commit_message", {"provider": "cli_headless"})
 
     written = _written_preferences(config)
-    assert written["tasks"]["commit_message"] == {"provider": "cli_headless", "cli": "gemini"}
+    assert written["tasks"]["commit_message"] == {"provider": "cli_headless"}
+
+
+def test_a_task_preference_stores_only_the_provider_kind(config: TitanConfig):
+    """
+    Which CLI or connection runs the task is a global setting, so it must not be copied
+    into every task - one place to change it, not one per task.
+    """
+    config.upsert_task_ai_preference("commit_message", {"provider": "cli_headless"})
+
+    stored = _written_preferences(config)["tasks"]["commit_message"]
+    assert set(stored) == {"provider"}
 
 
 def test_task_preference_is_visible_in_memory_without_reloading(config: TitanConfig):
@@ -65,13 +74,34 @@ def test_deleting_an_absent_task_preference_is_a_no_op(config: TitanConfig):
 
 
 def test_preferences_survive_a_full_reload(config: TitanConfig):
-    config.upsert_task_ai_preference("pr_description", {"provider": "remote", "connection_id": "work"})
+    config.upsert_task_ai_preference("pr_description", {"provider": "remote"})
 
     reloaded = TitanConfig()
 
     preference = reloaded.config.ai.preferences.tasks["pr_description"]
     assert preference.provider == "remote"
-    assert preference.connection_id == "work"
+
+
+def test_default_cli_roundtrips_and_can_be_cleared(config: TitanConfig):
+    config.set_default_ai_cli("claude")
+
+    reloaded = TitanConfig()
+    assert reloaded.config.ai.default_cli == "claude"
+
+    config.clear_default_ai_cli()
+
+    assert TitanConfig().config.ai.default_cli is None
+
+
+def test_setting_a_default_cli_works_without_any_ai_connection(config: TitanConfig):
+    """A CLI-only setup has no default connection, which TOML cannot store as a null."""
+    config.set_default_ai_cli("claude")
+
+    with open(TitanConfig.GLOBAL_CONFIG, "rb") as f:
+        ai_section = tomli.load(f)["ai"]
+
+    assert ai_section["default_cli"] == "claude"
+    assert "default_connection" not in ai_section
 
 
 def test_only_task_scope_is_persisted(config: TitanConfig):

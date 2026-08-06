@@ -401,14 +401,14 @@ class AIExecutor:
     ) -> AIExecutionResult[str]:
         cli = decision.cli
         if not cli:
-            available = self.availability.available_headless_clis()
-            if not available:
-                return AIExecutionError(
-                    error_message=f"No headless CLI is installed. {CONFIG_HINT}",
-                    error_code="NO_PROVIDER_AVAILABLE",
-                    decision=decision,
-                )
-            cli = available[0].identifier
+            # Resolution attaches the configured CLI to every headless decision, so reaching
+            # here means the decision was built by hand. Picking one would be choosing for the
+            # user, which is the whole thing this layer exists to avoid.
+            return AIExecutionError(
+                error_message=f"No CLI was resolved for this request. {CONFIG_HINT}",
+                error_code="NO_PROVIDER_AVAILABLE",
+                decision=decision,
+            )
 
         try:
             adapter = get_headless_adapter(cli)

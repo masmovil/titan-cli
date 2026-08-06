@@ -31,6 +31,11 @@ except ImportError as e:
     OPENAI_IMPORT_ERROR = str(e)
 
 from .base import AIProvider
+from .sampling import (
+    is_temperature_rejection,
+    rejects_temperature,
+    remember_temperature_rejection,
+)
 from ..litellm_client import LiteLLMClient
 from ..models import AIRequest, AIResponse
 from ..exceptions import (
@@ -121,10 +126,10 @@ class LiteLLMProvider(AIProvider):
             if request.max_tokens is not None:
                 request_kwargs["max_tokens"] = request.max_tokens
 
-            if request.temperature is not None:
+            if request.temperature is not None and not rejects_temperature(self._model):
                 request_kwargs["temperature"] = request.temperature
 
-            response = self._client.chat.completions.create(**request_kwargs)
+            response = self._create_completion(request_kwargs)
             choice = response.choices[0]
             usage = response.usage
             response_model = response.model or self._model
@@ -167,6 +172,23 @@ class LiteLLMProvider(AIProvider):
             raise AIProviderAPIError(
                 f"LiteLLM provider error: {str(e)}"
             )
+
+    def _create_completion(self, request_kwargs: dict):
+        """
+        Send the completion request, retrying without `temperature` if the model refuses it.
+
+        Some models reject the parameter instead of ignoring it, which fails the whole
+        request. The retry costs one extra round trip the first time a given model is used;
+        after that the model is remembered and `temperature` is never sent to it again.
+        """
+        try:
+            return self._client.chat.completions.create(**request_kwargs)
+        except APIError as e:
+            if "temperature" not in request_kwargs or not is_temperature_rejection(e):
+                raise
+            remember_temperature_rejection(self._model)
+            del request_kwargs["temperature"]
+            return self._client.chat.completions.create(**request_kwargs)
 
     @classmethod
     def _extract_choice_content(cls, choice) -> str:

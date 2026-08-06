@@ -299,7 +299,10 @@ class TitanConfig:
         config_data["config_version"] = (
             self.config.config_version if getattr(self, "config", None) else "1.0"
         )
-        config_data["ai"] = ai_config
+        # TOML has no null: an unset default is an absent key, not a None value. Without this,
+        # having no default connection at all (a CLI-only setup, or deleting the last connection)
+        # would fail on write.
+        config_data["ai"] = {k: v for k, v in ai_config.items() if v is not None}
         self._write_global_config(config_data)
 
     def upsert_ai_connection(self, connection_id: str, connection_data: dict) -> None:
@@ -349,6 +352,23 @@ class TitanConfig:
 
         self.save_ai_connections_config(ai_cfg)
 
+    def set_default_ai_cli(self, cli_name: str) -> None:
+        """
+        Set the global default CLI, used for both headless and interactive CLI work.
+
+        Which CLI is installed is not checked here: an uninstalled default surfaces at
+        resolution time as an error naming it, which is more useful than refusing to save.
+        """
+        ai_cfg = self.get_ai_connections_config()
+        ai_cfg["default_cli"] = cli_name
+        self.save_ai_connections_config(ai_cfg)
+
+    def clear_default_ai_cli(self) -> None:
+        """Remove the global default CLI, if one is set."""
+        ai_cfg = self.get_ai_connections_config()
+        ai_cfg.pop("default_cli", None)
+        self.save_ai_connections_config(ai_cfg)
+
     def get_ai_preferences_config(self) -> dict:
         """Return global AI preferences: one provider choice per AI task."""
         config_data = self._load_and_migrate_toml(
@@ -391,13 +411,8 @@ class TitanConfig:
     def upsert_task_ai_preference(self, task: str, preference_data: dict) -> None:
         """Create or update a persisted preference for an AI task."""
         prefs = self.get_ai_preferences_config()
-        prefs["tasks"][task] = self._strip_none(preference_data)
+        prefs["tasks"][task] = preference_data
         self.save_ai_preferences_config(prefs)
-
-    @staticmethod
-    def _strip_none(data: dict) -> dict:
-        """Drop None-valued keys - TOML has no null type."""
-        return {k: v for k, v in data.items() if v is not None}
 
     def delete_task_ai_preference(self, task: str) -> None:
         """Delete a persisted task-level AI preference, if present."""

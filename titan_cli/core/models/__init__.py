@@ -98,8 +98,16 @@ class AIConfig(BaseModel):
     default_connection: Optional[str] = Field(
         None, description="Default AI connection ID"
     )
+    default_cli: Optional[str] = Field(
+        None,
+        description="Default CLI name, used for both headless and interactive CLI work",
+    )
     connections: Dict[str, AIConnectionConfig] = Field(default_factory=dict)
 
+    # `default_cli` deliberately has no equivalent validator: the set of known CLIs lives in
+    # `titan_cli.external_cli`, which sits above this module in the dependency graph. Whether the
+    # configured CLI is actually installed is answered at resolution time, where the answer can be
+    # an error naming it rather than a config-load failure.
     @model_validator(mode="after")
     def validate_default_connection(self) -> "AIConfig":
         """Ensure the default connection exists when configured."""
@@ -125,11 +133,15 @@ class AIConfig(BaseModel):
 
 
 class AIProviderPreference(BaseModel):
-    """A persisted choice of which provider to use for an AI task."""
+    """
+    A persisted choice of which KIND of provider to use for an AI task.
+
+    Only the provider type is stored. Which connection or which CLI serves it is a single
+    global choice (`AIConfig.default_connection` / `AIConfig.default_cli`), so changing the
+    default in one place changes every task that uses that kind of provider.
+    """
 
     provider: str = Field(..., description="AIProviderType value, e.g. 'remote', 'cli_headless'")
-    connection_id: Optional[str] = Field(None, description="AI connection ID, for 'remote'")
-    cli: Optional[str] = Field(None, description="CLI name, for 'cli_headless'/'cli_interactive'")
 
 
 class AIPreferences(BaseModel):

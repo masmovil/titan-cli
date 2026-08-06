@@ -220,22 +220,24 @@ def test_headless_success_passes_through_execution_options(monkeypatch):
     assert call["prompt"].startswith("be strict")
 
 
-def test_headless_without_pinned_cli_uses_an_installed_one(monkeypatch):
+def test_headless_without_a_resolved_cli_never_picks_one(monkeypatch):
+    """
+    Resolution attaches the configured CLI, so a decision arriving without one is a bug -
+    and guessing which of the installed CLIs to run would be choosing for the user.
+    """
     executor = _executor(
         AIRouteDecision(provider=AIProviderType.CLI_HEADLESS), headless=("gemini",)
     )
-    used = {}
 
-    def record_adapter(cli):
-        used["cli"] = cli
-        return FakeAdapter()
+    def fail_if_called(cli):  # pragma: no cover - asserts it is never reached
+        raise AssertionError(f"should not have picked a CLI, got '{cli}'")
 
-    monkeypatch.setattr("titan_cli.ai.router.executor.get_headless_adapter", record_adapter)
+    monkeypatch.setattr("titan_cli.ai.router.executor.get_headless_adapter", fail_if_called)
 
     result = executor.generate_text("prompt", policy=declared_step)
 
-    assert isinstance(result, AIExecutionSuccess)
-    assert used["cli"] == "gemini"
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "NO_PROVIDER_AVAILABLE"
 
 
 def test_headless_without_any_installed_cli_reports_no_provider():

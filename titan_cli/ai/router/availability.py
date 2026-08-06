@@ -47,9 +47,18 @@ class AIAvailabilityChecker:
     def __init__(self, ai_config: Optional[AIConfig], secrets: Optional[SecretManager]):
         self.ai_config = ai_config
         self.secrets = secrets
+        # Probing is expensive: one network round trip per remote connection and one
+        # subprocess per CLI. Callers ask repeatedly - resolving a screenful of tasks asks
+        # dozens of times - so each answer is computed once per instance. Instances are
+        # short-lived (rebuilt on every config load and every screen refresh), which is what
+        # keeps a cached answer from going stale.
+        self._cache: dict[str, List[AIProviderAvailability]] = {}
 
     def available_remote_connections(self) -> List[AIProviderAvailability]:
         """Return configured AI connections whose provider is ready to use."""
+        return self._cached("remote", self._probe_remote_connections)
+
+    def _probe_remote_connections(self) -> List[AIProviderAvailability]:
         if not self.ai_config or not self.ai_config.connections or not self.secrets:
             return []
 
@@ -71,6 +80,9 @@ class AIAvailabilityChecker:
 
     def available_headless_clis(self) -> List[AIProviderAvailability]:
         """Return CLIs that have a working headless adapter installed."""
+        return self._cached("headless", self._probe_headless_clis)
+
+    def _probe_headless_clis(self) -> List[AIProviderAvailability]:
         return [
             AIProviderAvailability(
                 provider=AIProviderType.CLI_HEADLESS,
@@ -82,6 +94,9 @@ class AIAvailabilityChecker:
 
     def available_interactive_clis(self) -> List[AIProviderAvailability]:
         """Return CLIs registered in CLI_REGISTRY that are installed."""
+        return self._cached("interactive", self._probe_interactive_clis)
+
+    def _probe_interactive_clis(self) -> List[AIProviderAvailability]:
         available = []
         for cli_name, config in CLI_REGISTRY.items():
             launcher = CLILauncher(
@@ -99,6 +114,11 @@ class AIAvailabilityChecker:
                     )
                 )
         return available
+
+    def _cached(self, key: str, probe) -> List[AIProviderAvailability]:
+        if key not in self._cache:
+            self._cache[key] = probe()
+        return self._cache[key]
 
     def is_provider_available(self, provider: AIProviderType) -> bool:
         """Whether at least one candidate exists for the given provider type."""

@@ -1,6 +1,10 @@
 """
 Tests for AIRouteResolver's three-level precedence chain:
 runtime override -> persisted task preference -> the step's declared default.
+
+A preference names only a KIND of provider; which connection or CLI serves it comes from the
+global defaults, so most of these also assert that the resolved decision names the instance
+that will actually run.
 """
 
 import pytest
@@ -13,7 +17,14 @@ from titan_cli.ai.router import (
     AIRouteResolver,
 )
 from titan_cli.ai.router.availability import AIProviderAvailability
-from titan_cli.core.models import AIConfig, AIPreferences, AIProviderPreference
+from titan_cli.core.models import (
+    AIConfig,
+    AIConnectionConfig,
+    AIConnectionType,
+    AIGatewayBackend,
+    AIPreferences,
+    AIProviderPreference,
+)
 
 
 class FakeAvailability:
@@ -53,13 +64,34 @@ class FakeAvailability:
         return False
 
 
-def _config(**task_preferences) -> AIConfig:
+def _connection(name: str) -> AIConnectionConfig:
+    return AIConnectionConfig(
+        name=name,
+        connection_type=AIConnectionType.GATEWAY,
+        gateway_backend=AIGatewayBackend.OPENAI_COMPATIBLE,
+        base_url="https://example.invalid",
+    )
+
+
+def _config(
+    *,
+    default_connection: str = "work-litellm",
+    default_cli: str = "claude",
+    **task_preferences,
+) -> AIConfig:
+    """Build an AIConfig with global defaults and type-only task preferences."""
     return AIConfig(
+        default_connection=default_connection,
+        default_cli=default_cli,
+        connections={default_connection: _connection(default_connection)}
+        if default_connection
+        else {},
         preferences=AIPreferences(
             tasks={
-                task: AIProviderPreference(**pref) for task, pref in task_preferences.items()
+                task: AIProviderPreference(provider=provider)
+                for task, provider in task_preferences.items()
             }
-        )
+        ),
     )
 
 
@@ -69,10 +101,7 @@ def availability():
 
 
 def test_runtime_override_wins_over_persisted_preference(availability):
-    resolver = AIRouteResolver(
-        _config(commit_message={"provider": "remote", "connection_id": "work-litellm"}),
-        availability,
-    )
+    resolver = AIRouteResolver(_config(commit_message="remote"), availability)
 
     decision = resolver.resolve(
         task="commit_message", runtime_override=AIProviderType.CLI_HEADLESS
@@ -80,9 +109,10 @@ def test_runtime_override_wins_over_persisted_preference(availability):
 
     assert isinstance(decision, AIRouteDecision)
     assert decision.provider == AIProviderType.CLI_HEADLESS
+    assert decision.cli == "claude"
 
 
-def test_unavailable_runtime_override_needs_input(availability):
+def test_unavailable_runtime_override_needs_input():
     resolver = AIRouteResolver(_config(), FakeAvailability(remote=["work-litellm"]))
 
     resolution = resolver.resolve(
@@ -93,10 +123,7 @@ def test_unavailable_runtime_override_needs_input(availability):
 
 
 def test_task_preference_wins_over_declared_default(availability):
-    resolver = AIRouteResolver(
-        _config(commit_message={"provider": "cli_headless", "cli": "claude"}),
-        availability,
-    )
+    resolver = AIRouteResolver(_config(commit_message="cli_headless"), availability)
     policy = AIRoutePolicy(task="commit_message", preferred=[AIProviderType.REMOTE])
 
     decision = resolver.resolve(task="commit_message", policy=policy)
@@ -117,6 +144,7 @@ def test_declared_default_used_when_nothing_persisted(availability):
 
     assert isinstance(decision, AIRouteDecision)
     assert decision.provider == AIProviderType.CLI_HEADLESS
+    assert decision.cli == "claude"
 
 
 def test_declared_default_skips_unavailable_provider_types():
@@ -130,6 +158,7 @@ def test_declared_default_skips_unavailable_provider_types():
 
     assert isinstance(decision, AIRouteDecision)
     assert decision.provider == AIProviderType.REMOTE
+    assert decision.connection_id == "work-litellm"
 
 
 def test_no_preference_and_no_available_default_needs_input(availability):
@@ -141,21 +170,89 @@ def test_no_preference_and_no_available_default_needs_input(availability):
     assert [c.identifier for c in resolution.candidates] == ["work-litellm", "claude", "claude"]
 
 
-def test_preference_for_unavailable_exact_cli_needs_input_without_swapping():
-    """A remembered CLI that vanished must not silently become a different CLI."""
-    resolver = AIRouteResolver(
-        _config(commit_message={"provider": "cli_headless", "cli": "gemini"}),
-        FakeAvailability(headless=["claude"]),
-    )
+class TestGlobalInstanceResolution:
+    """Which connection/CLI runs a task is a single global setting, not part of the preference."""
 
-    resolution = resolver.resolve(task="commit_message")
+    def test_configured_default_cli_that_is_gone_never_swaps_to_another(self):
+        """The one installed CLI is not silently substituted for the configured one."""
+        resolver = AIRouteResolver(
+            _config(default_cli="gemini", commit_message="cli_headless"),
+            FakeAvailability(headless=["claude"]),
+        )
 
-    assert isinstance(resolution, AIRouteNeedsInput)
-    assert "no longer available" in resolution.reason
+        resolution = resolver.resolve(task="commit_message")
+
+        assert isinstance(resolution, AIRouteNeedsInput)
+        assert "gemini" in resolution.reason
+        assert "not available" in resolution.reason
+
+    def test_no_default_cli_configured_says_so(self):
+        resolver = AIRouteResolver(
+            _config(default_cli=None, commit_message="cli_headless"),
+            FakeAvailability(headless=["claude"]),
+        )
+
+        resolution = resolver.resolve(task="commit_message")
+
+        assert isinstance(resolution, AIRouteNeedsInput)
+        assert "no default CLI is configured" in resolution.reason
+
+    def test_no_default_connection_configured_says_so(self):
+        resolver = AIRouteResolver(
+            _config(default_connection=None, commit_message="remote"),
+            FakeAvailability(remote=["work-litellm"]),
+        )
+
+        resolution = resolver.resolve(task="commit_message")
+
+        assert isinstance(resolution, AIRouteNeedsInput)
+        assert "no default AI connection is configured" in resolution.reason
+
+    def test_changing_the_global_default_changes_every_task_using_that_kind(self):
+        """The point of a single global instance: one edit, not one per task."""
+        availability = FakeAvailability(headless=["claude", "gemini"])
+        config = _config(default_cli="claude", commit_message="cli_headless", slack_summary="cli_headless")
+        resolver = AIRouteResolver(config, availability)
+
+        assert resolver.resolve(task="commit_message").cli == "claude"
+        assert resolver.resolve(task="slack_summary").cli == "claude"
+
+        config.default_cli = "gemini"
+
+        assert resolver.resolve(task="commit_message").cli == "gemini"
+        assert resolver.resolve(task="slack_summary").cli == "gemini"
+
+    def test_a_missing_cli_default_is_reported_even_for_a_declared_default(self):
+        """The step-default path reports the real obstacle, not a generic failure."""
+        resolver = AIRouteResolver(
+            _config(default_cli=None),
+            FakeAvailability(interactive=["claude"]),
+        )
+        policy = AIRoutePolicy(
+            task="generic_assistant", preferred=[AIProviderType.CLI_INTERACTIVE]
+        )
+
+        resolution = resolver.resolve(task="generic_assistant", policy=policy)
+
+        assert isinstance(resolution, AIRouteNeedsInput)
+        assert "no default CLI is configured" in resolution.reason
 
 
 def test_off_preference_resolves_to_off(availability):
-    resolver = AIRouteResolver(_config(commit_message={"provider": "off"}), availability)
+    resolver = AIRouteResolver(_config(commit_message="off"), availability)
+
+    decision = resolver.resolve(task="commit_message")
+
+    assert isinstance(decision, AIRouteDecision)
+    assert decision.provider == AIProviderType.OFF
+
+
+def test_off_needs_no_configured_instance():
+    """Turning a task off must work even with nothing else configured."""
+    resolver = AIRouteResolver(
+        _config(default_connection=None, default_cli=None, commit_message="off"),
+        FakeAvailability(),
+    )
 
     decision = resolver.resolve(task="commit_message")
 
@@ -164,16 +261,33 @@ def test_off_preference_resolves_to_off(availability):
 
 
 def test_unknown_provider_value_falls_through_to_declared_default(availability):
-    resolver = AIRouteResolver(
-        _config(commit_message={"provider": "carrier_pigeon"}),
-        availability,
-    )
+    resolver = AIRouteResolver(_config(commit_message="carrier_pigeon"), availability)
     policy = AIRoutePolicy(task="commit_message", preferred=[AIProviderType.REMOTE])
 
     decision = resolver.resolve(task="commit_message", policy=policy)
 
     assert isinstance(decision, AIRouteDecision)
     assert decision.provider == AIProviderType.REMOTE
+
+
+def test_leftover_instance_keys_in_a_stored_preference_are_ignored(availability):
+    """
+    A preference written before instances moved to global settings must resolve from the
+    global defaults, not from the stale instance it still carries on disk.
+    """
+    preferences = AIPreferences.model_validate(
+        {"tasks": {"commit_message": {"provider": "cli_headless", "cli": "gemini"}}}
+    )
+    assert not hasattr(preferences.tasks["commit_message"], "cli")
+
+    config = _config(default_cli="claude")
+    config.preferences = preferences
+    resolver = AIRouteResolver(config, availability)
+
+    decision = resolver.resolve(task="commit_message")
+
+    assert isinstance(decision, AIRouteDecision)
+    assert decision.cli == "claude"
 
 
 def test_leftover_workflow_scope_in_config_has_no_effect(availability):
@@ -194,7 +308,9 @@ def test_leftover_workflow_scope_in_config_has_no_effect(availability):
     )
     assert not hasattr(preferences, "workflows")
 
-    resolver = AIRouteResolver(AIConfig(preferences=preferences), availability)
+    config = _config()
+    config.preferences = preferences
+    resolver = AIRouteResolver(config, availability)
     policy = AIRoutePolicy(task="commit_message", preferred=[AIProviderType.REMOTE])
 
     decision = resolver.resolve(task="commit_message", policy=policy)
@@ -208,10 +324,7 @@ def test_persisted_preference_outside_executes_is_refused(availability):
     A preference the step's code can't run must be refused by name, not handed
     over to fail later and further from the cause.
     """
-    resolver = AIRouteResolver(
-        _config(generic_assistant={"provider": "remote", "connection_id": "work-litellm"}),
-        availability,
-    )
+    resolver = AIRouteResolver(_config(generic_assistant="remote"), availability)
     policy = AIRoutePolicy(
         task="generic_assistant",
         executes=[AIProviderType.CLI_INTERACTIVE],
@@ -226,7 +339,7 @@ def test_persisted_preference_outside_executes_is_refused(availability):
 
 def test_off_preference_passes_the_executes_guard(availability):
     """Any step can skip - 'off' is honored regardless of executes."""
-    resolver = AIRouteResolver(_config(generic_assistant={"provider": "off"}), availability)
+    resolver = AIRouteResolver(_config(generic_assistant="off"), availability)
     policy = AIRoutePolicy(
         task="generic_assistant", executes=[AIProviderType.CLI_INTERACTIVE]
     )
@@ -238,10 +351,7 @@ def test_off_preference_passes_the_executes_guard(availability):
 
 
 def test_preference_within_executes_passes_the_guard(availability):
-    resolver = AIRouteResolver(
-        _config(commit_message={"provider": "cli_headless", "cli": "claude"}),
-        availability,
-    )
+    resolver = AIRouteResolver(_config(commit_message="cli_headless"), availability)
     policy = AIRoutePolicy(
         task="commit_message",
         executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
@@ -256,10 +366,7 @@ def test_preference_within_executes_passes_the_guard(availability):
 
 def test_no_declared_executes_means_no_guard(availability):
     """Steps that declare nothing keep the old behavior - no filtering."""
-    resolver = AIRouteResolver(
-        _config(thread_resolution={"provider": "remote", "connection_id": "work-litellm"}),
-        availability,
-    )
+    resolver = AIRouteResolver(_config(thread_resolution="remote"), availability)
 
     decision = resolver.resolve(task="thread_resolution")
 

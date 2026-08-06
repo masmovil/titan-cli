@@ -3,14 +3,18 @@ Route resolution for the AI execution routing layer.
 
 Resolves which provider a task should use given persisted preferences
 (`titan_cli.core.models.AIPreferences`) and provider availability
-(`AIAvailabilityChecker`). Never picks a fallback silently: if a persisted
-preference's provider is unavailable, resolution reports that user input is
-needed instead of guessing, regardless of how many compatible candidates
-remain.
+(`AIAvailabilityChecker`). Never picks a fallback silently: if a resolved
+provider is unavailable, resolution reports that user input is needed instead
+of guessing, regardless of how many compatible candidates remain.
 
 The task is the only persisted preference scope. Resolution has exactly three
 levels: a runtime override, the user's persisted preference for the task, and
 the step's own declared `preferred` order.
+
+Each of those levels answers only WHICH KIND of provider to use. Which concrete
+connection or CLI serves that kind is a single global setting
+(`AIConfig.default_connection` / `AIConfig.default_cli`), attached here so every
+decision leaves this module naming the instance that will actually run.
 """
 
 from dataclasses import dataclass, field
@@ -59,12 +63,7 @@ class AIRouteResolver:
         ask the user (no silent fallback).
         """
         if runtime_override is not None:
-            if self.availability.is_provider_available(runtime_override):
-                return AIRouteDecision(provider=runtime_override, reason="runtime override")
-            return AIRouteNeedsInput(
-                reason=f"runtime override '{runtime_override}' is not available",
-                candidates=self._candidates(),
-            )
+            return self._decide(runtime_override, reason="runtime override")
 
         preferences = self._preferences()
 
@@ -79,14 +78,70 @@ class AIRouteResolver:
                 return resolved
 
         if policy and policy.preferred:
+            # Keep the first concrete obstacle: "no default CLI is configured" tells the user
+            # what to do, where a generic "nothing resolved" would not.
+            first_obstacle: Optional[AIRouteNeedsInput] = None
             for provider in policy.preferred:
-                if self.availability.is_provider_available(provider):
-                    return AIRouteDecision(provider=provider, reason=f"step default '{provider}'")
+                resolved = self._decide(provider, reason=f"step default '{provider}'")
+                if isinstance(resolved, AIRouteDecision):
+                    return resolved
+                first_obstacle = first_obstacle or resolved
+            if first_obstacle:
+                return first_obstacle
 
         return AIRouteNeedsInput(
             reason="no persisted preference and no available step default",
             candidates=self._candidates(),
         )
+
+    def _decide(self, provider: AIProviderType, reason: str) -> AIRouteResolution:
+        """
+        Turn a provider TYPE into a decision naming the instance that will run it.
+
+        The instance is never part of the choice being made here - it is the single global
+        default for that kind of provider. A missing or uninstalled default is reported by
+        name rather than swapped for whatever else happens to be available.
+        """
+        if provider == AIProviderType.OFF:
+            return AIRouteDecision(provider=provider, reason=reason)
+
+        identifier = self._configured_instance(provider)
+        if identifier is None:
+            return AIRouteNeedsInput(
+                reason=self._missing_instance_reason(provider),
+                candidates=self._candidates(),
+            )
+
+        if not self._identifier_available(provider, identifier):
+            return AIRouteNeedsInput(
+                reason=(
+                    f"the configured {self._instance_noun(provider)} '{identifier}' "
+                    f"is not available"
+                ),
+                candidates=self._candidates(),
+            )
+
+        if provider == AIProviderType.REMOTE:
+            return AIRouteDecision(provider=provider, connection_id=identifier, reason=reason)
+        return AIRouteDecision(provider=provider, cli=identifier, reason=reason)
+
+    def _configured_instance(self, provider: AIProviderType) -> Optional[str]:
+        """The global default connection or CLI serving this kind of provider."""
+        if not self.ai_config:
+            return None
+        if provider == AIProviderType.REMOTE:
+            return self.ai_config.default_connection
+        return self.ai_config.default_cli
+
+    @staticmethod
+    def _instance_noun(provider: AIProviderType) -> str:
+        return "AI connection" if provider == AIProviderType.REMOTE else "CLI"
+
+    @staticmethod
+    def _missing_instance_reason(provider: AIProviderType) -> str:
+        if provider == AIProviderType.REMOTE:
+            return "no default AI connection is configured"
+        return "no default CLI is configured"
 
     def _preferences(self):
         if not self.ai_config or not self.ai_config.preferences:
@@ -135,37 +190,24 @@ class AIRouteResolver:
         """
         Try to honor a persisted preference.
 
-        Returns `AIRouteDecision` if its exact provider/cli/connection_id is
-        available, `AIRouteNeedsInput` if unavailable (never a silent
-        fallback, even when a *different* candidate of the same provider type
-        happens to be available), or `None` if the preference's provider value
-        doesn't map to a known `AIProviderType` (caller should keep checking
-        lower-precedence sources).
+        The preference names only a kind of provider; `_decide` attaches the global instance
+        and reports by name if that instance is missing or unavailable. Returns `None` when
+        the stored provider value doesn't map to a known `AIProviderType`, so the caller keeps
+        checking lower-precedence sources.
         """
         try:
             provider = AIProviderType(pref.provider)
         except ValueError:
             return None
 
-        if self._identifier_available(provider, pref.cli or pref.connection_id):
-            return AIRouteDecision(
-                provider=provider,
-                cli=pref.cli,
-                connection_id=pref.connection_id,
-                reason=reason,
-            )
+        return self._decide(provider, reason=reason)
 
-        return AIRouteNeedsInput(
-            reason=f"{reason} is no longer available ('{pref.provider}')",
-            candidates=self._candidates(),
-        )
-
-    def _identifier_available(self, provider: AIProviderType, identifier: Optional[str]) -> bool:
+    def _identifier_available(self, provider: AIProviderType, identifier: str) -> bool:
         """
-        Whether `provider` is available and, if `identifier` (a specific CLI
-        name or connection ID) is given, whether that exact candidate is
-        among the available ones - not just any candidate of that provider
-        type.
+        Whether that exact CLI or connection is among the available ones.
+
+        Exact, not "any candidate of the same kind": a configured provider that has gone
+        away must be reported, never swapped for a sibling the user didn't choose.
         """
         if provider == AIProviderType.CLI_HEADLESS:
             candidates = self.availability.available_headless_clis()
@@ -173,13 +215,9 @@ class AIRouteResolver:
             candidates = self.availability.available_interactive_clis()
         elif provider == AIProviderType.REMOTE:
             candidates = self.availability.available_remote_connections()
-        elif provider == AIProviderType.OFF:
-            return True
         else:
             return False
 
-        if identifier is None:
-            return bool(candidates)
         return any(candidate.identifier == identifier for candidate in candidates)
 
 
