@@ -532,10 +532,14 @@ class TitanConfig:
     def get_favorite_workflows(self) -> list:
         """Return the list of favorited workflow names for the active project."""
         config_data = self._load_toml(self._global_config_path)
-        project_sources = config_data.get("project_sources", {})
+        project_sources = config_data.get("project_sources")
+        if not isinstance(project_sources, dict):
+            return []
         project_key = self._find_project_source_scope_key(project_sources)
-        project_table = project_sources.get(project_key, {}) if project_key else {}
-        workflows = project_table.get("workflows", {})
+        project_table = project_sources.get(project_key) if project_key else None
+        if not isinstance(project_table, dict):
+            return []
+        workflows = project_table.get("workflows")
         if not isinstance(workflows, dict):
             return []
         favorites = workflows.get("favorites", [])
@@ -552,11 +556,23 @@ class TitanConfig:
             The new favorite state (True if now favorited, False if removed).
         """
         config_data = self._load_toml(self._global_config_path)
-        project_sources = config_data.setdefault("project_sources", {})
+        project_sources = config_data.get("project_sources")
+        if not isinstance(project_sources, dict):
+            project_sources = {}
+            config_data["project_sources"] = project_sources
+
         project_key = self._find_project_source_scope_key(project_sources) or self._get_project_source_scope_key()
-        project_table = project_sources.setdefault(project_key, {})
+        project_table = project_sources.get(project_key)
+        if not isinstance(project_table, dict):
+            project_table = {}
+            project_sources[project_key] = project_table
         project_table["project_path"] = str((self._project_root or Path.cwd()).resolve())
-        workflows = project_table.setdefault("workflows", {})
+
+        workflows = project_table.get("workflows")
+        if not isinstance(workflows, dict):
+            workflows = {}
+            project_table["workflows"] = workflows
+
         favorites = workflows.get("favorites")
         if not isinstance(favorites, list):
             favorites = []
