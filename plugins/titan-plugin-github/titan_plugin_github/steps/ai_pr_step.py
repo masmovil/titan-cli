@@ -63,7 +63,7 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     if ctx.ai_router:
         match ctx.ai_router.resolve_remote_client(
             policy=ai_suggest_pr_description_step,
-            announce=ctx.textual.dim_text,
+            announce=ctx.textual.ai_chip,
         ):
             case AIExecutionSuccess(data=resolved_client):
                 ai_client = resolved_client

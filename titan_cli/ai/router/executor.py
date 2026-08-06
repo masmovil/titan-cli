@@ -62,12 +62,15 @@ def route_summary(decision: AIRouteDecision) -> str:
     Worth showing even though the same fact is logged: a user watching a workflow should not
     have to grep a file to find out which AI just answered, and noticing the wrong one there
     is what prompts them to change it.
+
+    The instance comes first because it is the part that identifies the answer ("claude", the
+    connection's name); the kind of provider qualifies it.
     """
     if decision.provider == AIProviderType.OFF:
         return "AI is off for this task"
     instance = decision.cli or decision.connection_id
     label = provider_label(decision.provider)
-    return f"{label} · {instance}" if instance else label
+    return f"{instance} · {label}" if instance else label
 
 
 class AIExecutor:
@@ -349,10 +352,16 @@ class AIExecutor:
 
     @staticmethod
     def _announce(announce: Announce, decision: AIRouteDecision) -> None:
-        """Tell the user who is running this, if the caller gave us somewhere to say it."""
+        """
+        Tell the user who is running this, if the caller gave us somewhere to say it.
+
+        Just the summary, no "Using" preamble: the sink decides how to present it (today a
+        chip, where the words would only eat width), and the OFF case read as
+        "Using AI is off for this task".
+        """
         if announce is None:
             return
-        announce(f"Using {route_summary(decision)}")
+        announce(route_summary(decision))
 
     def _needs_input_error(self, resolution: AIRouteNeedsInput) -> AIExecutionError:
         """Turn an unresolvable route into an error that says what to fix."""

@@ -504,7 +504,7 @@ def test_announce_names_the_provider_and_instance(monkeypatch):
 
     executor.generate_text("prompt", policy=declared_step, announce=said.append)
 
-    assert said == ["Using CLI, automatic · claude"]
+    assert said == ["claude · CLI, automatic"]
 
 
 def test_announce_says_when_the_task_is_off():
@@ -513,7 +513,7 @@ def test_announce_says_when_the_task_is_off():
 
     executor.generate_text("prompt", policy=declared_step, announce=said.append)
 
-    assert said == ["Using AI is off for this task"]
+    assert said == ["AI is off for this task"]
 
 
 def test_nothing_is_announced_when_the_route_cannot_be_resolved():

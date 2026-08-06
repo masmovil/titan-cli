@@ -98,7 +98,7 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
                 timeout=180,
                 max_tokens=1024,
                 temperature=0.7,
-                announce=ctx.textual.dim_text,
+                announce=ctx.textual.ai_chip,
             )
 
         match result:

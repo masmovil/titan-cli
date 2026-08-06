@@ -83,7 +83,7 @@ def ai_enhance_issue_description(ctx: WorkflowContext) -> WorkflowResult:
         result = ctx.ai_router.generate_text(
             prompt,
             policy=ai_enhance_issue_description,
-            announce=ctx.textual.dim_text,
+            announce=ctx.textual.ai_chip,
         )
 
     match result:

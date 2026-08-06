@@ -403,7 +403,7 @@ def ai_summarize_messages_step(ctx: WorkflowContext) -> WorkflowResult:
             policy=ai_summarize_messages_step,
             max_tokens=1024,
             temperature=0.3,
-            announce=ctx.textual.dim_text,
+            announce=ctx.textual.ai_chip,
         )
 
     match result:

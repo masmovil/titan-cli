@@ -81,7 +81,7 @@ Runtime rules:
   `Skip` — the user turned the task off; that is not an error.
 - Model/effort/timeout are call-site parameters (`generate_text(model=..., timeout=...)`),
   never something a step reads from preferences.
-- Pass `announce=ctx.textual.dim_text` so the run shows which AI served the task. A user
+- Pass `announce=ctx.textual.ai_chip` so the run shows which AI served the task. A user
   watching a workflow should be able to notice the wrong one without reading the log —
   that is what prompts them to change it. Skip it only where your own output already
   names the provider.
