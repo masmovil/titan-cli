@@ -104,18 +104,13 @@ class AIConfig(BaseModel):
     )
     connections: Dict[str, AIConnectionConfig] = Field(default_factory=dict)
 
-    # `default_cli` deliberately has no equivalent validator: the set of known CLIs lives in
-    # `titan_cli.external_cli`, which sits above this module in the dependency graph. Whether the
-    # configured CLI is actually installed is answered at resolution time, where the answer can be
-    # an error naming it rather than a config-load failure.
-    @model_validator(mode="after")
-    def validate_default_connection(self) -> "AIConfig":
-        """Ensure the default connection exists when configured."""
-        if self.default_connection and self.default_connection not in self.connections:
-            raise ValueError(
-                f"Default connection '{self.default_connection}' not found in configured connections."
-            )
-        return self
+    # Neither default is validated against what exists. A default pointing at something that
+    # is gone - a connection renamed by hand, a CLI uninstalled - is a real problem, but it is
+    # not a reason to refuse to load: rejecting the config here makes the application
+    # unstartable, and the only screen that could repair the value is inside it. Both are
+    # instead reported at resolution time, by name, with the app running and the config screen
+    # reachable. (For `default_cli` there is a second reason: the set of known CLIs lives in
+    # `titan_cli.external_cli`, which sits above this module in the dependency graph.)
 
     @property
     def default(self) -> Optional[str]:

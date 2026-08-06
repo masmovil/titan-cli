@@ -40,7 +40,49 @@ class AIProviderType(StrEnum):
     OFF = "off"
 
 
+# Names and explanations for humans. They live beside the enum, not in the screen that
+# renders them, so the configuration screen and a running step call the same thing by the
+# same name. The names describe WHO DRIVES rather than how it is wired: "headless" is an
+# implementation word, and what a user actually needs to know is whether Titan runs the tool
+# and keeps the answer, or hands them the terminal.
+PROVIDER_TYPE_LABELS = {
+    AIProviderType.REMOTE: "Remote model",
+    AIProviderType.CLI_HEADLESS: "CLI, automatic",
+    AIProviderType.CLI_INTERACTIVE: "CLI, interactive",
+    AIProviderType.OFF: "Off",
+}
+
+PROVIDER_TYPE_DESCRIPTIONS = {
+    AIProviderType.REMOTE: (
+        "Sends the prompt to your AI connection. Fastest, but it cannot see your files."
+    ),
+    AIProviderType.CLI_HEADLESS: (
+        "Titan runs your CLI in the background and keeps its answer. "
+        "Slower, but it can read your repo."
+    ),
+    AIProviderType.CLI_INTERACTIVE: (
+        "Opens your CLI so you work in it, then returns to Titan. "
+        "For fixing things, not for producing text."
+    ),
+    AIProviderType.OFF: "Skip this task entirely.",
+}
+
+
+def provider_label(provider: AIProviderType) -> str:
+    """A readable name for a provider type."""
+    return PROVIDER_TYPE_LABELS.get(provider, str(provider))
+
+
+def provider_description(provider: AIProviderType) -> str:
+    """A one-line explanation of what choosing this provider type means."""
+    return PROVIDER_TYPE_DESCRIPTIONS.get(provider, "")
+
+
 __all__ = [
     "AITask",
     "AIProviderType",
+    "PROVIDER_TYPE_LABELS",
+    "PROVIDER_TYPE_DESCRIPTIONS",
+    "provider_label",
+    "provider_description",
 ]

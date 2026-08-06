@@ -68,7 +68,16 @@ class AIClient:
 
         requested_id = connection_id or ai_config.default_connection
 
-        if requested_id and requested_id in ai_config.connections:
+        if requested_id and requested_id not in ai_config.connections:
+            # Naming a connection that is gone - typically a default left behind by a rename -
+            # is answered by saying so. Quietly using a different one would send the user's
+            # prompts somewhere they never chose, and they would have no way to notice.
+            raise AIConfigurationError(
+                f"AI connection '{requested_id}' does not exist. "
+                f"Pick one in AI Configuration (main menu)."
+            )
+
+        if requested_id:
             self.connection_id = requested_id
         elif ai_config.connections:
             self.connection_id = list(ai_config.connections.keys())[0]

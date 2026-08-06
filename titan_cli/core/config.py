@@ -362,12 +362,29 @@ class TitanConfig:
         ai_cfg = self.get_ai_connections_config()
         ai_cfg["default_cli"] = cli_name
         self.save_ai_connections_config(ai_cfg)
+        self._sync_in_memory_default_cli(cli_name)
 
     def clear_default_ai_cli(self) -> None:
         """Remove the global default CLI, if one is set."""
         ai_cfg = self.get_ai_connections_config()
         ai_cfg.pop("default_cli", None)
         self.save_ai_connections_config(ai_cfg)
+        self._sync_in_memory_default_cli(None)
+
+    def _sync_in_memory_default_cli(self, cli_name: Optional[str]) -> None:
+        """
+        Keep the parsed `self.config.ai.default_cli` in step with what was just written.
+
+        TitanConfig lives for the whole session, so anything resolving a route right after -
+        a workflow step, or the screen repainting its rows - would otherwise keep using the
+        previous value until a full reload.
+        """
+        if not getattr(self, "config", None):
+            return
+        if self.config.ai:
+            self.config.ai.default_cli = cli_name
+        else:
+            self.config.ai = AIConfig(default_cli=cli_name)
 
     def get_ai_preferences_config(self) -> dict:
         """Return global AI preferences: one provider choice per AI task."""

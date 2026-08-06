@@ -61,7 +61,10 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     # Use the connection the user chose for this task; the agent drives it.
     ai_client = ctx.ai
     if ctx.ai_router:
-        match ctx.ai_router.resolve_remote_client(policy=ai_suggest_pr_description_step):
+        match ctx.ai_router.resolve_remote_client(
+            policy=ai_suggest_pr_description_step,
+            announce=ctx.textual.dim_text,
+        ):
             case AIExecutionSuccess(data=resolved_client):
                 ai_client = resolved_client
             case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):

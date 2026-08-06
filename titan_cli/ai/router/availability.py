@@ -8,8 +8,8 @@ decisions into workflows.
 Mirrors the existing per-domain availability checks rather than reinventing
 them: `AIClient.is_available()` for remote connections,
 `list_available_headless_clis()` for headless CLIs, and the same
-`CLILauncher.is_available()` loop already used by `ai_assistant_step.py` and
-`cli_launcher.py` for interactive CLIs.
+`CLILauncher.is_available()` loop already used by `ai_assistant_step.py` for
+interactive CLIs.
 """
 
 from dataclasses import dataclass

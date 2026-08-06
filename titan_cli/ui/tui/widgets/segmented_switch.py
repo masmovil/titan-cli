@@ -115,6 +115,7 @@ class SegmentedSwitch(Widget):
         value: Optional[str] = None,
         on_change: Optional[Callable[[str], None]] = None,
         boxed: bool = True,
+        autofocus: bool = True,
         **kwargs,
     ) -> None:
         """
@@ -124,6 +125,9 @@ class SegmentedSwitch(Widget):
             options: Ordered list of switch options.
             value: Initially selected option value. Defaults to the first option.
             on_change: Optional callback invoked after a user-driven change.
+            autofocus: Whether to take focus on mount. Turn it off when the switch is one
+                control among several - inside a tab, for instance, where taking focus would
+                pull the user away from whatever tab they are actually looking at.
         """
         super().__init__(**kwargs)
         if not options:
@@ -133,6 +137,7 @@ class SegmentedSwitch(Widget):
         self.on_change = on_change
         self._segment_values: dict[str, str] = {}
         self.boxed = boxed
+        self.autofocus_on_mount = autofocus
 
         option_values = {option.value for option in options}
         initial_value = value if value in option_values else options[0].value
@@ -154,9 +159,10 @@ class SegmentedSwitch(Widget):
                 )
 
     def on_mount(self) -> None:
-        """Sync styles and focus the widget when mounted."""
+        """Sync styles and, unless asked not to, take focus when mounted."""
         self._refresh_segments()
-        self.focus()
+        if self.autofocus_on_mount:
+            self.focus()
 
     def watch_value(self, _: str) -> None:
         """Refresh segment styles when the selected value changes."""

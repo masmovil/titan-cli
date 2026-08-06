@@ -202,7 +202,7 @@ class PluginManagementScreen(BaseScreen):
                 left_panel = Container(id="left-panel")
                 left_panel.border_title = "Installed Plugins"
                 with left_panel:
-                    yield OptionList()
+                    yield OptionList(id="plugin-list")
                     yield Button(f"{Icons.PLUGIN} Install Plugin", variant="primary", id="install-plugin-button")
 
                 # Right panel: Plugin details and actions
@@ -229,9 +229,11 @@ class PluginManagementScreen(BaseScreen):
         """Load and display installed plugins."""
         self.installed_plugins = self.config.registry.list_installed()
 
-        left_panel = self.query_one("#left-panel", Container)
-        plugin_list = left_panel.query_one(OptionList)
-        install_button = left_panel.query_one("#install-plugin-button", Button)
+        # Repopulate the one list that is already in the tree. Replacing the widget looked
+        # equivalent but was not: Textual completes `remove()` on a later frame while `mount()`
+        # lands immediately, so loading twice in quick succession - which is exactly what
+        # on_mount plus on_screen_resume do - left both lists on screen.
+        plugin_list = self.query_one("#plugin-list", OptionList)
         selected_id = self.selected_plugin
         if self.selected_missing_plugin:
             selected_id = f"missing:{self.selected_missing_plugin}"
@@ -246,9 +248,8 @@ class PluginManagementScreen(BaseScreen):
                     missing_plugins.append(plugin_name)
 
         if not self.installed_plugins and not missing_plugins:
-            new_plugin_list = OptionList(Option("No plugins installed", id="none", disabled=True))
-            plugin_list.remove()
-            left_panel.mount(new_plugin_list, before=install_button)
+            plugin_list.clear_options()
+            plugin_list.add_option(Option("No plugins installed", id="none", disabled=True))
             self._show_no_plugin_selected()
             return
 
@@ -282,16 +283,15 @@ class PluginManagementScreen(BaseScreen):
                 )
             )
 
-        new_plugin_list = OptionList(*options)
-        plugin_list.remove()
-        left_panel.mount(new_plugin_list, before=install_button)
+        plugin_list.clear_options()
+        plugin_list.add_options(options)
 
         # Select first plugin by default
         all_plugins = self.installed_plugins + [f"missing:{p}" for p in missing_plugins]
         if all_plugins:
             target = selected_id if selected_id in all_plugins else all_plugins[0]
-            new_plugin_list.highlighted = all_plugins.index(target)
-            new_plugin_list.refresh(repaint=True, layout=True)
+            plugin_list.highlighted = all_plugins.index(target)
+            plugin_list.refresh(repaint=True, layout=True)
             if target.startswith("missing:"):
                 plugin_name = target.removeprefix("missing:")
                 self.selected_plugin = None

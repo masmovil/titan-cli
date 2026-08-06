@@ -30,7 +30,7 @@ from titan_cli.external_cli.adapters import get_headless_adapter
 
 from .availability import AIAvailabilityChecker
 from .declaration import get_declared_ai_policy
-from .enums import AIProviderType
+from .enums import AIProviderType, provider_label
 from .models import (
     AIExecutionError,
     AIExecutionResult,
@@ -49,6 +49,25 @@ DEFAULT_PREFERRED = [AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS]
 CONFIG_HINT = "Configure it in AI Configuration (main menu)."
 
 PolicySource = Union[AIRoutePolicy, Callable, None]
+
+# A step can hand in a sink for one line of user-facing text (typically `ctx.textual.dim_text`).
+# Kept as a plain callable so this policy layer stays free of any UI type.
+Announce = Optional[Callable[[str], None]]
+
+
+def route_summary(decision: AIRouteDecision) -> str:
+    """
+    One line naming who is about to run this task.
+
+    Worth showing even though the same fact is logged: a user watching a workflow should not
+    have to grep a file to find out which AI just answered, and noticing the wrong one there
+    is what prompts them to change it.
+    """
+    if decision.provider == AIProviderType.OFF:
+        return "AI is off for this task"
+    instance = decision.cli or decision.connection_id
+    label = provider_label(decision.provider)
+    return f"{label} · {instance}" if instance else label
 
 
 class AIExecutor:
@@ -108,6 +127,7 @@ class AIExecutor:
         timeout: int = 180,
         json_schema: Optional[dict] = None,
         model: Optional[str] = None,
+        announce: Announce = None,
     ) -> AIExecutionResult[str]:
         """
         Run a one-shot text generation through the resolved provider.
@@ -136,6 +156,8 @@ class AIExecutor:
             json_schema: Optional JSON Schema for adapters that can enforce
                 structured output.
             model: Optional model identifier for the chosen provider's CLI.
+            announce: Optional sink for one line of user-facing text naming the
+                provider that will run this, e.g. `ctx.textual.dim_text`.
         """
         resolution = self.resolve(policy=policy, task=task, runtime_override=runtime_override)
         resolved_task = self._resolve_policy(policy, task).task
@@ -159,6 +181,7 @@ class AIExecutor:
             reason=resolution.reason,
             call="generate_text",
         )
+        self._announce(announce, resolution)
 
         match resolution.provider:
             case AIProviderType.OFF:
@@ -202,6 +225,7 @@ class AIExecutor:
         policy: PolicySource = None,
         task: Optional[str] = None,
         runtime_override: Optional[AIProviderType] = None,
+        announce: Announce = None,
     ) -> AIExecutionResult[AIClient]:
         """
         Resolve a remote `AIClient` for steps that hand one to an agent.
@@ -233,6 +257,7 @@ class AIExecutor:
             reason=resolution.reason,
             call="resolve_remote_client",
         )
+        self._announce(announce, resolution)
 
         if resolution.provider == AIProviderType.OFF:
             return AIExecutionError(
@@ -321,6 +346,13 @@ class AIExecutor:
                 preferred=list(declared.preferred),
             )
         return declared
+
+    @staticmethod
+    def _announce(announce: Announce, decision: AIRouteDecision) -> None:
+        """Tell the user who is running this, if the caller gave us somewhere to say it."""
+        if announce is None:
+            return
+        announce(f"Using {route_summary(decision)}")
 
     def _needs_input_error(self, resolution: AIRouteNeedsInput) -> AIExecutionError:
         """Turn an unresolvable route into an error that says what to fix."""

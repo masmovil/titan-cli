@@ -20,6 +20,7 @@ from .prompt_option_list import PromptOptionList, OptionItem
 from .styled_option_list import StyledOptionList, StyledOption
 from .wizard import StepStatus, WizardStep, StepIndicator
 from .segmented_switch import SegmentedSwitch, SegmentedSwitchOption
+from .tabs import TabbedPanel, TabPanel
 from .dev_source_path_modal import DevSourcePathModal
 from .text import (
     Text,
@@ -56,6 +57,8 @@ __all__ = [
     "StyledOption",
     "SegmentedSwitch",
     "SegmentedSwitchOption",
+    "TabbedPanel",
+    "TabPanel",
     "DevSourcePathModal",
     "Text",
     "DimText",

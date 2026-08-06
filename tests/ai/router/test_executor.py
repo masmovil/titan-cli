@@ -487,3 +487,51 @@ def test_remote_client_returns_none_when_connection_misconfigured(monkeypatch):
     executor = AIExecutor(ai_config=AIConfig(), secrets=object())
 
     assert executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE)) is None
+
+
+# --- announcing the route to the user -------------------------------------
+
+
+def test_announce_names_the_provider_and_instance(monkeypatch):
+    """Watching a run should be enough to notice the wrong AI answered."""
+    executor = _executor(
+        AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude", reason="pref")
+    )
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter", lambda cli: FakeAdapter()
+    )
+    said = []
+
+    executor.generate_text("prompt", policy=declared_step, announce=said.append)
+
+    assert said == ["Using CLI, automatic · claude"]
+
+
+def test_announce_says_when_the_task_is_off():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.OFF, reason="pref"))
+    said = []
+
+    executor.generate_text("prompt", policy=declared_step, announce=said.append)
+
+    assert said == ["Using AI is off for this task"]
+
+
+def test_nothing_is_announced_when_the_route_cannot_be_resolved():
+    """An unresolved route already returns an error explaining itself."""
+    executor = _executor(AIRouteNeedsInput(reason="no default CLI is configured"))
+    said = []
+
+    result = executor.generate_text("prompt", policy=declared_step, announce=said.append)
+
+    assert isinstance(result, AIExecutionError)
+    assert said == []
+
+
+def test_announce_is_optional():
+    """Steps that say it themselves - or say nothing - must keep working."""
+    executor = _executor(AIRouteDecision(provider=AIProviderType.OFF, reason="pref"))
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "AI_DISABLED"
