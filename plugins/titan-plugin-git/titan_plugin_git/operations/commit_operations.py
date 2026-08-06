@@ -5,85 +5,13 @@ Pure business logic for commit message handling.
 These functions can be used by any step and are easily testable.
 """
 
-import re
 from typing import Optional, Tuple
 
-
-MIN_CHARS_PER_FILE = 400
-MAX_FILES_IN_SUMMARY = 60
-
-
-def split_diff_by_file(diff_text: str) -> "list[tuple[str, str]]":
-    """
-    Split a unified diff into `(path, chunk)` pairs, one per file.
-
-    Returns a single `("", diff_text)` pair when the text carries no `diff --git`
-    headers, so callers can treat any input uniformly.
-    """
-    if not diff_text:
-        return []
-
-    chunks = re.split(r"(?m)^(?=diff --git )", diff_text)
-    chunks = [c for c in chunks if c.strip()]
-
-    if not chunks or not chunks[0].startswith("diff --git "):
-        return [("", diff_text)]
-
-    result = []
-    for chunk in chunks:
-        match = re.match(r"diff --git a/(\S+)", chunk)
-        result.append((match.group(1) if match else "", chunk))
-    return result
-
-
-def summarize_diff_files(diff_text: str) -> "list[tuple[str, int, int]]":
-    """Count added and removed lines per file, for every file in the diff."""
-    summary = []
-    for path, chunk in split_diff_by_file(diff_text):
-        added = len(re.findall(r"(?m)^\+(?!\+\+ )", chunk))
-        removed = len(re.findall(r"(?m)^-(?!-- )", chunk))
-        summary.append((path, added, removed))
-    return summary
-
-
-def budget_diff_across_files(diff_text: str, max_diff_chars: int) -> str:
-    """
-    Fit a diff into a character budget by sharing it between files.
-
-    Clipping the first N characters instead - which is what this used to do - hands the
-    whole budget to whichever files git happened to emit first and leaves the rest of the
-    commit invisible, so the message ends up describing a fraction of the change with
-    complete confidence. Every file gets a slice here, and a file whose slice runs out says
-    so in place.
-    """
-    chunks = split_diff_by_file(diff_text)
-    if not chunks or len(diff_text) <= max_diff_chars:
-        return diff_text
-
-    # A per-file floor keeps each slice large enough to be worth reading, but it must not
-    # become a way to spend more than the budget: with enough files, a floor alone turns a
-    # fixed cost into one that grows with the size of the commit. Files stop being included
-    # once the budget is gone - they are still listed, with their line counts, above.
-    per_file = max(max_diff_chars // len(chunks), MIN_CHARS_PER_FILE)
-
-    parts = []
-    used = 0
-    for index, (_path, chunk) in enumerate(chunks):
-        if used >= max_diff_chars:
-            parts.append(
-                f"[... {len(chunks) - index} more changed files not shown here; "
-                f"they are listed with their line counts above ...]"
-            )
-            break
-        if len(chunk) <= per_file:
-            parts.append(chunk.rstrip("\n"))
-            used += len(chunk)
-        else:
-            parts.append(
-                chunk[:per_file].rstrip("\n") + "\n[... rest of this file's diff omitted ...]"
-            )
-            used += per_file
-    return "\n".join(parts)
+from titan_cli.core.diffs import (
+    SAMPLED_DIFF_NOTE,
+    budget_diff_across_files,
+    format_file_summary,
+)
 
 
 def build_ai_commit_prompt(diff_text: str, files_list: list, max_diff_chars: int = 8000) -> str:
@@ -105,18 +33,11 @@ def build_ai_commit_prompt(diff_text: str, files_list: list, max_diff_chars: int
     # One file list, not two: the per-file counts carry the same paths and say how much each
     # one changed. Listing them twice doubled the part of the prompt that grows with the size
     # of the commit, for no extra information.
-    stats = [s for s in summarize_diff_files(diff_text) if s[0]]
-    if stats:
-        shown = stats[:MAX_FILES_IN_SUMMARY]
-        stat_summary = "\n".join(f"  {path}: +{added} -{removed}" for path, added, removed in shown)
-        if len(stats) > len(shown):
-            stat_summary += f"\n  [... and {len(stats) - len(shown)} more changed files ...]"
-    elif files_list:
-        stat_summary = "\n".join(f"  - {f}" for f in files_list[:MAX_FILES_IN_SUMMARY])
-        if len(files_list) > MAX_FILES_IN_SUMMARY:
-            stat_summary += f"\n  [... and {len(files_list) - MAX_FILES_IN_SUMMARY} more ...]"
-    else:
-        stat_summary = "(checking diff)"
+    stat_summary = format_file_summary(diff_text)
+    if not stat_summary:
+        stat_summary = (
+            "\n".join(f"  - {f}" for f in files_list) if files_list else "(checking diff)"
+        )
 
     diff_preview = budget_diff_across_files(diff_text, max_diff_chars)
     truncated = len(diff_preview) < len(diff_text)
@@ -127,9 +48,7 @@ def build_ai_commit_prompt(diff_text: str, files_list: list, max_diff_chars: int
 {stat_summary}
 
 ## Diff
-{"The diff below is sampled: each file contributes part of its changes, and the per-file "
- "summary above is the complete picture. Weigh the whole commit, not only the files whose "
- "diff you can read in full." if truncated else ""}
+{SAMPLED_DIFF_NOTE if truncated else ""}
 ```diff
 {diff_preview}
 ```

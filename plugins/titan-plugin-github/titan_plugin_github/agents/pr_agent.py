@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Optional
 
 from titan_cli.core.logging import get_logger
+from titan_cli.core.diffs import (
+    SAMPLED_DIFF_NOTE,
+    budget_diff_across_files,
+    format_file_summary,
+)
 from titan_cli.ai.agents.base import BaseAIAgent, AgentRequest
 from titan_cli.core.result import ClientSuccess, ClientError
 from .config_loader import load_agent_config
@@ -297,14 +302,20 @@ class PRAgent(BaseAIAgent):
         if not diff or not diff.strip():
             raise ValueError("Cannot generate commit message from empty diff")
 
-        # Truncate diff if too large (from config)
+        # Share the budget across files rather than keeping the head of the diff: the first
+        # files git emits are not the important ones, and a message that describes only them
+        # is wrong in a way nobody can see from reading it.
         max_diff = self.config.max_diff_size
-        diff_preview = diff[:max_diff]
-        if len(diff) > max_diff:
-            diff_preview += "\n\n... (diff truncated)"
+        diff_preview = budget_diff_across_files(diff, max_diff)
+        file_summary = format_file_summary(diff)
+        sampled = SAMPLED_DIFF_NOTE if len(diff_preview) < len(diff) else ""
 
         prompt = f"""Analyze this diff and generate a conventional commit message.
 
+## Changed files, with lines added and removed
+{file_summary or "(no per-file information available)"}
+
+{sampled}
 ```diff
 {diff_preview}
 ```
@@ -455,11 +466,15 @@ COMMIT_MESSAGE: <conventional commit message>"""
         if len(commits) > self.config.max_commits_to_analyze:
             commits_text += f"\n  ... and {len(commits) - self.config.max_commits_to_analyze} more commits"
 
-        # Limit diff size
+        # A PR description has to cover the whole change, so every file gets a share of the
+        # budget and the per-file counts always travel in full - see the summary section in
+        # the prompt below.
         max_diff = self.config.max_diff_size
-        diff_preview = diff[:max_diff] if diff else "No diff available"
-        if len(diff) > max_diff:
-            diff_preview += "\n\n... (diff truncated for brevity)"
+        diff_preview = budget_diff_across_files(diff, max_diff) if diff else "No diff available"
+        # A PR body is expected to state the scope of the change, so it lists more files
+        # than a one-line commit subject ever needs to.
+        diff_file_summary = format_file_summary(diff, max_files=150) if diff else ""
+        diff_sampled_note = SAMPLED_DIFF_NOTE if diff and len(diff_preview) < len(diff) else ""
 
         # Detect special change types and add context
         special_context = ""
@@ -497,7 +512,11 @@ This PR modifies localization/translation files. When analyzing:
 ## Commits in Branch
 {commits_text}
 
+## Files Changed, with lines added and removed
+{diff_file_summary or "(no per-file information available)"}
+
 ## Branch Diff Preview
+{diff_sampled_note}
 ```diff
 {diff_preview}
 ```
