@@ -94,6 +94,17 @@ class TaskRouting:
         """Whether there is anything honest to offer the user for this task."""
         return bool(self.executes)
 
+    @property
+    def needs_setup(self) -> bool:
+        """
+        Whether this row is asking the user for something.
+
+        Either nothing can run the task, or resolution could not pick a provider - a missing
+        default, an uninstalled one, or a stored preference the step cannot execute. Both are
+        "you have to do something here", which is what the row's warning border marks.
+        """
+        return not self.configurable or isinstance(self.resolution, AIRouteNeedsInput)
+
 
 def executable_types(steps: Sequence[DiscoveredAIStep]) -> List[AIProviderType]:
     """

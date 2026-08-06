@@ -752,7 +752,7 @@ class AIConfigScreen(BaseScreen):
 
         for routing in self._routings.values():
             row = TaskRoutingRow(routing)
-            if not routing.configurable:
+            if routing.needs_setup:
                 row.add_class("needs-setup")
             container.mount(row)
 

@@ -11,7 +11,8 @@ from unittest.mock import MagicMock
 
 from titan_cli.ai.router.availability import AIProviderAvailability
 from titan_cli.ai.router.enums import AIProviderType
-from titan_cli.ai.router.models import AIRoutePolicy
+from titan_cli.ai.router.models import AIRouteDecision, AIRoutePolicy
+from titan_cli.ai.router.resolver import AIRouteNeedsInput
 from titan_cli.core.models import AIConfig, AIPreferences, AIProviderPreference
 from titan_cli.core.workflows.ai_usage_discovery import (
     DiscoveredAIStep,
@@ -153,6 +154,37 @@ class TestBuildTaskRoutings:
         routings = build_task_routings(usages, _StubResolver())
 
         assert routings[0].configurable is False
+        assert routings[0].needs_setup is True
+
+    def test_an_unresolvable_row_needs_setup_even_though_it_is_configurable(self):
+        """A stored preference the step can't run is the main case this marking exists for."""
+        usages = [
+            DiscoveredWorkflowAIUsage(
+                workflow_name="wf",
+                steps=[_step("code_review_findings", executes=[AIProviderType.CLI_HEADLESS])],
+            )
+        ]
+        resolver = _StubResolver(AIRouteNeedsInput(reason="the configured provider is 'remote'"))
+
+        routings = build_task_routings(usages, resolver)
+
+        assert routings[0].configurable is True
+        assert routings[0].needs_setup is True
+
+    def test_a_resolved_row_does_not_need_setup(self):
+        usages = [
+            DiscoveredWorkflowAIUsage(
+                workflow_name="wf",
+                steps=[_step("commit_message", executes=[AIProviderType.CLI_HEADLESS])],
+            )
+        ]
+        resolver = _StubResolver(
+            AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude", reason="default")
+        )
+
+        routings = build_task_routings(usages, resolver)
+
+        assert routings[0].needs_setup is False
 
     def test_resolution_previews_with_what_all_steps_can_run(self):
         """The preview must reflect the same constraint the picker enforces."""
