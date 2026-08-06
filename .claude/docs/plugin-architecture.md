@@ -1,10 +1,10 @@
 # Plugin Architecture (5-Layer Pattern)
 
 **Version**: 2.0
-**Last Updated**: 2026-02-13
+**Last Updated**: 2026-08-04
 **Status**: Official architecture for all Titan plugins
 
-Complete architectural guide for official Titan CLI plugins (Jira, GitHub, Git).
+Complete architectural guide for official Titan CLI plugins (Jira, GitHub, Git). The Slack plugin is also official (registered in the root `pyproject.toml`) but does not yet follow the full 5-layer layout; the `docker` and `poeditor` plugins exist under `plugins/` but are not registered.
 
 > **Note**: This architecture is for **official plugins only**. Custom user steps can use any pattern they want - the only requirement is `WorkflowContext → WorkflowResult`.
 
@@ -59,7 +59,7 @@ Complete architectural guide for official Titan CLI plugins (Jira, GitHub, Git).
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 5. NETWORK (*API classes)                                   │
+│ 5. NETWORK (*Network classes)                               │
 │    Pure HTTP/CLI communication                              │
 │    Returns: Raw JSON (dict/list)                            │
 │    NO parsing to models                                     │
@@ -230,7 +230,7 @@ def fetch_my_pending_issues(
 # clients/jira_client.py
 from titan_cli.core.result import ClientResult
 from .services import IssueService, ProjectService
-from .network import JiraAPI
+from .network import JiraNetwork
 from ..models import UIJiraIssue, UIJiraProject
 
 
@@ -243,7 +243,7 @@ class JiraClient:
 
     def __init__(self, base_url: str, email: str, api_token: str):
         # Internal (private) dependencies
-        self._network = JiraAPI(base_url, email, api_token)
+        self._network = JiraNetwork(base_url, email, api_token)
         self._issue_service = IssueService(self._network)
         self._project_service = ProjectService(self._network)
 
@@ -280,7 +280,8 @@ response into `NetworkRelease`, map it to `UIRelease`, and return
 ```python
 # clients/services/issue_service.py
 from titan_cli.core.result import ClientResult, ClientSuccess, ClientError
-from ..network import JiraAPI
+from titan_cli.core.logging import log_client_operation
+from ..network import JiraNetwork
 from ...models import NetworkJiraIssue, UIJiraIssue, from_network_issue
 from ...exceptions import JiraAPIError
 
@@ -288,9 +289,10 @@ from ...exceptions import JiraAPIError
 class IssueService:
     """Issue service (internal)."""
 
-    def __init__(self, network: JiraAPI):
+    def __init__(self, network: JiraNetwork):
         self.network = network
 
+    @log_client_operation()
     def get_issue(self, key: str) -> ClientResult[UIJiraIssue]:
         """Get issue by key."""
         try:
@@ -310,6 +312,8 @@ class IssueService:
             error_code = "NOT_FOUND" if e.status_code == 404 else "API_ERROR"
             return ClientError(error_message=str(e), error_code=error_code)
 ```
+
+**Logging convention**: Decorate public service methods with `@log_client_operation()` (from `titan_cli/core/logging/decorators.py`). It automatically logs the start and the `ClientSuccess`/`ClientError` result of each operation. This is the de-facto convention across service modules (see e.g. `titan-plugin-jira`'s `issue_service.py`).
 
 **⚠️ CRITICAL: Exception Handling in Services**
 
@@ -367,12 +371,12 @@ If a service only catches `GitCommandError`, then:
 
 **Example**:
 ```python
-# clients/network/jira_api.py
+# clients/network/jira_network.py
 import requests
 from ...exceptions import JiraAPIError
 
 
-class JiraAPI:
+class JiraNetwork:
     """Jira REST API communication."""
 
     def __init__(self, base_url: str, email: str, api_token: str):
@@ -408,12 +412,13 @@ class JiraAPI:
 
 ## Nomenclature & Naming
 
-### HTTP Clients: `*API`
+### Network Executors: `*Network`
 
 ```python
-JiraAPI              # Jira REST API
-GitHubRESTAPI        # GitHub REST API
-GitHubGraphQLAPI     # GitHub GraphQL API
+JiraNetwork          # Jira REST API
+GHNetwork            # GitHub REST API (gh CLI)
+GraphQLNetwork       # GitHub GraphQL API
+GitNetwork           # Git command executor
 ```
 
 ### Network Models: `Network*`
@@ -427,15 +432,20 @@ NetworkJiraProject
 NetworkJiraComment
 ```
 
-**GitHub (GraphQL + REST - need disambiguation)**:
+**GitHub (GraphQL + REST - disambiguated by directory)**:
 ```python
-NetworkGraphQLPullRequest       # From GraphQL
-NetworkGraphQLIssueComment
-NetworkRESTUser                 # From REST
-NetworkRESTPullRequest
+# models/network/rest/
+NetworkPullRequest              # From REST
+NetworkUser
+NetworkIssue
+
+# models/network/graphql/
+GraphQLPullRequestReviewThread  # From GraphQL
+GraphQLIssueComment
+GraphQLUser
 ```
 
-**Rule**: `Network` prefix identifies network model. Add `GraphQL`/`REST` if needed for disambiguation.
+**Rule**: REST models use the plain `Network*` prefix and live in `models/network/rest/`; GraphQL models use the `GraphQL*` prefix and live in `models/network/graphql/`. The directory (plus prefix for GraphQL) disambiguates the API source.
 
 ### View/UI Models: `UI*`
 
@@ -447,11 +457,11 @@ UIPullRequest
 UIComment
 ```
 
-### Mappers: `from_network_*`
+### Mappers: `from_network_*` / `from_graphql_*`
 
 ```python
 from_network_issue(NetworkJiraIssue) → UIJiraIssue
-from_network_graphql_pr(NetworkGraphQLPullRequest) → UIPullRequest
+from_graphql_review_thread(GraphQLPullRequestReviewThread) → UICommentThread
 ```
 
 ---
@@ -477,6 +487,7 @@ class ClientSuccess(Generic[T]):
 class ClientError:
     error_message: str
     error_code: Optional[str] = None
+    log_level: str = "error"  # "warning" for expected/recoverable, "error" for unexpected
     details: Optional[dict] = None
 
 ClientResult = ClientSuccess[T] | ClientError
@@ -540,7 +551,7 @@ match result:
            │
            ↓
 ┌──────────────────────┐
-│  JiraAPI             │
+│  JiraNetwork         │
 │  HTTP → JSON         │
 └──────────────────────┘
 ```
@@ -610,7 +621,7 @@ match result:
 3. Never put **business logic** in Services
 4. Never put **UI logic** in Operations
 5. Never return `None` - return Result or raise
-6. Never mix REST/GraphQL without `Network` prefix
+6. Never mix REST/GraphQL models in the same directory (`models/network/rest/` vs `models/network/graphql/`)
 7. Never return primitives if data is structured
 
 ---
@@ -688,7 +699,7 @@ class JiraClient:
 ### After (Layered)
 ```python
 # Network
-class JiraAPI:
+class JiraNetwork:
     def make_request(...) -> dict: ...
 
 # Service
@@ -841,7 +852,7 @@ When creating/migrating a plugin, ensure:
 
 ### Models
 - [ ] Network models in `models/network/` (faithful to API)
-- [ ] UI models in `models/view/` (pre-formatted)
+- [ ] UI models in the view layer (pre-formatted) — either a `models/view/` package (git) or a single `models/view.py` module (jira, github); both layouts are in use
 - [ ] Mappers in `models/mappers/`
 
 ### Services
@@ -871,5 +882,5 @@ When creating/migrating a plugin, ensure:
 
 ---
 
-**Last Updated**: 2026-02-16
+**Last Updated**: 2026-08-04
 **Version**: 3.0

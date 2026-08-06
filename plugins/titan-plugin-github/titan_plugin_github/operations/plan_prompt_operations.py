@@ -12,7 +12,7 @@ from ..models.review_models import (
     ScoredReviewCandidate,
 )
 from ..models.review_profile_models import ReviewProfile
-from .prompt_formatting_operations import comment_context_to_json
+from .prompt_formatting_operations import comment_context_to_json, extract_pr_intent
 from .review_strategy_operations import build_deterministic_review_plan, summarize_candidate_clusters
 
 
@@ -99,7 +99,9 @@ def _manifest_to_json(manifest: ChangeManifest) -> str:
                 "base": manifest.pr.base,
                 "head": manifest.pr.head,
                 "author": manifest.pr.author,
-                "description": manifest.pr.description[:300],
+                # Deterministic trim (strip images/HTML comments/checkboxes) instead of a
+                # raw [:300] cut, which on real PRs often yields only a meme/badge URL.
+                "description": extract_pr_intent(manifest.pr.description, max_chars=800),
             },
             "files_changed": len(manifest.files),
             "total_additions": manifest.total_additions,

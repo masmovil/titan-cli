@@ -24,6 +24,8 @@ from .comment_operations import (
 from .pr_operations import (
     fetch_pr_threads,
     fetch_pr_general_comments,
+    split_titan_review_body,
+    build_quote_reply,
 )
 
 from .pr_selection_operations import (
@@ -35,6 +37,7 @@ from .pr_selection_operations import (
 from .worktree_operations import (
     setup_worktree,
     cleanup_worktree,
+    clear_stale_worktree,
     commit_in_worktree,
 )
 
@@ -72,6 +75,8 @@ __all__ = [
     # PR operations
     "fetch_pr_threads",
     "fetch_pr_general_comments",
+    "split_titan_review_body",
+    "build_quote_reply",
     "build_pr_selection_description",
     "build_pr_selection_title",
     "format_review_status_badge",
@@ -79,6 +84,7 @@ __all__ = [
     # Worktree operations
     "setup_worktree",
     "cleanup_worktree",
+    "clear_stale_worktree",
     "commit_in_worktree",
 
     # PR creation operations

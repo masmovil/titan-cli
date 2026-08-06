@@ -2,7 +2,7 @@
 
 **Complete guide for implementing the Operations Pattern in Titan CLI plugins**
 
-Last updated: 2026-02-13
+Last updated: 2026-08-04
 
 ---
 
@@ -134,14 +134,6 @@ def parse_comma_separated_list(input_string: str) -> List[str]:
 
     Returns:
         List of trimmed non-empty strings
-
-    Examples:
-        >>> parse_comma_separated_list("bug, feature, help wanted")
-        ['bug', 'feature', 'help wanted']
-        >>> parse_comma_separated_list("  bug  ,  , feature  ")
-        ['bug', 'feature']
-        >>> parse_comma_separated_list("")
-        []
     """
     if not input_string or not input_string.strip():
         return []
@@ -163,12 +155,6 @@ def filter_valid_labels(
 
     Returns:
         Tuple of (valid_labels, invalid_labels)
-
-    Examples:
-        >>> filter_valid_labels(["bug", "feature"], ["bug", "feature", "help"])
-        (['bug', 'feature'], [])
-        >>> filter_valid_labels(["bug", "invalid"], ["bug", "feature"])
-        (['bug'], ['invalid'])
     """
     valid = []
     invalid = []
@@ -206,7 +192,9 @@ from .issue_operations import (
 
 from .pr_operations import (
     fetch_pr_threads,
-    push_and_request_review,
+    fetch_pr_general_comments,
+    split_titan_review_body,
+    build_quote_reply,
 )
 
 __all__ = [
@@ -216,7 +204,9 @@ __all__ = [
 
     # PR operations
     "fetch_pr_threads",
-    "push_and_request_review",
+    "fetch_pr_general_comments",
+    "split_titan_review_body",
+    "build_quote_reply",
 ]
 ```
 
@@ -284,6 +274,7 @@ class TestFilterValidLabels:
 ```python
 # plugins/titan-plugin-github/titan_plugin_github/steps/issue_steps.py
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
+from titan_cli.core.result import ClientSuccess, ClientError
 from ..operations import filter_valid_labels  # Import operations
 
 
@@ -295,14 +286,19 @@ def create_issue_step(ctx: WorkflowContext) -> WorkflowResult:
 
     # Use operation for business logic
     if labels and ctx.github:
-        available_labels = ctx.github.list_labels()
-        valid_labels, invalid_labels = filter_valid_labels(labels, available_labels)
+        # list_labels() returns ClientResult[List[str]] - pattern match it
+        match ctx.github.list_labels():
+            case ClientSuccess(data=available_labels):
+                valid_labels, invalid_labels = filter_valid_labels(labels, available_labels)
 
-        # UI only: Display results
-        if invalid_labels:
-            ctx.textual.warning_text(f"Skipping invalid labels: {', '.join(invalid_labels)}")
+                # UI only: Display results
+                if invalid_labels:
+                    ctx.textual.warning_text(f"Skipping invalid labels: {', '.join(invalid_labels)}")
 
-        labels = valid_labels
+                labels = valid_labels
+            case ClientError(error_message=err):
+                ctx.textual.error_text(err)
+                return Error(err)
 
     # Continue with step...
     ctx.textual.end_step("success")
@@ -345,7 +341,7 @@ business logic.
 
 ### ✅ DO
 
-1. **Write docstrings with examples**
+1. **Write docstrings describing args and returns (NO doctest examples)**
    ```python
    def my_operation(data: str) -> List[str]:
        """
@@ -356,12 +352,11 @@ business logic.
 
        Returns:
            Description
-
-       Examples:
-           >>> my_operation("test")
-           ['test']
        """
    ```
+   Do NOT add `Examples:` / doctest blocks - the project doesn't run doctests
+   and verbose mocks make docstrings unreadable. Real examples live in `/tests`
+   (see "Docstrings - NO Examples" in [plugin-architecture.md](plugin-architecture.md)).
 
 2. **Make operations pure functions** (no side effects)
    ```python
@@ -562,7 +557,7 @@ When refactoring an existing step:
 - [ ] Identify all business logic (see "Step 1")
 - [ ] Create operations module with descriptive name
 - [ ] Extract each piece of logic to a function
-- [ ] Write docstrings with examples
+- [ ] Write docstrings (Args/Returns, no doctest examples)
 - [ ] Write unit tests (aim for 100%)
 - [ ] Update step to import and use operations
 - [ ] Verify step syntax with `python3 -m py_compile`
@@ -572,16 +567,16 @@ When refactoring an existing step:
 
 ---
 
-## Current Status (2026-02-13)
+## Current Status (2026-08-04)
 
 **Plugins with Operations:**
 
-| Plugin | Operations Modules | Functions | Tests | Coverage |
-|--------|-------------------|-----------|-------|----------|
-| GitHub | 5 modules | 17 funcs | 40 tests | 99% |
-| Git | 3 modules | 13 funcs | 68 tests | 99% |
-| Jira | 2 modules | 9 funcs | 47 tests | 100% |
-| **Total** | **10 modules** | **39 funcs** | **155 tests** | **99.3%** |
+| Plugin | Operations Modules | Public Functions | Tests |
+|--------|-------------------|------------------|-------|
+| GitHub | 18 modules | 92 funcs | 207 tests |
+| Git | 3 modules | 14 funcs | 75 tests |
+| Jira | 5 modules | 19 funcs | 73 tests |
+| **Total** | **26 modules** | **125 funcs** | **355 tests** |
 
 **Benefits Achieved:**
 - 295 lines of duplicated code eliminated
@@ -593,7 +588,7 @@ When refactoring an existing step:
 
 ## Questions?
 
-- See examples in existing plugins: `plugins/titan-plugin-{github,git,jira}/operations/`
+- See examples in existing plugins: `plugins/titan-plugin-{name}/titan_plugin_{name}/operations/` (e.g. `plugins/titan-plugin-github/titan_plugin_github/operations/`)
 - Check test examples: `plugins/titan-plugin-{github,git,jira}/tests/operations/`
 - Review CLAUDE.md for architecture overview
 

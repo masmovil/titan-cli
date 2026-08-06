@@ -444,6 +444,10 @@ class GitClient:
         """Remove a worktree."""
         return self.worktree_service.remove_worktree(path, force)
 
+    def prune_worktrees(self) -> ClientResult[None]:
+        """Prune stale worktree metadata for directories that no longer exist."""
+        return self.worktree_service.prune_worktrees()
+
     def list_worktrees(self) -> ClientResult[List[UIGitWorktree]]:
         """List all worktrees."""
         return self.worktree_service.list_worktrees()
