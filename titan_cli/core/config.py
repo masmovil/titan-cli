@@ -1,6 +1,7 @@
 # core/config.py
 from copy import deepcopy
 import hashlib
+import json
 from pathlib import Path
 import re
 from typing import List, Optional
@@ -40,6 +41,7 @@ class TitanConfig:
         self._workflow_registry = None  # Set by load()
         self._plugin_warnings = []
         self._plugin_sync_events = []
+        self._plugin_fingerprint = None  # Set by load(); see _compute_plugin_fingerprint
 
         # Use custom global config path if provided (for testing), otherwise use default
         self._global_config_path = global_config_path or self.GLOBAL_CONFIG
@@ -47,13 +49,23 @@ class TitanConfig:
         # Initial load
         self.load(skip_plugin_init=skip_plugin_init)
 
-    def load(self, skip_plugin_init: bool = False):
+    def load(self, skip_plugin_init: bool = False, force_plugin_init: bool = False):
         """
         Reloads the entire configuration from disk, including global config
         and the project config from the current working directory.
 
+        Rebuilding the plugin registry costs roughly a hundred times more than
+        rereading the config files, so it only happens when something the
+        registry depends on actually changed. Callers that just want fresh
+        config values - a status bar, a connection list - pay the cheap path
+        without asking for it.
+
         Args:
             skip_plugin_init: If True, skip plugin initialization. Useful during setup wizards.
+            force_plugin_init: If True, rebuild the plugin registry even when the
+                configuration looks unchanged. For callers that changed something
+                the fingerprint cannot see, such as a stored credential a plugin
+                reads while initializing.
         """
         # Load global config
         self.global_config = self._load_and_migrate_toml(
@@ -83,10 +95,7 @@ class TitanConfig:
 
         # Reset and re-initialize plugins (unless skipped during setup)
         if not skip_plugin_init:
-            self.registry.reset()
-            self.registry.initialize_plugins(config=self, secrets=self.secrets)
-            self._plugin_warnings = self.registry.list_failed()
-            self._plugin_sync_events = self.registry.list_sync_events()
+            self._refresh_plugins(merged, force=force_plugin_init)
 
         # Re-initialize WorkflowRegistry using project root
         project_step_source = ProjectStepSource(project_root=project_root)
@@ -99,6 +108,57 @@ class TitanConfig:
             config=self
         )
 
+
+    def _refresh_plugins(self, merged: dict, force: bool = False) -> None:
+        """
+        Rebuild the plugin registry, but only when it would come out different.
+
+        Every screen reloads config on resume, and rebuilding means importing and
+        initializing every installed plugin - about a second, against ten
+        milliseconds for rereading the files. Skipping the rebuild when nothing
+        plugin-related changed is what keeps that from being paid on every
+        screen transition.
+        """
+        fingerprint = self._compute_plugin_fingerprint(merged)
+
+        if not force and fingerprint == self._plugin_fingerprint:
+            logger.debug("plugin_registry_reused")
+            return
+
+        self.registry.reset()
+        self.registry.initialize_plugins(config=self, secrets=self.secrets)
+        self._plugin_warnings = self.registry.list_failed()
+        self._plugin_sync_events = self.registry.list_sync_events()
+        self._plugin_fingerprint = fingerprint
+        logger.debug("plugin_registry_rebuilt", forced=force)
+
+    @staticmethod
+    def _compute_plugin_fingerprint(merged: dict) -> str:
+        """
+        Everything the built registry depends on, as one comparable value.
+
+        Two inputs: the `[plugins.*]` configuration (which plugins are enabled
+        and how each is configured) and the set of installed entry points (so a
+        plugin installed or removed mid-session is noticed). Enumerating entry
+        points costs a few milliseconds against the second a rebuild costs, which
+        is what makes checking cheaper than assuming.
+
+        A credential a plugin reads while initializing is deliberately NOT here -
+        secrets live outside the config files and hashing them to compare would
+        mean holding them in memory for no other reason. Callers that change one
+        pass `force_plugin_init=True`.
+        """
+        from importlib.metadata import entry_points
+
+        plugins_config = merged.get("plugins", {})
+        installed = sorted(ep.name for ep in entry_points(group="titan.plugins"))
+
+        payload = json.dumps(
+            {"plugins": plugins_config, "installed": installed},
+            sort_keys=True,
+            default=str,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()
 
     def _find_project_config(self, start_path: Optional[Path] = None) -> Optional[Path]:
         """Search for .titan/config.toml up the directory tree"""
