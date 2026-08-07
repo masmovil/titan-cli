@@ -98,7 +98,7 @@ class MockAIClient:
     def is_available(self) -> bool:
         return True
 
-    def generate(self, messages, max_tokens: int = 1000, temperature: float = 0.7):
+    def generate(self, messages, max_tokens: int = 1000, temperature: float = 0.7, json_schema=None):
         # Extract the prompt
         prompt = messages[0].content if messages else ""
 

@@ -19,9 +19,11 @@ logger = get_logger(__name__)
 
 @declare_ai_usage(
     task=AITask.PR_DESCRIPTION,
-    # PRAgent makes several calls of its own; until a CLI-backed generator
-    # exists, a remote connection is the only thing this code can drive.
-    executes=[AIProviderType.REMOTE],
+    # The agent drives whatever generator it is handed, so either transport
+    # works. Remote leads because a CLI costs a subprocess per agent call, and
+    # this agent makes two.
+    executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+    preferred=[AIProviderType.REMOTE],
     enforces=True,
 )
 def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
@@ -58,15 +60,16 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     # Begin step container
     ctx.textual.begin_step("AI PR Description")
 
-    # Use the connection the user chose for this task; the agent drives it.
-    ai_client = ctx.ai
+    # Use whatever the user chose for this task; the agent drives it either way.
+    generator = ctx.ai
     if ctx.ai_router:
-        match ctx.ai_router.resolve_remote_client(
+        match ctx.ai_router.resolve_generator(
             policy=ai_suggest_pr_description_step,
+            cwd=ctx.git.repo_path if ctx.git else None,
             announce=ctx.textual.ai_chip,
         ):
-            case AIExecutionSuccess(data=resolved_client):
-                ai_client = resolved_client
+            case AIExecutionSuccess(data=resolved):
+                generator = resolved
             case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
                 ctx.textual.dim_text(disabled_message)
                 ctx.textual.end_step("skip")
@@ -76,7 +79,7 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
                 ctx.textual.end_step("error")
                 return Error(err)
 
-    if not ai_client or not ai_client.is_available():
+    if not generator or not generator.is_available():
         ctx.textual.dim_text(msg.GitHub.AI.AI_NOT_CONFIGURED)
         ctx.textual.end_step("skip")
         return Skip(msg.GitHub.AI.AI_NOT_CONFIGURED)
@@ -103,7 +106,7 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
 
         # Create PRAgent instance
         pr_agent = PRAgent(
-            ai_client=ai_client,
+            generator=generator,
             git_client=ctx.git,
             github_client=ctx.github
         )

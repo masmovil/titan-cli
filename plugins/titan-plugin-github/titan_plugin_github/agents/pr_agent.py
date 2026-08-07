@@ -20,12 +20,18 @@ from titan_cli.core.diffs import (
     format_file_summary,
 )
 from titan_cli.ai.agents.base import BaseAIAgent, AgentRequest
+from titan_cli.ai.agents.contracts import TextContract
 from titan_cli.core.result import ClientSuccess, ClientError
 from .config_loader import load_agent_config
 from ..utils import calculate_pr_size, is_i18n_change
 
 # Set up logger
 logger = get_logger(__name__)
+
+# A PR answer is a short title plus a full markdown document. Labelled sections
+# keep the document as-is; the alternative, a JSON string field, is where long
+# markdown loses its escaping.
+PR_CONTRACT = TextContract(sections=("TITLE", "DESCRIPTION"))
 
 
 class PRStatus(StrEnum):
@@ -71,27 +77,13 @@ class PRAgent(BaseAIAgent):
     - Makes intelligent decisions about what actions to take
     - Generates all necessary content (commits, PRs)
 
-    Example:
-        ```python
-        # In a workflow step
-        pr_agent = PRAgent(ctx.ai, ctx.git, ctx.github)
-
-        analysis = pr_agent.analyze_and_plan(
-            head_branch="feat/new-feature",
-            base_branch="main"
-        )
-
-        if analysis.needs_commit:
-            # Use analysis.commit_message for commit
-
-        if analysis.pr_title:
-            # Use analysis.pr_title and analysis.pr_body for PR
-        ```
+    A step builds it with whatever generator the user's routing resolved, so
+    the same agent runs against a remote connection or a local CLI unchanged.
     """
 
     def __init__(
         self,
-        ai_client,
+        generator,
         git_client,
         github_client=None
     ):
@@ -99,11 +91,12 @@ class PRAgent(BaseAIAgent):
         Initialize PRAgent.
 
         Args:
-            ai_client: The AIClient instance (provides AI capabilities)
+            generator: Anything implementing AIGenerator - a remote connection
+                or a local CLI. This agent works the same either way.
             git_client: Git client for repository operations
             github_client: Optional GitHub client for PR operations
         """
-        super().__init__(ai_client)
+        super().__init__(generator)
         self.git = git_client
         self.github = github_client
 
@@ -327,6 +320,10 @@ COMMIT_MESSAGE: <conventional commit message>"""
 
         request = AgentRequest(
             context=prompt,
+            # One line of prose. Demanding a labelled section here would turn a
+            # bare-but-correct message into a parse failure, buying a retry to
+            # fix an answer that was already usable.
+            contract=TextContract(),
             max_tokens=500,  # Increased from 200 to handle larger diffs
             system_prompt=self.config.commit_system_prompt,  # Use specific commit prompt
             operation="commit_message",
@@ -425,6 +422,10 @@ COMMIT_MESSAGE: <conventional commit message>"""
         # Generate with AI
         request = AgentRequest(
             context=prompt,
+            # Labelled sections rather than JSON: the description is a whole
+            # markdown document, and wrapping one in a JSON string is the shape
+            # most likely to come back truncated or with mangled escaping.
+            contract=PR_CONTRACT,
             max_tokens=max_tokens,
             system_prompt=self.config.pr_system_prompt,
             operation="pr_description",
@@ -436,8 +437,7 @@ COMMIT_MESSAGE: <conventional commit message>"""
             logger.error(f"AI generation failed for PR description: {e}")
             raise
 
-        # Parse response
-        title, body = self._parse_pr_response(response.content, max_chars)
+        title, body = self._clean_pr_fields(response.parsed)
 
         return {
             "title": title,
@@ -557,36 +557,20 @@ This PR modifies localization/translation files. When analyzing:
      * Large PRs: Comprehensive, 3-5 lines per section with examples
      * Very Large PRs: Detailed architecture explanations, migration guides
    - Total description length MUST be ≤{max_chars} chars
+   - MAX {max_chars} chars total"""
 
-Format your response EXACTLY like this:
-TITLE: <conventional commit title>
-
-DESCRIPTION:
-<template-based description - MAX {max_chars} chars total>"""
-
-    def _parse_pr_response(self, content: str, max_chars: int) -> tuple[str, str]:
+    def _clean_pr_fields(self, parsed: dict) -> tuple[str, str]:
         """
-        Parse AI response to extract title and description.
+        Apply conventional-commit conventions to an already-split response.
 
-        Handles various AI response formats (case-insensitive, with or without preamble).
+        Finding the sections is the contract's job; what belongs here is what
+        this project expects a PR to look like.
 
         Returns:
             Tuple of (title, description)
         """
-        # Normalize content for case-insensitive matching
-        content_upper = content.upper()
-        title_idx = content_upper.find("TITLE:")
-        desc_idx = content_upper.find("DESCRIPTION:")
-
-        if title_idx == -1 or desc_idx == -1:
-            raise ValueError(
-                f"AI response format incorrect. Expected 'TITLE:' and 'DESCRIPTION:' sections.\n"
-                f"Got: {content[:200]}..."
-            )
-
-        # Extract title and description using original content (preserves casing)
-        title = content[title_idx + 6:desc_idx].strip()  # +6 for len("TITLE:")
-        description = content[desc_idx + 12:].strip()  # +12 for len("DESCRIPTION:")
+        title = (parsed.get("title") or "").strip()
+        description = (parsed.get("description") or "").strip()
 
         # Clean up title (remove quotes if present)
         title = title.strip('"').strip("'")

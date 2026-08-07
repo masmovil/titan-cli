@@ -159,6 +159,7 @@ class AIClient:
         messages: List[AIMessage],
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        json_schema: Optional[dict] = None,
     ) -> AIResponse:
         """
         Generate a response using the configured AI connection.
@@ -167,6 +168,10 @@ class AIClient:
             messages: List of conversation messages.
             max_tokens: Optional override for the maximum number of tokens.
             temperature: Optional override for the temperature.
+            json_schema: Accepted and ignored. Remote connections here do not
+                enforce a response shape, and the caller validates the answer
+                either way; the parameter exists so the same call works whether
+                the answer comes from a connection or a local CLI.
 
         Returns:
             AI response with generated content.

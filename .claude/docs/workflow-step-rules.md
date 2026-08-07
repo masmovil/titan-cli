@@ -59,8 +59,9 @@ What each field means — and what it commits you to:
   declare.
   - One prompt in / one text out via `ctx.ai_router.generate_text()` → can honestly declare
     `REMOTE` and `CLI_HEADLESS`.
-  - Handing an `AIClient` to an agent (multi-call) → `REMOTE` only, until a CLI-backed
-    generator exists.
+  - Handing a generator to an agent (multi-call) via `ctx.ai_router.resolve_generator()` →
+    can honestly declare `REMOTE` and `CLI_HEADLESS`. Prefer `REMOTE`: a CLI costs one
+    subprocess per agent call. See [ai-agents.md](ai-agents.md).
   - Launching an interactive session that edits files / runs commands → `CLI_INTERACTIVE`
     only, and use `ctx.ai_router.resolve()` instead of `generate_text()`.
 - **`preferred`** is the default try-order when the user configured nothing. It must be a

@@ -1,5 +1,9 @@
 """Tests for the AIExecutor façade."""
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from titan_cli.ai.headless_generator import HeadlessGenerator
 from titan_cli.ai.models import AIResponse
 from titan_cli.ai.router import (
     AIExecutionError,
@@ -392,54 +396,108 @@ def test_unresolved_route_is_logged(monkeypatch):
     assert "ai_route_unresolved" in dict(logged)
 
 
-# --- resolve_remote_client (agent-based steps) ----------------------------
+# --- resolve_generator (agent-based steps) --------------------------------
 
 
-def test_resolve_remote_client_returns_the_configured_connection():
+def test_resolve_generator_returns_the_configured_connection():
     decision = AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="work-litellm")
     executor = _executor(decision)
     client = FakeAIClient()
     executor.remote_client = lambda d: client  # type: ignore[method-assign]
 
-    result = executor.resolve_remote_client(policy=declared_step)
+    result = executor.resolve_generator(policy=declared_step)
 
     assert isinstance(result, AIExecutionSuccess)
     assert result.data is client
 
 
-def test_resolve_remote_client_reports_ai_disabled():
+def test_resolve_generator_honours_a_cli_preference():
+    """An agent runs on whichever transport the user picked - that is the point."""
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+
+    result = executor.resolve_generator(policy=declared_step)
+
+    assert isinstance(result, AIExecutionSuccess)
+    assert isinstance(result.data, HeadlessGenerator)
+    assert result.data.adapter.cli_name.value == "claude"
+
+
+def test_resolve_generator_passes_the_working_directory_to_the_cli():
+    """Running in the repo is what lets the model read the code it is discussing."""
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+
+    result = executor.resolve_generator(policy=declared_step, cwd="/repo", timeout=42)
+
+    assert result.data.cwd == "/repo"
+    assert result.data.timeout == 42
+
+
+def test_resolve_generator_reports_ai_disabled():
     executor = _executor(AIRouteDecision(provider=AIProviderType.OFF))
 
-    result = executor.resolve_remote_client(policy=declared_step)
+    result = executor.resolve_generator(policy=declared_step)
 
     assert isinstance(result, AIExecutionError)
     assert result.error_code == "AI_DISABLED"
 
 
-def test_resolve_remote_client_refuses_a_cli_preference():
-    """An agent makes several calls - it cannot drive a CLI, and we don't pretend otherwise."""
-    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+def test_resolve_generator_refuses_an_interactive_cli():
+    """An interactive session captures no output, so an agent has nothing to read."""
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_INTERACTIVE, cli="claude"))
 
-    result = executor.resolve_remote_client(policy=declared_step)
+    result = executor.resolve_generator(policy=declared_step)
 
     assert isinstance(result, AIExecutionError)
     assert result.error_code == "PROVIDER_NOT_CAPABLE"
 
 
-def test_resolve_remote_client_reports_unusable_connection():
+def test_resolve_generator_reports_unusable_connection():
     executor = _executor(AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="gone"))
     executor.remote_client = lambda d: None  # type: ignore[method-assign]
 
-    result = executor.resolve_remote_client(policy=declared_step)
+    result = executor.resolve_generator(policy=declared_step)
 
     assert isinstance(result, AIExecutionError)
     assert result.error_code == "PROVIDER_UNAVAILABLE"
 
 
-def test_resolve_remote_client_surfaces_needs_input():
+def test_resolve_generator_reports_an_unknown_cli():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="nope"))
+
+    result = executor.resolve_generator(policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_UNAVAILABLE"
+
+
+def test_resolve_generator_reports_a_cli_that_is_not_installed():
+    """Better to say so now than to discover it as an exit code a minute in."""
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+
+    with patch(
+        "titan_cli.ai.router.executor.get_headless_adapter",
+        return_value=SimpleNamespace(is_available=lambda: False),
+    ):
+        result = executor.resolve_generator(policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_UNAVAILABLE"
+    assert "claude" in result.error_message
+
+
+def test_resolve_generator_refuses_a_headless_decision_with_no_cli():
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli=None))
+
+    result = executor.resolve_generator(policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "NO_PROVIDER_AVAILABLE"
+
+
+def test_resolve_generator_surfaces_needs_input():
     executor = _executor(AIRouteNeedsInput(reason="nothing configured", candidates=[]))
 
-    result = executor.resolve_remote_client(policy=declared_step)
+    result = executor.resolve_generator(policy=declared_step)
 
     assert isinstance(result, AIExecutionError)
     assert result.error_code == "NO_PROVIDER_AVAILABLE"

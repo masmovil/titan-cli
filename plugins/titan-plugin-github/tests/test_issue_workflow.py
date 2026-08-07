@@ -325,71 +325,57 @@ def test_create_issue_with_auto_assigned_labels(mock_secret_manager):
 # JSON Parsing Tests
 # ============================================================================
 
-def test_parse_ai_response_with_json_format():
-    """Test that JSON parsing works correctly"""
-    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
+def test_issue_contract_maps_the_legacy_description_label_to_body():
+    """The pre-JSON format called it DESCRIPTION; this agent calls it body."""
+    from titan_plugin_github.agents.issue_generator import ISSUE_CONTRACT
+
+    result = ISSUE_CONTRACT.parse(
+        "CATEGORY: feature\n"
+        "TITLE: feat(api): add new endpoint\n"
+        "DESCRIPTION:\n## Summary\nNew API endpoint for user management"
+    )
+
+    assert result.ok
+    assert result.data["category"] == "feature"
+    assert result.data["title"] == "feat(api): add new endpoint"
+    assert "Summary" in result.data["body"]
+
+
+def test_an_unknown_category_falls_back_to_feature():
+    """Only categories this agent has a template for are usable."""
     from unittest.mock import MagicMock
+
+    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
 
     agent = IssueGeneratorAgent(MagicMock())
 
-    # Test JSON format
-    json_response = '''
-    {
-      "category": "bug",
-      "title": "fix(auth): resolve login timeout issue",
-      "body": "## Description\\nUsers experiencing timeout errors during login"
-    }
-    '''
+    normalized = agent._normalize({"category": "epic", "title": "t", "body": "b"})
 
-    category, title, body = agent._parse_ai_response(json_response)
+    assert normalized["category"] == "feature"
 
-    assert category == "bug"
-    assert title == "fix(auth): resolve login timeout issue"
-    assert "Users experiencing timeout" in body
 
-def test_parse_ai_response_with_fallback_regex():
-    """Test that regex fallback works when JSON parsing fails"""
-    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
+def test_a_known_category_is_kept_and_lowercased():
     from unittest.mock import MagicMock
+
+    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
 
     agent = IssueGeneratorAgent(MagicMock())
 
-    # Test old format (should use regex fallback)
-    old_format_response = '''
-    CATEGORY: feature
-    TITLE: feat(api): add new endpoint
-    DESCRIPTION:
-    ## Summary
-    New API endpoint for user management
-    '''
+    normalized = agent._normalize({"category": "BUG", "title": "t", "body": "b"})
 
-    category, title, body = agent._parse_ai_response(old_format_response)
+    assert normalized["category"] == "bug"
 
-    assert category == "feature"
-    assert title == "feat(api): add new endpoint"
-    assert "Summary" in body
 
-def test_parse_ai_response_with_user_category_text():
-    """Test that JSON parsing avoids conflicts with user text containing 'CATEGORY:'"""
-    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
+def test_an_empty_answer_gets_usable_placeholders():
     from unittest.mock import MagicMock
+
+    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
 
     agent = IssueGeneratorAgent(MagicMock())
 
-    # User description contains "CATEGORY:" but JSON should parse correctly
-    response_with_conflict = '''
-    {
-      "category": "bug",
-      "title": "fix(docs): update CATEGORY: field documentation",
-      "body": "The CATEGORY: field in the config is confusing users"
-    }
-    '''
+    normalized = agent._normalize({"category": None, "title": None, "body": None})
 
-    category, title, body = agent._parse_ai_response(response_with_conflict)
-
-    assert category == "bug"
-    assert "CATEGORY: field" in title
-    assert "CATEGORY: field in the config" in body
+    assert normalized == {"category": "feature", "title": "New issue", "body": ""}
 
 # ============================================================================
 # Error Scenario Tests

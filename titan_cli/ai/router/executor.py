@@ -18,10 +18,11 @@ to a different provider.
 """
 
 import time
-from typing import Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 from titan_cli.ai.client import AIClient
 from titan_cli.ai.exceptions import AIConfigurationError
+from titan_cli.ai.headless_generator import AGENT_HEADLESS_TIMEOUT_SECONDS, HeadlessGenerator
 from titan_cli.ai.models import AIMessage
 from titan_cli.core.logging import get_logger
 from titan_cli.core.models import AIConfig
@@ -223,23 +224,35 @@ class AIExecutor:
                     decision=resolution,
                 )
 
-    def resolve_remote_client(
+    def resolve_generator(
         self,
         *,
         policy: PolicySource = None,
         task: Optional[str] = None,
         runtime_override: Optional[AIProviderType] = None,
         announce: Announce = None,
-    ) -> AIExecutionResult[AIClient]:
+        cwd: Optional[str] = None,
+        timeout: int = AGENT_HEADLESS_TIMEOUT_SECONDS,
+        model: Optional[str] = None,
+    ) -> AIExecutionResult[Any]:
         """
-        Resolve a remote `AIClient` for steps that hand one to an agent.
+        Resolve something an agent can generate with, honoring the user's choice.
 
-        Agents make several calls of their own, so they need the client rather
-        than a single generated string. Same routing and same error codes as
-        `generate_text`: `AI_DISABLED` when the user turned the task off,
-        `PROVIDER_NOT_CAPABLE` when they pointed the task at a CLI (an agent
-        cannot drive one), and `PROVIDER_UNAVAILABLE`/`NO_PROVIDER_AVAILABLE`
-        when the choice can't be honored.
+        Agents make several calls of their own, so they need a generator rather
+        than a single generated string. Both a remote connection and an
+        automatic CLI can serve one, and which arrives here is the user's
+        setting - the agent above cannot tell the difference.
+
+        Error codes match `generate_text`: `AI_DISABLED` when the task is off,
+        `PROVIDER_NOT_CAPABLE` for a provider that cannot run unattended, and
+        `PROVIDER_UNAVAILABLE`/`NO_PROVIDER_AVAILABLE` when the choice cannot
+        be honored.
+
+        Args:
+            cwd: Directory a CLI runs in. Pointing it at the repository is what
+                lets the model read the code being discussed.
+            timeout: Seconds per call for a CLI.
+            model: Optional model override for a CLI that accepts one.
         """
         resolution = self.resolve(policy=policy, task=task, runtime_override=runtime_override)
 
@@ -248,36 +261,81 @@ class AIExecutor:
 
         self._announce(announce, resolution)
 
-        if resolution.provider == AIProviderType.OFF:
-            return AIExecutionError(
-                error_message="AI is turned off for this task.",
-                error_code="AI_DISABLED",
-                log_level="info",
-                decision=resolution,
-            )
+        match resolution.provider:
+            case AIProviderType.OFF:
+                return AIExecutionError(
+                    error_message="AI is turned off for this task.",
+                    error_code="AI_DISABLED",
+                    log_level="info",
+                    decision=resolution,
+                )
+            case AIProviderType.REMOTE:
+                return self._remote_generator(resolution)
+            case AIProviderType.CLI_HEADLESS:
+                return self._headless_generator(resolution, cwd=cwd, timeout=timeout, model=model)
+            case _:
+                return AIExecutionError(
+                    error_message=(
+                        f"'{resolution.provider}' cannot run an agent's calls unattended. "
+                        f"Choose a remote connection or an automatic CLI for this task. "
+                        f"{CONFIG_HINT}"
+                    ),
+                    error_code="PROVIDER_NOT_CAPABLE",
+                    decision=resolution,
+                )
 
-        if resolution.provider != AIProviderType.REMOTE:
-            return AIExecutionError(
-                error_message=(
-                    f"This step needs a remote AI connection; '{resolution.provider}' cannot serve "
-                    f"it. Choose a remote connection for this task. {CONFIG_HINT}"
-                ),
-                error_code="PROVIDER_NOT_CAPABLE",
-                decision=resolution,
-            )
-
-        client = self.remote_client(resolution)
+    def _remote_generator(self, decision: AIRouteDecision) -> AIExecutionResult[Any]:
+        client = self.remote_client(decision)
         if client is None:
             return AIExecutionError(
                 error_message=(
-                    f"AI connection '{resolution.connection_id or 'default'}' could not be used. "
+                    f"AI connection '{decision.connection_id or 'default'}' could not be used. "
                     f"{CONFIG_HINT}"
                 ),
                 error_code="PROVIDER_UNAVAILABLE",
-                decision=resolution,
+                decision=decision,
             )
 
-        return AIExecutionSuccess(decision=resolution, data=client)
+        return AIExecutionSuccess(decision=decision, data=client)
+
+    def _headless_generator(
+        self,
+        decision: AIRouteDecision,
+        *,
+        cwd: Optional[str],
+        timeout: int,
+        model: Optional[str],
+    ) -> AIExecutionResult[Any]:
+        cli = decision.cli
+        if not cli:
+            return AIExecutionError(
+                error_message=f"No CLI was resolved for this request. {CONFIG_HINT}",
+                error_code="NO_PROVIDER_AVAILABLE",
+                decision=decision,
+            )
+
+        try:
+            adapter = get_headless_adapter(cli)
+        except ValueError as e:
+            return AIExecutionError(
+                error_message=str(e),
+                error_code="PROVIDER_UNAVAILABLE",
+                decision=decision,
+            )
+
+        # An agent run costs a subprocess per call, so a missing binary is worth
+        # catching now rather than as an exit code after the first minute.
+        if not adapter.is_available():
+            return AIExecutionError(
+                error_message=f"'{cli}' is not installed. {CONFIG_HINT}",
+                error_code="PROVIDER_UNAVAILABLE",
+                decision=decision,
+            )
+
+        return AIExecutionSuccess(
+            decision=decision,
+            data=HeadlessGenerator(adapter, cwd=cwd, timeout=timeout, model=model),
+        )
 
     def remote_client(self, decision: AIRouteDecision) -> Optional[AIClient]:
         """

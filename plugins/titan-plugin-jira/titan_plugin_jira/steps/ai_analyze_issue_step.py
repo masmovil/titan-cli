@@ -13,9 +13,11 @@ from ..formatters import IssueAnalysisMarkdownFormatter
 
 @declare_ai_usage(
     task=AITask.JIRA_ANALYSIS,
-    # JiraAgent makes several calls of its own; until a CLI-backed generator
-    # exists, a remote connection is the only thing this code can drive.
-    executes=[AIProviderType.REMOTE],
+    # The agent drives whatever generator it is handed, so either transport
+    # works. Remote leads because a CLI costs a subprocess per agent call, and
+    # this analysis makes several.
+    executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+    preferred=[AIProviderType.REMOTE],
     enforces=True,
 )
 def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
@@ -49,15 +51,16 @@ def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
     # Begin step container
     ctx.textual.begin_step("AI Analyze Issue")
 
-    # Use the connection the user chose for this task; the agent drives it.
-    ai_client = ctx.ai
+    # Use whatever the user chose for this task; the agent drives it either way.
+    generator = ctx.ai
     if ctx.ai_router:
-        match ctx.ai_router.resolve_remote_client(
+        match ctx.ai_router.resolve_generator(
             policy=ai_analyze_issue_requirements_step,
+            cwd=ctx.git.repo_path if ctx.git else None,
             announce=ctx.textual.ai_chip,
         ):
-            case AIExecutionSuccess(data=resolved_client):
-                ai_client = resolved_client
+            case AIExecutionSuccess(data=resolved):
+                generator = resolved
             case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
                 ctx.textual.dim_text(disabled_message)
                 ctx.textual.end_step("skip")
@@ -67,7 +70,7 @@ def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
                 ctx.textual.end_step("error")
                 return Error(err)
 
-    if not ai_client or not ai_client.is_available():
+    if not generator or not generator.is_available():
         ctx.textual.dim_text(msg.Steps.AIIssue.AI_NOT_CONFIGURED_SKIP)
         ctx.textual.end_step("skip")
         return Skip(msg.Steps.AIIssue.AI_NOT_CONFIGURED)
@@ -81,7 +84,7 @@ def ai_analyze_issue_requirements_step(ctx: WorkflowContext) -> WorkflowResult:
 
     # Create JiraAgent instance and analyze issue with loading indicator
     with ctx.textual.loading(msg.Steps.AIIssue.ANALYZING):
-        jira_agent = JiraAgent(ai_client, ctx.jira)
+        jira_agent = JiraAgent(generator, ctx.jira)
         analysis = jira_agent.analyze_issue(
             issue_key=issue.key,
             include_subtasks=True,

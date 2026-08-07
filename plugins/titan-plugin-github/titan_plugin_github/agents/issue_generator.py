@@ -1,9 +1,35 @@
 from pathlib import Path
-from typing import Dict, Optional, Tuple
-import re
-import json
+from typing import Dict, Optional
 from dataclasses import dataclass
 from titan_cli.ai.agents.base import BaseAIAgent, AgentRequest, AIGenerator
+from titan_cli.ai.agents.contracts import JsonContract, TextContract
+
+# The generated issue, as one object. `body` carries a whole markdown document,
+# which is why the answer is an object with a string field rather than markdown
+# with headings a parser would have to guess at.
+ISSUE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "category": {
+            "type": "string",
+            "enum": ["feature", "improvement", "bug", "refactor", "chore", "documentation"],
+        },
+        "title": {"type": "string"},
+        "body": {"type": "string"},
+    },
+    "required": ["category", "title", "body"],
+}
+
+ISSUE_CONTRACT = JsonContract(
+    schema=ISSUE_SCHEMA,
+    required=("category", "title", "body"),
+    # An issue is worth generating even from a mangled answer: the labelled-text
+    # shape is what models produced before the schema existed, and some still do.
+    fallback=TextContract(
+        sections=("CATEGORY", "TITLE", "DESCRIPTION"),
+        keys={"CATEGORY": "category", "TITLE": "title", "DESCRIPTION": "body"},
+    ),
+)
 
 
 @dataclass
@@ -78,7 +104,6 @@ Your task is to:
 4. Use English for all content
 5. Prioritize clarity, conciseness, and actionable detail
 6. Preserve any code snippets exactly as provided, formatted in markdown code blocks
-7. Always return your response as valid JSON format for reliable parsing
 """
 
     def _load_template(self, template_name: str) -> Optional[str]:
@@ -145,84 +170,23 @@ Your task is to:
             description_length=desc_length
         )
 
-    def _parse_ai_response(self, content: str) -> Tuple[str, str, str]:
+    def _normalize(self, parsed: Dict[str, str]) -> Dict[str, str]:
         """
-        Parse AI response to extract category, title, and body.
-        Tries JSON parsing first, falls back to regex for robustness.
-        Handles incomplete JSON by attempting to fix it.
+        Apply this agent's own rules to a parsed answer.
 
-        Returns:
-            Tuple of (category, title, body)
+        The shape is already guaranteed by the contract; what is left is domain
+        knowledge the contract has no business holding - namely that a category
+        this agent has no template for is treated as a feature.
         """
-        # Try JSON parsing first (more robust, avoids conflicts with user text)
-        try:
-            # Remove ONLY the outer markdown code block wrapper (```json ... ```)
-            # but preserve code blocks inside the JSON body content
-            cleaned_content = content.strip()
-
-            # Remove opening ```json or ``` if present at the start
-            if cleaned_content.startswith('```json'):
-                cleaned_content = cleaned_content[7:].lstrip()
-            elif cleaned_content.startswith('```'):
-                cleaned_content = cleaned_content[3:].lstrip()
-
-            # Remove closing ``` if present at the end
-            if cleaned_content.endswith('```'):
-                cleaned_content = cleaned_content[:-3].rstrip()
-
-            # Try to find JSON in the content (handle incomplete JSON)
-            json_match = re.search(r'\{[\s\S]*\}', cleaned_content)
-
-            # If no complete JSON found, try to fix incomplete JSON
-            if not json_match and cleaned_content.strip().startswith('{'):
-                # JSON might be incomplete (missing closing quote and brace)
-                json_str = cleaned_content.strip()
-                # Try to close the JSON properly
-                if not json_str.endswith('}'):
-                    # Close any unclosed string first
-                    if json_str.count('"') % 2 != 0:
-                        json_str = json_str + '"'
-                    # Then close the JSON object
-                    json_str = json_str + '\n}'
-            elif json_match:
-                json_str = json_match.group(0)
-            else:
-                json_str = None
-
-            if json_str:
-                data = json.loads(json_str)
-
-                category = data.get("category", "feature").lower()
-                title = data.get("title", "New issue")
-                body = data.get("body", "")
-
-                # Validate category
-                if category not in self.categories:
-                    category = "feature"
-
-                return category, title, body
-        except (json.JSONDecodeError, AttributeError):
-            # JSON parsing failed, fall back to regex
-            pass
-
-        # Fallback: regex parsing for backwards compatibility
-        # Extract category
-        category_match = re.search(r'CATEGORY:\s*(\w+)', content, re.IGNORECASE)
-        category = category_match.group(1).strip().lower() if category_match else "feature"
-
-        # Validate category
+        category = str(parsed.get("category") or "feature").strip().lower()
         if category not in self.categories:
             category = "feature"
 
-        # Extract title
-        title_match = re.search(r'TITLE:\s*(.+?)(?=\n|DESCRIPTION:|$)', content, re.IGNORECASE)
-        title = title_match.group(1).strip() if title_match else "New issue"
-
-        # Extract description/body
-        desc_match = re.search(r'DESCRIPTION:\s*(.+)', content, re.IGNORECASE | re.DOTALL)
-        body = desc_match.group(1).strip() if desc_match else content
-
-        return category, title, body
+        return {
+            "category": category,
+            "title": str(parsed.get("title") or "New issue").strip(),
+            "body": parsed.get("body") or "",
+        }
 
     def _map_labels_to_available(self, category: str, available_labels: Optional[list] = None) -> list:
         """
@@ -300,25 +264,19 @@ Instructions:
   * Moderate: Standard detail (2-3 sentences per section)
   * Complex: Comprehensive detail with examples
   * Very Complex: Full context, edge cases, and implementation notes
-
-Output format (REQUIRED - JSON):
-{{
-  "category": "<category>",
-  "title": "<prefix>: Brief description",
-  "body": "<complete markdown-formatted description>"
-}}
 """
 
         # Single AI call for categorization + generation with appropriate token limit
         request = AgentRequest(
             context=prompt,
+            contract=ISSUE_CONTRACT,
             max_tokens=estimation.max_tokens,
             operation="issue_generation",
         )
         response = self.generate(request)
 
-        # Parse response using robust regex parsing
-        category, title, body = self._parse_ai_response(response.content)
+        issue = self._normalize(response.parsed)
+        category, title, body = issue["category"], issue["title"], issue["body"]
 
         template_used = all_templates.get(category) is not None
 
