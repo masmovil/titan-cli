@@ -193,7 +193,17 @@ class DockerBuildTargetConfig(BaseModel):
     context: str = Field(".", description="Build context path, relative to the project root.")
     image: str = Field(..., description="Image reference to build/push (e.g. 'ghcr.io/org/app').")
     target: Optional[str] = Field(None, description="Optional Dockerfile build stage to target (e.g. 'production').")
-    platforms: str = Field("linux/amd64,linux/arm64", description="Comma-separated platform list for 'docker buildx build --platform'.")
+    platforms: Optional[str] = Field(
+        None,
+        description=(
+            "Comma-separated platform list for 'docker buildx build --platform' "
+            "(e.g. 'linux/amd64' or 'linux/amd64,linux/arm64'). When unset, no "
+            "--platform flag is passed and buildx builds for the builder's native "
+            "platform. Set it when the deploy target differs from the build host, "
+            "or to opt into multi-arch - each extra platform the host doesn't match "
+            "is built under QEMU emulation and costs a full slow build."
+        ),
+    )
     tag: str = Field("latest", description="Tag applied to the built image.")
     push: bool = Field(False, description="Whether to push the image to the registry after building.")
 

@@ -121,7 +121,7 @@ target = DockerBuildTargetConfig(
     context=".",
     image="ghcr.io/org/app-backend",
     target="production",
-    platforms="linux/amd64,linux/arm64",
+    platforms="linux/amd64",
     tag="latest",
     push=True,
 )
@@ -133,7 +133,7 @@ client.build_target(target, on_output=lambda line: print(line))
 
 **Parameters:**
 
-- `target` (`DockerBuildTargetConfig`, required): the build target to build. Typically resolved from `client.build_targets` (project configuration) rather than constructed by hand.
+- `target` (`DockerBuildTargetConfig`, required): the build target to build. Typically resolved from `client.build_targets` (project configuration) rather than constructed by hand. When its `platforms` is unset, no `--platform` flag is passed and buildx builds for the builder's native platform (see [Build target fields](./overview.md#build-target-fields)).
 - `on_output` (callable, optional): called with each line of `docker buildx build` output as it streams (stdout+stderr merged, in emission order). Omit to just run the build and get the final result.
 
 ---

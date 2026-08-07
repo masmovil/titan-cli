@@ -95,6 +95,41 @@ def test_build_target_delegates_to_build_service() -> None:
     assert "--target" in args and "production" in args
 
 
+def test_build_target_omits_platform_flag_when_unconfigured() -> None:
+    client = _make_client()
+    target = DockerBuildTargetConfig(
+        name="frontend",
+        dockerfile="packages/frontend/Dockerfile",
+        image="ghcr.io/finxo/economy-frontend",
+    )
+
+    with patch.object(client.network, "run_command", return_value="") as run_command:
+        result = client.build_target(target)
+
+    assert isinstance(result, ClientSuccess)
+    args = run_command.call_args.args[0]
+    assert "--platform" not in args
+    assert result.data.platforms == "builder native"
+
+
+def test_build_target_passes_configured_platforms() -> None:
+    client = _make_client()
+    target = DockerBuildTargetConfig(
+        name="frontend",
+        dockerfile="packages/frontend/Dockerfile",
+        image="ghcr.io/finxo/economy-frontend",
+        platforms="linux/amd64,linux/arm64",
+    )
+
+    with patch.object(client.network, "run_command", return_value="") as run_command:
+        result = client.build_target(target)
+
+    assert isinstance(result, ClientSuccess)
+    args = run_command.call_args.args[0]
+    assert args[args.index("--platform") + 1] == "linux/amd64,linux/arm64"
+    assert result.data.platforms == "linux/amd64,linux/arm64"
+
+
 def test_build_target_streams_output_when_callback_given() -> None:
     client = _make_client()
     target = DockerBuildTargetConfig(

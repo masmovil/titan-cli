@@ -37,8 +37,37 @@ dockerfile = "packages/backend/Dockerfile"
 context = "."
 image = "ghcr.io/org/app-backend"
 target = "production"
+platforms = "linux/amd64"
 push = true
 ```
+
+### Build target fields
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `name` | yes | - | Unique name for the target within the project (also what `docker-build-push` accepts to build a single image) |
+| `dockerfile` | yes | - | Path to the Dockerfile, relative to the project root |
+| `image` | yes | - | Image reference to build/push, without tag (e.g. `ghcr.io/org/app-backend`) |
+| `context` | no | `"."` | Build context path, relative to the project root |
+| `target` | no | none | Dockerfile build stage to target (e.g. `production`) |
+| `platforms` | no | builder native | Comma-separated `--platform` list for buildx |
+| `tag` | no | `"latest"` | Tag applied to the built image |
+| `push` | no | `false` | Push to the registry after building |
+
+#### About `platforms`
+
+When `platforms` is omitted, the plugin passes no `--platform` flag and buildx
+builds for the builder's native platform.
+
+Set it explicitly when the deploy target differs from the machine doing the
+build (e.g. `platforms = "linux/amd64"` on an arm64 laptop deploying to an
+amd64 server), or to publish a multi-arch image
+(`platforms = "linux/amd64,linux/arm64"`).
+
+Every platform in the list that the build host does not natively match is built
+under QEMU emulation, which costs a full slow build per platform - dependencies
+are recompiled or re-downloaded for that architecture. Only list architectures
+you actually deploy.
 
 ## Public surfaces
 

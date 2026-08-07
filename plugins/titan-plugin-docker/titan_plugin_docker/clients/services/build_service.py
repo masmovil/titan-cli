@@ -59,10 +59,14 @@ class BuildService:
 
             args = [
                 "docker", "buildx", "build",
-                "--platform", target.platforms,
                 "-t", image_ref,
                 "-f", target.dockerfile,
             ]
+            # Omitted when unconfigured so buildx targets its native platform.
+            # Passing a platform list the host doesn't match makes buildx emulate
+            # through QEMU, so this is never guessed on the project's behalf.
+            if target.platforms:
+                args.extend(["--platform", target.platforms])
             if target.target:
                 args.extend(["--target", target.target])
             if target.push:

@@ -65,7 +65,8 @@ def build_push_images_step(ctx: WorkflowContext) -> WorkflowResult:
 
     results = []
     for target in targets:
-        ctx.textual.dim_text(f"Building {target.name} ({target.platforms})...")
+        platforms = target.platforms or "builder native"
+        ctx.textual.dim_text(f"Building {target.name} ({platforms})...")
 
         console = TextArea(read_only=True, show_line_numbers=False, soft_wrap=False)
         console.styles.height = 40

@@ -14,6 +14,7 @@ def from_network_build_result(network_result: NetworkBuildResult) -> UIBuildResu
         Formatted UI build result model with an image reference and summary
     """
     image_ref = f"{network_result.image}:{network_result.tag}"
+    platforms = network_result.platforms or "builder native"
     summary = f"Built {image_ref}"
     if network_result.pushed:
         summary += " (pushed)"
@@ -21,7 +22,7 @@ def from_network_build_result(network_result: NetworkBuildResult) -> UIBuildResu
     return UIBuildResult(
         name=network_result.name,
         image_ref=image_ref,
-        platforms=network_result.platforms,
+        platforms=platforms,
         target=network_result.target,
         pushed=network_result.pushed,
         status_icon="✓",
