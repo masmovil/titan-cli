@@ -72,6 +72,9 @@ class _FakeTextual:
     def loading(self, _text):
         return self._Loading()
 
+    def ai_chip(self, _text):
+        pass
+
 
 def _make_pr(
     *, is_cross_repository: bool, author_name: str = "forkuser", head_repository_name: str = "some-repo"

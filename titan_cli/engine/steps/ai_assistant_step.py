@@ -167,6 +167,8 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
     cli_to_launch = resolution.cli
     cli_name = CLI_REGISTRY.get(cli_to_launch, {}).get("display_name", cli_to_launch)
 
+    ctx.textual.ai_chip(f"CLI, interactive · {cli_name}")
+
     if pre_launch_warning:
         ctx.textual.panel(pre_launch_warning, panel_type="warning")
         ctx.textual.text("")  # spacing

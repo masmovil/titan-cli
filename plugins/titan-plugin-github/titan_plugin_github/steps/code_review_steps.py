@@ -944,6 +944,12 @@ def _resolve_review_adapter(ctx: WorkflowContext, step: Callable) -> Tuple[Optio
     return adapter, None
 
 
+def _announce_review_adapter(ctx: WorkflowContext, adapter: object) -> None:
+    """Announce which CLI will run this review step."""
+    if adapter and hasattr(adapter, "cli_name"):
+        ctx.textual.ai_chip(f"CLI, automatic · {adapter.cli_name.value}")
+
+
 # ============================================================================
 # PHASE 2: CHEAP CONTEXT STEPS (pre-AI, deterministic)
 # ============================================================================
@@ -1429,6 +1435,8 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         _show_review_plan_summary(ctx, fallback)
         ctx.textual.end_step("success")
         return Success("Default review plan used (no CLI available)", metadata={"review_plan": fallback})
+
+    _announce_review_adapter(ctx, adapter)
 
     prompt = build_review_plan_prompt(
         manifest,
@@ -2160,6 +2168,8 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
             metadata={"raw_findings": [], "ai_findings_failed": False},
         )
 
+    _announce_review_adapter(ctx, adapter)
+
     # Structured output forces the CLI to return findings via a schema-validated tool
     # call instead of relying on the model to follow a "respond only with JSON" prompt
     # instruction, which models frequently ignore in favor of a prose summary.
@@ -2778,6 +2788,8 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
         )
         ctx.textual.end_step("skip")
         return Skip("No CLI available for verification")
+
+    _announce_review_adapter(ctx, adapter)
 
     strategy = ctx.get("review_strategy")
     batches = ctx.get("review_context_batches", [])
@@ -3592,6 +3604,8 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
         ctx.data["raw_thread_decisions"] = []
         ctx.textual.end_step("success")
         return Success("No decisions (no CLI available)", metadata={"raw_thread_decisions": []})
+
+    _announce_review_adapter(ctx, adapter)
 
     # Split into batches so one call never has to carry every open thread at
     # once — each thread's full conversation/hunk/commit context stays intact,
