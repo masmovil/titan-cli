@@ -119,37 +119,37 @@ def mock_jira_client():
     return client
 
 
+# One answer serving all of the agent's calls: each call's contract reads only
+# the fields it declared and ignores the rest.
+#
+# It has to be a real answer rather than prose. With prose every call fails its
+# contract, spends a repair retry, and degrades to empty defaults - so a test
+# asserting "this produced nothing" could no longer tell a working feature flag
+# apart from a response nothing could parse.
+AI_ANALYSIS_ANSWER = json.dumps(
+    {
+        "functional": ["Fix authentication validation logic"],
+        "non_functional": ["Login responds in under 200ms"],
+        "acceptance_criteria": ["Valid credentials log the user in"],
+        "technical_approach": "Patch the session validation path",
+        "risks": ["Security regression in the auth flow"],
+        "edge_cases": ["Expired session token"],
+        "complexity": "High",
+        "effort": "3-5 days",
+        "dependencies": ["AUTH-100"],
+        "subtasks": [{"summary": "Add unit tests", "description": "Cover the validation logic"}],
+    }
+)
+
+
 @pytest.fixture
 def mock_ai_client():
-    """
-    Mock AI client answering every one of the agent's calls.
-
-    One object serves all five: each call's contract reads only the fields it
-    declared and ignores the rest. It has to be a real answer rather than prose
-    - with prose every call degrades to empty defaults, and then a test claiming
-    "this feature flag produced nothing" cannot tell a working flag apart from a
-    response nothing could parse.
-    """
+    """Mock AI client answering every one of the agent's calls."""
     client = MagicMock()
     client.is_available.return_value = True
 
     mock_response = Mock()
-    mock_response.content = json.dumps(
-        {
-            "functional": ["Fix authentication validation logic"],
-            "non_functional": ["Login responds in under 200ms"],
-            "acceptance_criteria": ["Valid credentials log the user in"],
-            "technical_approach": "Patch the session validation path",
-            "risks": ["Security regression in the auth flow"],
-            "edge_cases": ["Expired session token"],
-            "complexity": "High",
-            "effort": "3-5 days",
-            "dependencies": ["AUTH-100"],
-            "subtasks": [
-                {"summary": "Add unit tests", "description": "Cover the validation logic"}
-            ],
-        }
-    )
+    mock_response.content = AI_ANALYSIS_ANSWER
     mock_response.usage = {"total_tokens": 100}
     client.generate.return_value = mock_response
 
@@ -715,7 +715,8 @@ def test_workflow_data_flow_without_get_issue():
     # Mock AI
     mock_ai.is_available.return_value = True
     mock_response = Mock()
-    mock_response.content = "AI analysis result"
+    mock_response.content = AI_ANALYSIS_ANSWER
+    mock_response.usage = {"total_tokens": 100}
     mock_ai.generate.return_value = mock_response
 
     # Mock textual input (user selects first issue)
