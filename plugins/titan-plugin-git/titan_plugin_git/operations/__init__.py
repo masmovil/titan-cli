@@ -8,6 +8,7 @@ Modules:
     commit_operations: Operations for commit message handling
     diff_operations: Operations for diff parsing and formatting
     branch_operations: Operations for branch management
+    merge_operations: Operations for merging branches and resolving conflicts
 """
 
 from .commit_operations import (
@@ -33,6 +34,14 @@ from .branch_operations import (
     should_delete_before_create,
 )
 
+from .merge_operations import (
+    resolve_merge_source,
+    build_merge_ref,
+    classify_merge_result,
+    build_conflict_resolution_prompt,
+    format_merge_summary,
+)
+
 __all__ = [
     # Commit operations
     "build_ai_commit_prompt",
@@ -53,4 +62,11 @@ __all__ = [
     "check_branch_exists",
     "determine_safe_checkout_target",
     "should_delete_before_create",
+
+    # Merge operations
+    "resolve_merge_source",
+    "build_merge_ref",
+    "classify_merge_result",
+    "build_conflict_resolution_prompt",
+    "format_merge_summary",
 ]

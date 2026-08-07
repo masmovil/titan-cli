@@ -28,6 +28,15 @@
       ]
     },
     {
+      "name": "Merging",
+      "steps": [
+        {"name": "resolve_merge_target", "summary": "Resolve which branch is merged and verify the repository is ready for it."},
+        {"name": "fetch_merge_source", "summary": "Fetch the source branch from the remote without moving HEAD."},
+        {"name": "merge_source_branch", "summary": "Merge the fetched ref into the current branch and report conflicts."},
+        {"name": "complete_merge", "summary": "Stage resolved conflicts and commit the merge with git's suggested message."}
+      ]
+    },
+    {
       "name": "Diff Summaries",
       "steps": [
         {"name": "show_uncommitted_diff_summary", "summary": "Summarize local uncommitted changes for humans and downstream AI steps."},

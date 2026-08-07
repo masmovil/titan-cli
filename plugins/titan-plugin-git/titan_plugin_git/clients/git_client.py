@@ -15,6 +15,7 @@ from .services import (
     CommitService,
     StatusService,
     DiffService,
+    MergeService,
     RemoteService,
     StashService,
     TagService,
@@ -27,6 +28,7 @@ from ..models.view import (
     UIGitTag,
     UIGitWorktree,
 )
+from ..models.view.merge import UIMergeResult
 from ..messages import msg
 
 
@@ -73,6 +75,7 @@ class GitClient:
         self.commit_service = CommitService(self.network, main_branch, default_remote)
         self.status_service = StatusService(self.network)
         self.diff_service = DiffService(self.network, default_remote)
+        self.merge_service = MergeService(self.network)
         self.remote_service = RemoteService(self.network)
         self.stash_service = StashService(self.network)
         self.tag_service = TagService(self.network)
@@ -350,6 +353,37 @@ class GitClient:
             f"{self.default_remote}/{base_branch}",
             head_branch
         )
+
+    # ===== Merge Methods =====
+
+    def merge(
+        self,
+        ref: str,
+        target_branch: str = "",
+        no_ff: bool = False
+    ) -> ClientResult[UIMergeResult]:
+        """Merge a ref into the current branch (conflicts are a valid outcome)."""
+        return self.merge_service.merge(ref, target_branch, no_ff)
+
+    def get_conflicted_files(self) -> ClientResult[List[str]]:
+        """List paths with unresolved conflicts."""
+        return self.merge_service.get_conflicted_files()
+
+    def is_merge_in_progress(self) -> ClientResult[bool]:
+        """Check whether a merge is currently in progress."""
+        return self.merge_service.is_merge_in_progress()
+
+    def stage_all(self) -> ClientResult[None]:
+        """Stage every change in the working tree."""
+        return self.merge_service.stage_all()
+
+    def continue_merge(self) -> ClientResult[str]:
+        """Complete an in-progress merge using git's suggested message."""
+        return self.merge_service.continue_merge()
+
+    def abort_merge(self) -> ClientResult[None]:
+        """Abort an in-progress merge and restore the pre-merge state."""
+        return self.merge_service.abort_merge()
 
     # ===== Remote Methods =====
 

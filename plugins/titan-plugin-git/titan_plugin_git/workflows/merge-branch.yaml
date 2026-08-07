@@ -1,0 +1,51 @@
+name: "Merge Branch"
+description: "Merge a branch (or the base branch) into the current one, with AI-assisted conflict resolution"
+
+params:
+  # Empty means "use the base branch configured for the project".
+  # Override it with `extends` + params, or from a step injected in before_merge.
+  source_branch: ""
+  remote: "origin"
+
+hooks:
+  - before_merge
+  - after_merge
+
+steps:
+  # Injection point for overriding source_branch before anything is resolved
+  - hook: before_merge
+
+  - id: resolve_target
+    name: "Resolve Merge Target"
+    plugin: git
+    step: resolve_merge_target
+
+  - id: fetch_source
+    name: "Fetch Source Branch"
+    plugin: git
+    step: fetch_merge_source
+
+  - id: merge
+    name: "Merge"
+    plugin: git
+    step: merge_source_branch
+
+  # Skips itself when merge_conflict_context is absent (i.e. no conflicts).
+  # on_error: continue so complete_merge still runs and can offer to abort.
+  - id: resolve_conflicts
+    name: "Resolve Conflicts with AI"
+    plugin: core
+    step: ai_code_assistant
+    params:
+      context_key: "merge_conflict_context"
+      cli_preference: "auto"
+      ask_confirmation: true
+      fail_on_decline: false
+    on_error: continue
+
+  - id: complete
+    name: "Complete Merge"
+    plugin: git
+    step: complete_merge
+
+  - hook: after_merge

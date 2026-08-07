@@ -422,6 +422,199 @@ Create a new Git branch.
 | `Success` | - | Branch created successfully |
 | `Error` | - | Git operation failed |
 
+## Merging
+
+### `resolve_merge_target`
+
+Resolve which branch gets merged and verify the repo is ready for it.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: git
+  step: resolve_merge_target
+```
+
+**Used by built-in workflows:** `merge-branch`
+
+**Available to later steps:** `source_branch`, `target_branch`, `remote`, `merge_ref`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.git` | - | An initialized GitClient. |
+| `ctx.textual` | - | The Textual UI context. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `source_branch` | str, optional | Branch to merge (defaults to the configured base branch) |
+| `remote` | str, optional | Remote name (default: "origin") |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `source_branch` | str | Resolved branch to merge |
+| `target_branch` | str | Branch receiving the merge |
+| `remote` | str | Remote name |
+| `merge_ref` | str | Ref that will be merged, e.g. "origin/develop" |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `source_branch`, `target_branch`, `remote`, `merge_ref` | Target resolved |
+| `Exit` | - | Working tree is dirty, nothing was touched |
+| `Error` | - | Git client unavailable or the branch cannot be resolved |
+
+### `fetch_merge_source`
+
+Fetch the source branch from the remote without moving HEAD.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: git
+  step: fetch_merge_source
+```
+
+**Used by built-in workflows:** `merge-branch`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.git` | - | An initialized GitClient. |
+| `ctx.textual` | - | The Textual UI context. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `source_branch` | str | Branch to fetch |
+| `remote` | str | Remote name |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | - | Remote-tracking ref updated |
+| `Error` | - | Fetch failed or required inputs are missing |
+
+### `merge_source_branch`
+
+Merge the fetched ref into the current branch.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: git
+  step: merge_source_branch
+```
+
+**Used by built-in workflows:** `merge-branch`
+
+**Available to later steps:** `merge_status`, `merge_conflicts`, `merge_conflict_context`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.git` | - | An initialized GitClient. |
+| `ctx.textual` | - | The Textual UI context. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `merge_ref` | str | Ref to merge, e.g. "origin/develop" |
+| `target_branch` | str | Branch receiving the merge |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `merge_status` | str | One of up_to_date / fast_forward / merged / conflicted |
+| `merge_conflicts` | list | Paths with unresolved conflicts (empty when clean) |
+| `merge_conflict_context` | str | Prompt for the AI CLI, only set on conflicts |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `merge_status`, `merge_conflicts`, `merge_conflict_context` | Merge finished, cleanly or with conflicts to resolve |
+| `Error` | - | Git refused to start the merge |
+
+### `complete_merge`
+
+Finish a conflicted merge after the user resolved the conflicts.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: git
+  step: complete_merge
+```
+
+**Used by built-in workflows:** `merge-branch`
+
+**Available to later steps:** `merge_commit_sha`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.git` | - | An initialized GitClient. |
+| `ctx.textual` | - | The Textual UI context. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `merge_status` | str | Status published by merge_source_branch |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `merge_commit_sha` | str | SHA of the merge commit |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `merge_commit_sha` | Merge committed |
+| `Skip` | `merge_commit_sha` | Merge was already complete, nothing to do |
+| `Exit` | - | User aborted the merge |
+| `Error` | - | Staging or committing failed |
+
 ## Diff Summaries
 
 ### `show_uncommitted_diff_summary`

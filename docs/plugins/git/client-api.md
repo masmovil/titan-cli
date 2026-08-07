@@ -532,6 +532,88 @@ client.get_branch_diff_stat(base_branch="main", head_branch="feature/search")
 
 ---
 
+## Merge operations
+
+### Merge a ref into the current branch
+
+Merges a ref into the checked out branch without opening an editor. A conflicted merge is **not** an error: the call returns `ClientSuccess` with a `UIMergeResult` whose `status` is `MergeStatus.CONFLICTED` and whose `conflicted_files` lists the unmerged paths, so the caller can drive conflict resolution.
+
+**Call:**
+
+```python
+client.merge(ref="origin/develop", target_branch="feature/search", no_ff=False)
+```
+
+**Parameters:**
+
+- `ref`: Required. Ref to merge, usually a remote-tracking ref such as `origin/develop`.
+- `target_branch`: Optional. Branch receiving the merge. Used for display only.
+- `no_ff`: Optional. Force a merge commit even when a fast-forward is possible.
+
+**Returns:** `ClientResult[UIMergeResult]` with `status` in `up_to_date`, `fast_forward`, `merged`, `conflicted`.
+
+### List conflicted files
+
+Returns the paths with unresolved conflicts. Empty when the tree is clean.
+
+**Call:**
+
+```python
+client.get_conflicted_files()
+```
+
+**Parameters:** none.
+
+### Check whether a merge is in progress
+
+Returns `True` while `MERGE_HEAD` exists, that is, while a merge is stopped and waiting to be completed or aborted.
+
+**Call:**
+
+```python
+client.is_merge_in_progress()
+```
+
+**Parameters:** none.
+
+### Stage every change
+
+Stages the whole working tree, including untracked files. Used to mark conflicts as resolved before completing a merge.
+
+**Call:**
+
+```python
+client.stage_all()
+```
+
+**Parameters:** none.
+
+### Complete an in-progress merge
+
+Commits the staged merge using the message git prepared, without opening an editor.
+
+**Call:**
+
+```python
+client.continue_merge()
+```
+
+**Parameters:** none.
+
+**Returns:** `ClientResult[str]` with the merge commit SHA.
+
+### Abort an in-progress merge
+
+Restores the state from before the merge started.
+
+**Call:**
+
+```python
+client.abort_merge()
+```
+
+**Parameters:** none.
+
 ## Remote operations
 
 ### Push to a remote

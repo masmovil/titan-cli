@@ -61,6 +61,27 @@
       ]
     },
     {
+      "name": "Merging",
+      "steps": [
+        {
+          "name": "resolve_merge_target",
+          "summary": "Resolve which branch is merged and verify the repository is ready for it."
+        },
+        {
+          "name": "fetch_merge_source",
+          "summary": "Fetch the source branch from the remote without moving HEAD."
+        },
+        {
+          "name": "merge_source_branch",
+          "summary": "Merge the fetched ref into the current branch and report conflicts."
+        },
+        {
+          "name": "complete_merge",
+          "summary": "Stage resolved conflicts and commit the merge with git's suggested message."
+        }
+      ]
+    },
+    {
       "name": "Diff Summaries",
       "steps": [
         {
@@ -141,6 +162,34 @@
         ]
       },
       "used_by_workflows": []
+    },
+    {
+      "name": "complete_merge",
+      "group": "Merging",
+      "module": "titan_plugin_git.steps.merge_steps",
+      "function": "complete_merge",
+      "summary": "Finish a conflicted merge after the user resolved the conflicts.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.textual: The Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    merge_status (str): Status published by merge_source_branch"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    merge_commit_sha (str): SHA of the merge commit"
+        ],
+        "Returns": [
+          "    Success: Merge committed",
+          "    Skip: Merge was already complete, nothing to do",
+          "    Exit: User aborted the merge",
+          "    Error: Staging or committing failed"
+        ]
+      },
+      "used_by_workflows": [
+        "merge-branch"
+      ]
     },
     {
       "name": "create_branch",
@@ -226,6 +275,31 @@
       "used_by_workflows": []
     },
     {
+      "name": "fetch_merge_source",
+      "group": "Merging",
+      "module": "titan_plugin_git.steps.merge_steps",
+      "function": "fetch_merge_source",
+      "summary": "Fetch the source branch from the remote without moving HEAD.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.textual: The Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    source_branch (str): Branch to fetch",
+          "    remote (str): Remote name"
+        ],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Remote-tracking ref updated",
+          "    Error: Fetch failed or required inputs are missing"
+        ]
+      },
+      "used_by_workflows": [
+        "merge-branch"
+      ]
+    },
+    {
       "name": "get_base_branch",
       "group": "Status and Inspection",
       "module": "titan_plugin_git.steps.branch_steps",
@@ -289,6 +363,35 @@
       },
       "used_by_workflows": [
         "commit-ai"
+      ]
+    },
+    {
+      "name": "merge_source_branch",
+      "group": "Merging",
+      "module": "titan_plugin_git.steps.merge_steps",
+      "function": "merge_source_branch",
+      "summary": "Merge the fetched ref into the current branch.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.textual: The Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    merge_ref (str): Ref to merge, e.g. \"origin/develop\"",
+          "    target_branch (str): Branch receiving the merge"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    merge_status (str): One of up_to_date / fast_forward / merged / conflicted",
+          "    merge_conflicts (list): Paths with unresolved conflicts (empty when clean)",
+          "    merge_conflict_context (str): Prompt for the AI CLI, only set on conflicts"
+        ],
+        "Returns": [
+          "    Success: Merge finished, cleanly or with conflicts to resolve",
+          "    Error: Git refused to start the merge"
+        ]
+      },
+      "used_by_workflows": [
+        "merge-branch"
       ]
     },
     {
@@ -358,6 +461,37 @@
         ]
       },
       "used_by_workflows": []
+    },
+    {
+      "name": "resolve_merge_target",
+      "group": "Merging",
+      "module": "titan_plugin_git.steps.merge_steps",
+      "function": "resolve_merge_target",
+      "summary": "Resolve which branch gets merged and verify the repo is ready for it.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.textual: The Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    source_branch (str, optional): Branch to merge (defaults to the configured base branch)",
+          "    remote (str, optional): Remote name (default: \"origin\")"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    source_branch (str): Resolved branch to merge",
+          "    target_branch (str): Branch receiving the merge",
+          "    remote (str): Remote name",
+          "    merge_ref (str): Ref that will be merged, e.g. \"origin/develop\""
+        ],
+        "Returns": [
+          "    Success: Target resolved",
+          "    Exit: Working tree is dirty, nothing was touched",
+          "    Error: Git client unavailable or the branch cannot be resolved"
+        ]
+      },
+      "used_by_workflows": [
+        "merge-branch"
+      ]
     },
     {
       "name": "restore_original_branch",

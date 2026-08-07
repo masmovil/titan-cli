@@ -4,7 +4,7 @@ The Git plugin provides Titan's core Git workflow surface. It exposes:
 
 - a high-level `GitClient` for direct use from Titan code
 - reusable workflow `steps` such as `get_status`, `create_commit`, and `push`
-- the built-in `commit-ai` workflow
+- the built-in `commit-ai` and `merge-branch` workflows
 
 ## Requirements
 
@@ -59,6 +59,10 @@ The Git plugin exposes these reusable public steps through `get_steps()`:
 - `checkout`
 - `pull`
 - `create_branch`
+- `resolve_merge_target`
+- `fetch_merge_source`
+- `merge_source_branch`
+- `complete_merge`
 - `create_worktree`
 - `remove_worktree`
 - `worktree_commit`
