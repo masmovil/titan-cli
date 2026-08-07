@@ -110,11 +110,29 @@ class AIExecutor:
                 precedence over any persisted preference.
         """
         resolved_policy = self._resolve_policy(policy, task)
-        return self.resolver.resolve(
+        resolution = self.resolver.resolve(
             task=resolved_policy.task,
             policy=resolved_policy,
             runtime_override=runtime_override,
         )
+
+        if isinstance(resolution, AIRouteNeedsInput):
+            logger.info(
+                "ai_route_unresolved",
+                task=resolved_policy.task,
+                reason=resolution.reason,
+                candidates=[c.identifier for c in resolution.candidates],
+            )
+        else:
+            logger.info(
+                "ai_route_resolved",
+                task=resolved_policy.task,
+                provider=str(resolution.provider),
+                identifier=resolution.cli or resolution.connection_id,
+                reason=resolution.reason,
+            )
+
+        return resolution
 
     def generate_text(
         self,
@@ -163,27 +181,10 @@ class AIExecutor:
                 provider that will run this, e.g. `ctx.textual.dim_text`.
         """
         resolution = self.resolve(policy=policy, task=task, runtime_override=runtime_override)
-        resolved_task = self._resolve_policy(policy, task).task
 
         if isinstance(resolution, AIRouteNeedsInput):
-            logger.info(
-                "ai_route_unresolved",
-                task=resolved_task,
-                reason=resolution.reason,
-                candidates=[c.identifier for c in resolution.candidates],
-            )
             return self._needs_input_error(resolution)
 
-        # Which provider actually served a task must be answerable from the log
-        # alone - "did my configured CLI run?" is otherwise unfalsifiable.
-        logger.info(
-            "ai_route_resolved",
-            task=resolved_task,
-            provider=str(resolution.provider),
-            identifier=resolution.cli or resolution.connection_id,
-            reason=resolution.reason,
-            call="generate_text",
-        )
         self._announce(announce, resolution)
 
         match resolution.provider:
@@ -241,25 +242,10 @@ class AIExecutor:
         when the choice can't be honored.
         """
         resolution = self.resolve(policy=policy, task=task, runtime_override=runtime_override)
-        resolved_task = self._resolve_policy(policy, task).task
 
         if isinstance(resolution, AIRouteNeedsInput):
-            logger.info(
-                "ai_route_unresolved",
-                task=resolved_task,
-                reason=resolution.reason,
-                candidates=[c.identifier for c in resolution.candidates],
-            )
             return self._needs_input_error(resolution)
 
-        logger.info(
-            "ai_route_resolved",
-            task=resolved_task,
-            provider=str(resolution.provider),
-            identifier=resolution.cli or resolution.connection_id,
-            reason=resolution.reason,
-            call="resolve_remote_client",
-        )
         self._announce(announce, resolution)
 
         if resolution.provider == AIProviderType.OFF:
