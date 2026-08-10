@@ -67,7 +67,6 @@ def classify_pr(
         total_lines=total_lines,
         high_signal_files=high_signal_files,
         role_count=role_count,
-        comment_threads=comment_threads,
         is_repetitive_migration=is_repetitive_migration,
         repetition_ratio=repetition_ratio,
     )
@@ -123,10 +122,13 @@ def _compute_complexity_score(
     total_lines: int,
     high_signal_files: int,
     role_count: int,
-    comment_threads: int,
     is_repetitive_migration: bool,
     repetition_ratio: float,
 ) -> int:
+    # The size class measures the CODE, so review activity deliberately plays no part
+    # here: comments don't make a PR bigger, and counting them meant a review's own
+    # published comments could push the same unchanged PR into a bigger size class on
+    # the next run. Review activity is captured separately as `active_review`.
     score = 0
 
     if files_changed <= 3:
@@ -165,11 +167,6 @@ def _compute_complexity_score(
     elif role_count >= 4:
         score += 2
     elif role_count >= 2:
-        score += 1
-
-    if comment_threads >= 20:
-        score += 2
-    elif comment_threads >= 8:
         score += 1
 
     if is_repetitive_migration:

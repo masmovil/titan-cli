@@ -200,6 +200,119 @@ class TestWorkflowFilterService:
         assert result[0].source == "plugin:github"  # First occurrence kept
         assert result[1].name == "unique-workflow"
 
+    def test_sort_favorites_first_moves_favorites_to_top(self):
+        """Test that favorited workflows are moved to the top of the list."""
+        workflows = [
+            WorkflowInfo(
+                name="alpha",
+                source="project",
+                description="Alpha",
+                path=Path("/path/alpha.yaml"),
+                required_plugins=set()
+            ),
+            WorkflowInfo(
+                name="beta",
+                source="project",
+                description="Beta",
+                path=Path("/path/beta.yaml"),
+                required_plugins=set()
+            ),
+            WorkflowInfo(
+                name="gamma",
+                source="project",
+                description="Gamma",
+                path=Path("/path/gamma.yaml"),
+                required_plugins=set()
+            ),
+        ]
+
+        result = WorkflowFilterService.sort_favorites_first(workflows, {"gamma"})
+
+        assert [wf.name for wf in result] == ["gamma", "alpha", "beta"]
+
+    def test_sort_favorites_first_is_stable_within_groups(self):
+        """Test that relative order is preserved within both favorited and non-favorited groups."""
+        workflows = [
+            WorkflowInfo(
+                name="alpha",
+                source="project",
+                description="Alpha",
+                path=Path("/path/alpha.yaml"),
+                required_plugins=set()
+            ),
+            WorkflowInfo(
+                name="beta",
+                source="project",
+                description="Beta",
+                path=Path("/path/beta.yaml"),
+                required_plugins=set()
+            ),
+            WorkflowInfo(
+                name="gamma",
+                source="project",
+                description="Gamma",
+                path=Path("/path/gamma.yaml"),
+                required_plugins=set()
+            ),
+            WorkflowInfo(
+                name="delta",
+                source="project",
+                description="Delta",
+                path=Path("/path/delta.yaml"),
+                required_plugins=set()
+            ),
+        ]
+
+        result = WorkflowFilterService.sort_favorites_first(workflows, {"beta", "delta"})
+
+        assert [wf.name for wf in result] == ["beta", "delta", "alpha", "gamma"]
+
+    def test_sort_favorites_first_empty_favorite_set_preserves_order(self):
+        """Test that an empty favorite set leaves the original order unchanged."""
+        workflows = [
+            WorkflowInfo(
+                name="alpha",
+                source="project",
+                description="Alpha",
+                path=Path("/path/alpha.yaml"),
+                required_plugins=set()
+            ),
+            WorkflowInfo(
+                name="beta",
+                source="project",
+                description="Beta",
+                path=Path("/path/beta.yaml"),
+                required_plugins=set()
+            ),
+        ]
+
+        result = WorkflowFilterService.sort_favorites_first(workflows, set())
+
+        assert [wf.name for wf in result] == ["alpha", "beta"]
+
+    def test_sort_favorites_first_unknown_favorite_name_ignored(self):
+        """Test that a favorite name absent from the list is silently ignored."""
+        workflows = [
+            WorkflowInfo(
+                name="alpha",
+                source="project",
+                description="Alpha",
+                path=Path("/path/alpha.yaml"),
+                required_plugins=set()
+            ),
+            WorkflowInfo(
+                name="beta",
+                source="project",
+                description="Beta",
+                path=Path("/path/beta.yaml"),
+                required_plugins=set()
+            ),
+        ]
+
+        result = WorkflowFilterService.sort_favorites_first(workflows, {"nonexistent"})
+
+        assert [wf.name for wf in result] == ["alpha", "beta"]
+
     def test_detect_plugin_name_fallback(self):
         """Test fallback for unknown source types."""
         wf = WorkflowInfo(

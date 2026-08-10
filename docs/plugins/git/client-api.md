@@ -532,6 +532,107 @@ client.get_branch_diff_stat(base_branch="main", head_branch="feature/search")
 
 ---
 
+## Merge operations
+
+### Merge a ref into the current branch
+
+Merges a ref into the checked out branch without opening an editor. A conflicted merge is **not** an error: the call returns `ClientSuccess` with a `UIMergeResult` whose `status` is `MergeStatus.CONFLICTED` and whose `conflicted_files` lists the unmerged paths, so the caller can drive conflict resolution.
+
+**Call:**
+
+```python
+client.merge(ref="origin/develop", target_branch="feature/search", no_ff=False)
+```
+
+**Parameters:**
+
+- `ref`: Required. Ref to merge, usually a remote-tracking ref such as `origin/develop`.
+- `target_branch`: Optional. Branch receiving the merge. Used for display only.
+- `no_ff`: Optional. Force a merge commit even when a fast-forward is possible.
+
+**Returns:** `ClientResult[UIMergeResult]` with `status` in `up_to_date`, `fast_forward`, `merged`, `conflicted`.
+
+### List conflicted files
+
+Returns the paths git reports as unmerged in the index. Empty when the tree is clean.
+
+Note that git keeps a path unmerged until it is staged, so a file whose conflict was already fixed in the editor still shows up here. Use *List unresolved conflicts* when you need to know whether the conflicts are actually gone.
+
+**Call:**
+
+```python
+client.get_conflicted_files()
+```
+
+**Parameters:** none.
+
+### List unresolved conflicts
+
+Returns only the unmerged paths whose working-tree content still contains conflict markers (`<<<<<<<` … `>>>>>>>`). Files that were resolved but not staged are excluded; paths that cannot be read (deleted or binary) are kept in the list so the caller can decide.
+
+**Call:**
+
+```python
+client.get_unresolved_conflict_files()
+```
+
+**Parameters:** none.
+
+### Check whether a merge is in progress
+
+Returns `True` while `MERGE_HEAD` exists, that is, while a merge is stopped and waiting to be completed or aborted.
+
+**Call:**
+
+```python
+client.is_merge_in_progress()
+```
+
+**Parameters:** none.
+
+### Stage every change
+
+Stages the whole working tree, including untracked files. Used to mark conflicts as resolved before completing a merge.
+
+**Call:**
+
+```python
+client.stage_all()
+```
+
+**Parameters:** none.
+
+### Complete an in-progress merge
+
+Commits the staged merge using the message git prepared, without opening an editor.
+
+**Call:**
+
+```python
+client.continue_merge()
+client.continue_merge(no_verify=False)
+```
+
+**Parameters:**
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `no_verify` | No | `True` | Skip pre-commit and commit-msg hooks. Skipping is the default because the commit only carries git's own merge message, and a hook that fails here leaves the merge stopped with everything staged. |
+
+**Returns:** `ClientResult[str]` with the merge commit SHA.
+
+### Abort an in-progress merge
+
+Restores the state from before the merge started.
+
+**Call:**
+
+```python
+client.abort_merge()
+```
+
+**Parameters:** none.
+
 ## Remote operations
 
 ### Push to a remote
@@ -788,6 +889,26 @@ client.remove_worktree(path="../repo-search-worktree", force=False)
 
 - `path`: Required. Worktree path.
 - `force`: Optional. Force removal.
+
+### Prune stale worktree metadata
+
+Clears Git's records for worktrees whose directories no longer exist.
+
+Git keeps administrative data under `.git/worktrees` for every registered worktree. If
+the directory is deleted by hand, or a removal is interrupted, that record survives and
+blocks the path: `create_worktree` reports it as already registered, while
+`remove_worktree` reports it as "not a working tree". Pruning is the only way to clear
+it, so call this before recreating a worktree at a path a previous run may have used.
+
+**Call:**
+
+```python
+client.prune_worktrees()
+```
+
+**Parameters:**
+
+- No parameters.
 
 ### List worktrees
 
