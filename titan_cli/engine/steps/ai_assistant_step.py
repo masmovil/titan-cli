@@ -114,7 +114,6 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
 
     # Ask for confirmation if needed
     if ask_confirmation:
-        ctx.textual.text("")  # spacing
         should_launch = ctx.textual.ask_confirm(
             msg.AIAssistant.CONFIRM_LAUNCH_ASSISTANT,
             default=True
@@ -185,7 +184,6 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
         cwd=project_root
     )
 
-    ctx.textual.text("")  # spacing
     ctx.textual.success_text(msg.AIAssistant.BACK_IN_TITAN)
 
     if exit_code != 0:

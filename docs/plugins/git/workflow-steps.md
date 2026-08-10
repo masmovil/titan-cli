@@ -9,6 +9,7 @@ For full contract details for every public step, including documented inputs, ou
 - [Status and Inspection](#status-and-inspection)
 - [Commits](#commits)
 - [Branching](#branching)
+- [Merging](#merging)
 - [Diff Summaries](#diff-summaries)
 - [Worktrees](#worktrees)
 
@@ -27,6 +28,10 @@ For full contract details for every public step, including documented inputs, ou
 | `checkout` | Branching | - |
 | `pull` | Branching | - |
 | `create_branch` | Branching | - |
+| `resolve_merge_target` | Merging | `merge-branch` |
+| `fetch_merge_source` | Merging | `merge-branch` |
+| `merge_source_branch` | Merging | `merge-branch` |
+| `complete_merge` | Merging | `merge-branch` |
 | `show_uncommitted_diff_summary` | Diff Summaries | `commit-ai` |
 | `show_branch_diff_summary` | Diff Summaries | `create-pr-ai` |
 | `create_worktree` | Worktrees | - |
@@ -59,6 +64,15 @@ Use these steps to switch, create, and restore branches during a workflow.
 - `checkout`: switch to a branch from workflow context or params
 - `pull`: update the current branch from the configured remote
 - `create_branch`: create a new branch from workflow-provided branch data
+
+## Merging
+
+Use these steps to integrate another branch into the current one. HEAD never moves: the source branch is fetched and merged through its remote-tracking ref.
+
+- `resolve_merge_target`: resolve the branch to merge and verify the working tree is clean
+- `fetch_merge_source`: fetch the source branch from the remote
+- `merge_source_branch`: run the merge and report conflicts as workflow data
+- `complete_merge`: stage resolved conflicts and commit with git's suggested message
 
 ## Diff Summaries
 
@@ -477,6 +491,180 @@ How to read these contracts:
     |--------|-----------------------|-------------|
     | `Success` | - | Branch created successfully |
     | `Error` | - | Git operation failed |
+
+
+### Merging
+
+??? info "`resolve_merge_target`"
+    Resolve which branch gets merged and verify the repo is ready for it.
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: git
+      step: resolve_merge_target
+    ```
+
+    **Used by built-in workflows:** `merge-branch`
+
+    **Available to later steps:** `source_branch`, `target_branch`, `remote`, `merge_ref`
+
+    **Requires**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `ctx.git` | - | An initialized GitClient. |
+    | `ctx.textual` | - | The Textual UI context. |
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `source_branch` | str, optional | Branch to merge (defaults to the configured base branch) |
+    | `remote` | str, optional | Remote name (default: "origin") |
+
+    **Outputs (saved to ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `source_branch` | str | Resolved branch to merge |
+    | `target_branch` | str | Branch receiving the merge |
+    | `remote` | str | Remote name |
+    | `merge_ref` | str | Ref that will be merged, e.g. "origin/develop" |
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | `source_branch`, `target_branch`, `remote`, `merge_ref` | Target resolved |
+    | `Exit` | - | Working tree is dirty, nothing was touched |
+    | `Error` | - | Git client unavailable or the branch cannot be resolved |
+
+
+??? info "`fetch_merge_source`"
+    Fetch the source branch from the remote without moving HEAD.
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: git
+      step: fetch_merge_source
+    ```
+
+    **Used by built-in workflows:** `merge-branch`
+
+    **Requires**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `ctx.git` | - | An initialized GitClient. |
+    | `ctx.textual` | - | The Textual UI context. |
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `source_branch` | str | Branch to fetch |
+    | `remote` | str | Remote name |
+
+    **Outputs (saved to ctx.data)**
+
+    None documented.
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | - | Remote-tracking ref updated |
+    | `Error` | - | Fetch failed or required inputs are missing |
+
+
+??? info "`merge_source_branch`"
+    Merge the fetched ref into the current branch.
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: git
+      step: merge_source_branch
+    ```
+
+    **Used by built-in workflows:** `merge-branch`
+
+    **Available to later steps:** `merge_status`, `merge_conflicts`, `merge_conflict_context`
+
+    **Requires**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `ctx.git` | - | An initialized GitClient. |
+    | `ctx.textual` | - | The Textual UI context. |
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `merge_ref` | str | Ref to merge, e.g. "origin/develop" |
+    | `target_branch` | str | Branch receiving the merge |
+
+    **Outputs (saved to ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `merge_status` | str | One of up_to_date / fast_forward / merged / conflicted |
+    | `merge_conflicts` | list | Paths with unresolved conflicts (empty when clean) |
+    | `merge_conflict_context` | str | Prompt for the AI CLI, only set on conflicts |
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | `merge_status`, `merge_conflicts`, `merge_conflict_context` | Merge finished, cleanly or with conflicts to resolve |
+    | `Error` | - | Git refused to start the merge |
+
+
+??? info "`complete_merge`"
+    Finish a conflicted merge after the user resolved the conflicts.
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: git
+      step: complete_merge
+    ```
+
+    **Used by built-in workflows:** `merge-branch`
+
+    **Available to later steps:** `merge_commit_sha`
+
+    **Requires**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `ctx.git` | - | An initialized GitClient. |
+    | `ctx.textual` | - | The Textual UI context. |
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `merge_status` | str | Status published by merge_source_branch |
+    | `merge_commit_no_verify` | bool, optional | Skip pre-commit and commit-msg hooks on the merge commit. Defaults to True. |
+
+    **Outputs (saved to ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `merge_commit_sha` | str | SHA of the merge commit |
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | `merge_commit_sha` | Merge committed |
+    | `Skip` | `merge_commit_sha` | Merge was already complete, nothing to do |
+    | `Exit` | - | User aborted the merge |
+    | `Error` | - | Staging or committing failed |
 
 
 ### Diff Summaries
