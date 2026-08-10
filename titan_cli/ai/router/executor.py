@@ -24,6 +24,7 @@ from titan_cli.ai.client import AIClient
 from titan_cli.ai.exceptions import AIConfigurationError
 from titan_cli.ai.headless_generator import AGENT_HEADLESS_TIMEOUT_SECONDS, HeadlessGenerator
 from titan_cli.ai.models import AIMessage
+from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.logging import get_logger
 from titan_cli.core.models import AIConfig
 from titan_cli.core.secrets import SecretManager
@@ -508,12 +509,17 @@ class AIExecutor:
 
         started = time.monotonic()
         try:
-            response = adapter.execute(
-                full_prompt,
-                cwd=cwd,
-                timeout=timeout,
-                json_schema=json_schema,
-                model=model,
+            # The subprocess blocks for up to `timeout` seconds with no way to poll
+            # for app exit; run it interruptibly so quitting the TUI mid-call aborts
+            # the workflow thread instead of hanging interpreter shutdown.
+            response = run_interruptible(
+                lambda: adapter.execute(
+                    full_prompt,
+                    cwd=cwd,
+                    timeout=timeout,
+                    json_schema=json_schema,
+                    model=model,
+                )
             )
         except Exception as e:
             logger.error("ai_executor_headless_execute_failed", cli=cli, error=str(e))

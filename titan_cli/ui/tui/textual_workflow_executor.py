@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 from textual.message import Message
 
+from titan_cli.core.interrupt import WorkflowAborted, abort_requested
 from titan_cli.core.workflows import ParsedWorkflow
 from titan_cli.core.workflows.workflow_exceptions import WorkflowExecutionError
 from titan_cli.core.workflows.workflow_registry import WorkflowRegistry
@@ -217,6 +218,13 @@ class TextualWorkflowExecutor:
         try:
             step_index = 0
             for step_data in workflow.steps:
+                # Once the app is gone there is nobody to render for and nothing
+                # to confirm with - stop before running another step.
+                if abort_requested():
+                    raise WorkflowAborted(
+                        "Application closed during workflow execution"
+                    )
+
                 step_config = WorkflowStepModel(**step_data)
 
                 # Hooks are resolved by the registry, so we just skip the placeholder

@@ -10,6 +10,7 @@ from titan_cli.core.models import (
     AIDirectProvider,
     AIGatewayBackend,
 )
+from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.secrets import SecretManager
 from .dependencies import get_install_command
 from .exceptions import AIConfigurationError
@@ -203,7 +204,10 @@ class AIClient:
                 )
             ),
         )
-        return self.provider.generate(request)
+        # The SDK's HTTP request blocks with no way to poll for app exit, so it
+        # runs interruptibly: if the TUI closes mid-request, the workflow thread
+        # aborts instead of hanging interpreter shutdown until the response lands.
+        return run_interruptible(lambda: self.provider.generate(request))
 
     def chat(
         self,

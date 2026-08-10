@@ -16,6 +16,7 @@ from typing import List, Optional, Sequence
 
 from titan_cli.ai.exceptions import AIProviderError
 from titan_cli.ai.models import AIMessage, AIResponse
+from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.logging.config import get_logger
 from titan_cli.external_cli.adapters.base import HeadlessCliAdapter
 
@@ -101,15 +102,20 @@ class HeadlessGenerator:
         prompt = self._flatten(messages)
 
         started = time.monotonic()
-        response = self.adapter.execute(
-            prompt,
-            cwd=self.cwd,
-            timeout=self.timeout,
-            json_schema=json_schema if self.adapter.supports_structured_output else None,
-            disallowed_tools=(
-                self.disallowed_tools if self.adapter.supports_tool_restriction else None
-            ),
-            model=self.model,
+        # The subprocess blocks for up to `self.timeout` seconds with no way to poll
+        # for app exit; run it interruptibly so quitting the TUI mid-call aborts the
+        # workflow thread instead of hanging interpreter shutdown.
+        response = run_interruptible(
+            lambda: self.adapter.execute(
+                prompt,
+                cwd=self.cwd,
+                timeout=self.timeout,
+                json_schema=json_schema if self.adapter.supports_structured_output else None,
+                disallowed_tools=(
+                    self.disallowed_tools if self.adapter.supports_tool_restriction else None
+                ),
+                model=self.model,
+            )
         )
         duration = round(time.monotonic() - started, 3)
 
