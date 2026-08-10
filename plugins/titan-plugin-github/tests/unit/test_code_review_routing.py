@@ -102,7 +102,7 @@ def stub_adapter_lookup(monkeypatch):
     [ai_review_plan, ai_review_findings, verify_findings, ai_thread_resolution],
 )
 def test_every_review_step_uses_the_global_default_cli(step):
-    adapter, note = code_review_steps._resolve_review_adapter(_ctx(_executor()), step)
+    adapter, note, ai_off = code_review_steps._resolve_review_adapter(_ctx(_executor()), step)
 
     assert adapter.cli_name == "claude"
     assert note is None
@@ -116,7 +116,7 @@ def test_a_task_preference_for_a_cli_is_honored_over_nothing():
         default_cli="gemini",
     )
 
-    adapter, note = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_findings)
+    adapter, note, ai_off = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_findings)
 
     assert adapter.cli_name == "gemini"
     assert note is None
@@ -126,10 +126,10 @@ def test_findings_and_verification_share_one_task_setting():
     """verify_findings is part of the findings pass, so one preference governs both."""
     executor = _executor(default_cli="gemini")
 
-    findings_adapter, _ = code_review_steps._resolve_review_adapter(
+    findings_adapter, _, _ = code_review_steps._resolve_review_adapter(
         _ctx(executor), ai_review_findings
     )
-    verify_adapter, _ = code_review_steps._resolve_review_adapter(_ctx(executor), verify_findings)
+    verify_adapter, _, _ = code_review_steps._resolve_review_adapter(_ctx(executor), verify_findings)
 
     assert findings_adapter.cli_name == verify_adapter.cli_name == "gemini"
 
@@ -142,10 +142,11 @@ def test_off_reports_that_the_task_is_disabled():
         task_preferences={AITask.CODE_REVIEW_PLAN: AIProviderPreference(provider=AIProviderType.OFF)}
     )
 
-    adapter, note = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_plan)
+    adapter, note, ai_off = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_plan)
 
     assert adapter is None
     assert "turned off" in note
+    assert ai_off is True
 
 
 def test_a_remote_preference_is_refused_by_name_not_silently_run_on_a_cli():
@@ -156,34 +157,37 @@ def test_a_remote_preference_is_refused_by_name_not_silently_run_on_a_cli():
         }
     )
 
-    adapter, note = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_findings)
+    adapter, note, ai_off = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_findings)
 
     assert adapter is None
     assert "remote" in note
     assert "AI Configuration" in note
+    assert ai_off is False
 
 
 def test_no_default_cli_configured_says_so():
     executor = _executor(default_cli=None)
 
-    adapter, note = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_plan)
+    adapter, note, ai_off = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_plan)
 
     assert adapter is None
     assert "no default CLI is configured" in note
+    assert ai_off is False
 
 
 def test_a_configured_cli_that_is_not_installed_is_named():
     executor = _executor(default_cli="codex", installed=("claude",))
 
-    adapter, note = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_plan)
+    adapter, note, ai_off = code_review_steps._resolve_review_adapter(_ctx(executor), ai_review_plan)
 
     assert adapter is None
     assert "codex" in note
+    assert ai_off is False
 
 
 def test_no_router_keeps_the_first_available_cli_behavior():
     """A step called without the façade wired (outside a workflow run)."""
-    adapter, note = code_review_steps._resolve_review_adapter(WorkflowContext(secrets=Mock()), ai_review_plan)
+    adapter, note, ai_off = code_review_steps._resolve_review_adapter(WorkflowContext(secrets=Mock()), ai_review_plan)
 
     assert adapter.cli_name == "auto"
     assert note is None

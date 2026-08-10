@@ -905,7 +905,9 @@ def _resolve_headless_adapter(cli_preference: str):
     return candidate if candidate.is_available() else None
 
 
-def _resolve_review_adapter(ctx: WorkflowContext, step: Callable) -> Tuple[Optional[object], Optional[str]]:
+def _resolve_review_adapter(
+    ctx: WorkflowContext, step: Callable
+) -> Tuple[Optional[object], Optional[str], bool]:
     """
     Return the headless CLI configured for this step's task, or None plus the reason.
 
@@ -916,32 +918,36 @@ def _resolve_review_adapter(ctx: WorkflowContext, step: Callable) -> Tuple[Optio
     reason and then takes its own degraded path: a review without AI is a worse
     result, not a crash, and the reason is what lets the user fix it.
 
+    The third element is True only when the user deliberately turned AI off for
+    this task. Callers that must not present "AI never ran" as a clean result use
+    it to tell the intentional skip apart from a routing failure.
+
     Without the façade (a step called outside a workflow run) the previous behavior
     stands: first available CLI.
     """
     router = getattr(ctx, "ai_router", None)
     if router is None:
-        return _resolve_headless_adapter("auto"), None
+        return _resolve_headless_adapter("auto"), None, False
 
     resolution = router.resolve(policy=step)
 
     if isinstance(resolution, AIRouteNeedsInput):
-        return None, f"{resolution.reason} — set it in AI Configuration (main menu)"
+        return None, f"{resolution.reason} — set it in AI Configuration (main menu)", False
 
     if resolution.provider == AIProviderType.OFF:
-        return None, "AI is turned off for this task"
+        return None, "AI is turned off for this task", True
 
     if resolution.provider != AIProviderType.CLI_HEADLESS or not resolution.cli:
         return None, (
             f"'{resolution.provider}' cannot run this step, which needs a CLI "
             f"— change it in AI Configuration (main menu)"
-        )
+        ), False
 
     adapter = _resolve_headless_adapter(resolution.cli)
     if adapter is None:
-        return None, f"the configured CLI '{resolution.cli}' is not available"
+        return None, f"the configured CLI '{resolution.cli}' is not available", False
 
-    return adapter, None
+    return adapter, None, False
 
 
 def _announce_review_adapter(ctx: WorkflowContext, adapter: object) -> None:
@@ -1417,7 +1423,7 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("success")
         return Success("Deterministic review plan built", metadata={"review_plan": fallback})
 
-    adapter, route_note = _resolve_review_adapter(ctx, ai_review_plan)
+    adapter, route_note, _ = _resolve_review_adapter(ctx, ai_review_plan)
 
     if not adapter:
         ctx.textual.warning_text(
@@ -2151,22 +2157,32 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         summarize_findings_prompt_parts,
     )
 
-    adapter, route_note = _resolve_review_adapter(ctx, ai_review_findings)
+    adapter, route_note, ai_off = _resolve_review_adapter(ctx, ai_review_findings)
 
     if not adapter:
-        ctx.textual.warning_text(
-            f"{route_note or 'No headless CLI available'} — skipping AI findings"
-        )
+        reason = route_note or "No headless CLI available"
         ctx.data["raw_findings"] = build_default_findings()
-        # Keep the outputs consistent with every other exit of this step: downstream
-        # reads ai_findings_failed, and it must be explicitly False here (nothing
-        # failed — nothing ran).
-        ctx.data["ai_findings_failed"] = False
-        ctx.textual.end_step("success")
-        return Success(
-            "No findings (no CLI available)",
-            metadata={"raw_findings": [], "ai_findings_failed": False},
+        if ai_off:
+            # The user turned AI off for this task: nothing failed — nothing was
+            # meant to run. Downstream reads ai_findings_failed, and it must be
+            # explicitly False here.
+            ctx.textual.warning_text(f"{reason} — skipping AI findings")
+            ctx.data["ai_findings_failed"] = False
+            ctx.textual.end_step("success")
+            return Success(
+                "No findings (AI is off for this task)",
+                metadata={"raw_findings": [], "ai_findings_failed": False},
+            )
+        # Routing failure (no CLI configured, not installed, wrong provider): the AI
+        # never ran, so an empty result must not look like a clean review — same
+        # contract as the all-batches-failed exit below. Empty findings are still
+        # published so downstream steps run via on_error: continue.
+        ctx.data["ai_findings_failed"] = True
+        ctx.textual.error_text(
+            f"{reason} — AI findings could not run. No code was reviewed."
         )
+        ctx.textual.end_step("error")
+        return Error(f"AI findings could not run: {reason}")
 
     _announce_review_adapter(ctx, adapter)
 
@@ -2781,7 +2797,7 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("skip")
         return Skip("No findings eligible for verification")
 
-    adapter, route_note = _resolve_review_adapter(ctx, verify_findings)
+    adapter, route_note, _ = _resolve_review_adapter(ctx, verify_findings)
     if not adapter:
         ctx.textual.dim_text(
             f"{route_note or 'No headless CLI available'} — findings pass unverified."
@@ -3595,7 +3611,7 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("skip")
         return Skip("No thread_review_contexts in context")
 
-    adapter, route_note = _resolve_review_adapter(ctx, ai_thread_resolution)
+    adapter, route_note, _ = _resolve_review_adapter(ctx, ai_thread_resolution)
 
     if not adapter:
         ctx.textual.warning_text(
