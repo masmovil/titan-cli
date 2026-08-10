@@ -10,6 +10,7 @@ from titan_plugin_git.operations.merge_operations import (
     build_merge_ref,
     classify_merge_result,
     format_merge_summary,
+    has_conflict_markers,
     resolve_merge_source,
 )
 
@@ -265,3 +266,31 @@ class TestUIMergeResultFlags:
         )
         assert merged.created_commit is True
         assert ff.created_commit is False
+
+
+class TestHasConflictMarkers:
+    """Tests for has_conflict_markers"""
+
+    def test_detects_full_conflict_block(self):
+        """Should detect a complete conflict block."""
+        content = "a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> origin/develop\nb\n"
+
+        assert has_conflict_markers(content) is True
+
+    def test_resolved_content_has_no_markers(self):
+        """Should report clean content as resolved."""
+        assert has_conflict_markers("merged content\n") is False
+
+    def test_ignores_lone_start_marker(self):
+        """A start marker with no closing marker is not an unresolved conflict."""
+        assert has_conflict_markers("<<<<<<< HEAD\nmine\n") is False
+
+    def test_ignores_markers_not_at_line_start(self):
+        """Text mentioning markers mid-line is not a conflict."""
+        content = "docs say <<<<<<< and >>>>>>> are markers\n"
+
+        assert has_conflict_markers(content) is False
+
+    def test_handles_empty_content(self):
+        """Empty files are resolved."""
+        assert has_conflict_markers("") is False

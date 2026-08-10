@@ -369,6 +369,10 @@ class GitClient:
         """List paths with unresolved conflicts."""
         return self.merge_service.get_conflicted_files()
 
+    def get_unresolved_conflict_files(self) -> ClientResult[List[str]]:
+        """List unmerged paths whose content still contains conflict markers."""
+        return self.merge_service.get_unresolved_conflict_files()
+
     def is_merge_in_progress(self) -> ClientResult[bool]:
         """Check whether a merge is currently in progress."""
         return self.merge_service.is_merge_in_progress()
@@ -377,9 +381,9 @@ class GitClient:
         """Stage every change in the working tree."""
         return self.merge_service.stage_all()
 
-    def continue_merge(self) -> ClientResult[str]:
+    def continue_merge(self, no_verify: bool = True) -> ClientResult[str]:
         """Complete an in-progress merge using git's suggested message."""
-        return self.merge_service.continue_merge()
+        return self.merge_service.continue_merge(no_verify)
 
     def abort_merge(self) -> ClientResult[None]:
         """Abort an in-progress merge and restore the pre-merge state."""

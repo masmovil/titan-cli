@@ -6,6 +6,12 @@ params:
   # Override it with `extends` + params, or from a step injected in before_merge.
   source_branch: ""
   remote: "origin"
+  # The merge commit only carries git's own merge message, so pre-commit hooks
+  # are skipped: a hook failing there leaves the merge stopped with everything
+  # staged. Set to false to run them, or lint from the after_merge hook.
+  # Deliberately not named `no_verify`: that key is read by `create_commit`, and
+  # ctx.data is shared with workflows nested from the hooks.
+  merge_commit_no_verify: true
 
 hooks:
   - before_merge

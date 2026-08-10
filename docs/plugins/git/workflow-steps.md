@@ -649,6 +649,7 @@ How to read these contracts:
     | Name | Type | Description |
     |------|------|-------------|
     | `merge_status` | str | Status published by merge_source_branch |
+    | `merge_commit_no_verify` | bool, optional | Skip pre-commit and commit-msg hooks on the merge commit. Defaults to True. |
 
     **Outputs (saved to ctx.data)**
 

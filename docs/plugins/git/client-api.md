@@ -554,12 +554,26 @@ client.merge(ref="origin/develop", target_branch="feature/search", no_ff=False)
 
 ### List conflicted files
 
-Returns the paths with unresolved conflicts. Empty when the tree is clean.
+Returns the paths git reports as unmerged in the index. Empty when the tree is clean.
+
+Note that git keeps a path unmerged until it is staged, so a file whose conflict was already fixed in the editor still shows up here. Use *List unresolved conflicts* when you need to know whether the conflicts are actually gone.
 
 **Call:**
 
 ```python
 client.get_conflicted_files()
+```
+
+**Parameters:** none.
+
+### List unresolved conflicts
+
+Returns only the unmerged paths whose working-tree content still contains conflict markers (`<<<<<<<` … `>>>>>>>`). Files that were resolved but not staged are excluded; paths that cannot be read (deleted or binary) are kept in the list so the caller can decide.
+
+**Call:**
+
+```python
+client.get_unresolved_conflict_files()
 ```
 
 **Parameters:** none.
@@ -596,9 +610,14 @@ Commits the staged merge using the message git prepared, without opening an edit
 
 ```python
 client.continue_merge()
+client.continue_merge(no_verify=False)
 ```
 
-**Parameters:** none.
+**Parameters:**
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `no_verify` | No | `True` | Skip pre-commit and commit-msg hooks. Skipping is the default because the commit only carries git's own merge message, and a hook that fails here leaves the merge stopped with everything staged. |
 
 **Returns:** `ClientResult[str]` with the merge commit SHA.
 

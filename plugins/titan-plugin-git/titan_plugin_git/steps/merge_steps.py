@@ -91,9 +91,7 @@ def resolve_merge_target(ctx: WorkflowContext) -> WorkflowResult:
     remote = ctx.get("remote", "origin")
     merge_ref = build_merge_ref(source_branch, remote)
 
-    ctx.textual.text("")
     ctx.textual.bold_text(f"{merge_ref} → {current_branch}")
-    ctx.textual.text("")
 
     ctx.textual.end_step("success")
     return Success(
@@ -213,13 +211,11 @@ def merge_source_branch(ctx: WorkflowContext) -> WorkflowResult:
             return Error(message)
 
     summary = format_merge_summary(result)
-    ctx.textual.text("")
     ctx.textual.bold_text(summary[0])
     for line in summary[1:]:
         ctx.textual.dim_text(line)
 
     if not result.has_conflicts:
-        ctx.textual.text("")
         ctx.textual.success_text("✓ Merge completed")
         ctx.textual.end_step("success")
         return Success(
@@ -230,11 +226,9 @@ def merge_source_branch(ctx: WorkflowContext) -> WorkflowResult:
             }
         )
 
-    ctx.textual.text("")
     ctx.textual.warning_text(msg.Steps.Merge.CONFLICTS_TITLE)
     for path in result.conflicted_files:
         ctx.textual.text(f"  {path}")
-    ctx.textual.text("")
 
     prompt = build_conflict_resolution_prompt(
         conflicted_files=result.conflicted_files,
@@ -266,6 +260,8 @@ def complete_merge(ctx: WorkflowContext) -> WorkflowResult:
 
     Inputs (from ctx.data):
         merge_status (str): Status published by merge_source_branch
+        merge_commit_no_verify (bool, optional): Skip pre-commit and commit-msg
+            hooks on the merge commit (default: True)
 
     Outputs (saved to ctx.data):
         merge_commit_sha (str): SHA of the merge commit
@@ -303,7 +299,11 @@ def complete_merge(ctx: WorkflowContext) -> WorkflowResult:
             ctx.textual.end_step("error")
             return Error(f"Failed to check merge state: {err}")
 
-    conflicts_result = ctx.git.get_conflicted_files()
+    # Content, not the index: a file edited but not staged is still listed as
+    # unmerged by git even though its conflict is gone.
+    with ctx.textual.loading(msg.Steps.Merge.CHECKING_CONFLICTS):
+        conflicts_result = ctx.git.get_unresolved_conflict_files()
+
     match conflicts_result:
         case ClientSuccess(data=remaining):
             pass
@@ -318,7 +318,6 @@ def complete_merge(ctx: WorkflowContext) -> WorkflowResult:
         )
         for path in remaining:
             ctx.textual.text(f"  {path}")
-        ctx.textual.text("")
 
         choice = ctx.textual.ask_option(
             msg.Steps.Merge.ASK_UNRESOLVED,
@@ -337,7 +336,9 @@ def complete_merge(ctx: WorkflowContext) -> WorkflowResult:
         )
 
         if choice != "force":
-            abort_result = ctx.git.abort_merge()
+            with ctx.textual.loading(msg.Steps.Merge.ABORTING):
+                abort_result = ctx.git.abort_merge()
+
             match abort_result:
                 case ClientSuccess():
                     ctx.textual.success_text(f"✓ {msg.Steps.Merge.MERGE_ABORTED}")
@@ -349,7 +350,9 @@ def complete_merge(ctx: WorkflowContext) -> WorkflowResult:
                     ctx.textual.end_step("error")
                     return Error(message)
 
-    stage_result = ctx.git.stage_all()
+    with ctx.textual.loading(msg.Steps.Merge.STAGING):
+        stage_result = ctx.git.stage_all()
+
     match stage_result:
         case ClientError(error_message=err):
             message = msg.Steps.Merge.STAGE_FAILED.format(e=err)
@@ -359,11 +362,20 @@ def complete_merge(ctx: WorkflowContext) -> WorkflowResult:
         case _:
             pass
 
-    continue_result = ctx.git.continue_merge()
+    # Hooks are skipped by default: the commit carries git's own merge message,
+    # and a hook failing here would leave the merge stopped with everything
+    # staged. Projects that want them can set merge_commit_no_verify: false.
+    no_verify = bool(ctx.get("merge_commit_no_verify", True))
+
+    if not no_verify:
+        ctx.textual.dim_text(msg.Steps.Merge.COMMIT_HOOKS_HINT)
+
+    with ctx.textual.loading(msg.Steps.Merge.COMMITTING):
+        continue_result = ctx.git.continue_merge(no_verify=no_verify)
+
     match continue_result:
         case ClientSuccess(data=sha):
             message = msg.Steps.Merge.MERGE_COMMITTED.format(sha=sha[:8])
-            ctx.textual.text("")
             ctx.textual.success_text(f"✓ {message}")
             ctx.textual.end_step("success")
             return Success(message, metadata={"merge_commit_sha": sha})

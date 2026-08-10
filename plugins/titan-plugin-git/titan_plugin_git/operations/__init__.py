@@ -38,6 +38,7 @@ from .merge_operations import (
     resolve_merge_source,
     build_merge_ref,
     classify_merge_result,
+    has_conflict_markers,
     build_conflict_resolution_prompt,
     format_merge_summary,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "resolve_merge_source",
     "build_merge_ref",
     "classify_merge_result",
+    "has_conflict_markers",
     "build_conflict_resolution_prompt",
     "format_merge_summary",
 ]

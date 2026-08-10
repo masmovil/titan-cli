@@ -229,14 +229,24 @@ class TestMergeServiceCompletion:
         assert isinstance(result, ClientError)
         assert result.error_code == "STAGE_ERROR"
 
-    def test_continue_merge_commits_without_editor(self, service, mock_git_network):
-        """Should commit git's prepared merge message without opening an editor."""
+    def test_continue_merge_commits_without_editor_or_hooks(self, service, mock_git_network):
+        """Should commit git's prepared merge message without an editor or hooks."""
         mock_git_network.run_command.side_effect = ["", "abc123def456"]
 
         result = service.continue_merge()
 
         assert isinstance(result, ClientSuccess)
         assert result.data == "abc123def456"
+        commit_call = mock_git_network.run_command.call_args_list[0]
+        assert commit_call.args[0] == ["git", "commit", "--no-edit", "--no-verify"]
+
+    def test_continue_merge_can_run_hooks(self, service, mock_git_network):
+        """Should keep hooks enabled when no_verify is False."""
+        mock_git_network.run_command.side_effect = ["", "abc123def456"]
+
+        result = service.continue_merge(no_verify=False)
+
+        assert isinstance(result, ClientSuccess)
         commit_call = mock_git_network.run_command.call_args_list[0]
         assert commit_call.args[0] == ["git", "commit", "--no-edit"]
 
@@ -266,3 +276,63 @@ class TestMergeServiceCompletion:
 
         assert isinstance(result, ClientError)
         assert result.error_code == "MERGE_ABORT_ERROR"
+
+    def test_get_unresolved_conflict_files_ignores_resolved_but_unstaged(
+        self, service, mock_git_network, tmp_path
+    ):
+        """A file edited without staging is unmerged in the index but resolved in content."""
+        (tmp_path / "resolved.txt").write_text("clean content\n")
+
+        def router(args, **kwargs):
+            if args[1] == "diff":
+                return "resolved.txt\n"
+            if args[1] == "rev-parse":
+                return f"{tmp_path}\n"
+            return ""
+
+        mock_git_network.run_command.side_effect = router
+
+        result = service.get_unresolved_conflict_files()
+
+        assert isinstance(result, ClientSuccess)
+        assert result.data == []
+
+    def test_get_unresolved_conflict_files_reports_remaining_markers(
+        self, service, mock_git_network, tmp_path
+    ):
+        """A file that still has conflict markers stays reported as unresolved."""
+        (tmp_path / "broken.txt").write_text(
+            "<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> origin/develop\n"
+        )
+
+        def router(args, **kwargs):
+            if args[1] == "diff":
+                return "broken.txt\n"
+            if args[1] == "rev-parse":
+                return f"{tmp_path}\n"
+            return ""
+
+        mock_git_network.run_command.side_effect = router
+
+        result = service.get_unresolved_conflict_files()
+
+        assert isinstance(result, ClientSuccess)
+        assert result.data == ["broken.txt"]
+
+    def test_get_unresolved_conflict_files_keeps_unreadable_paths(
+        self, service, mock_git_network, tmp_path
+    ):
+        """A deleted or binary path cannot be inspected, so the user must decide."""
+        def router(args, **kwargs):
+            if args[1] == "diff":
+                return "gone.bin\n"
+            if args[1] == "rev-parse":
+                return f"{tmp_path}\n"
+            return ""
+
+        mock_git_network.run_command.side_effect = router
+
+        result = service.get_unresolved_conflict_files()
+
+        assert isinstance(result, ClientSuccess)
+        assert result.data == ["gone.bin"]

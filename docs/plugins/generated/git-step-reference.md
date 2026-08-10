@@ -599,6 +599,7 @@ Finish a conflicted merge after the user resolved the conflicts.
 | Name | Type | Description |
 |------|------|-------------|
 | `merge_status` | str | Status published by merge_source_branch |
+| `merge_commit_no_verify` | bool, optional | Skip pre-commit and commit-msg hooks on the merge commit (default: True) |
 
 **Outputs (saved to ctx.data)**
 

@@ -6,6 +6,7 @@ Business logic for Git merge operations, including conflicted merges.
 Uses network layer to execute commands and derives the merge state from the
 repository itself rather than from git's (localized) output text.
 """
+from pathlib import Path
 from typing import List
 
 from titan_cli.core.result import ClientResult, ClientSuccess, ClientError
@@ -13,7 +14,7 @@ from titan_cli.core.logging import log_client_operation
 
 from ..network import GitNetwork
 from ...models.view.merge import UIMergeResult
-from ...operations.merge_operations import classify_merge_result
+from ...operations.merge_operations import classify_merge_result, has_conflict_markers
 from ...exceptions import GitError
 
 
@@ -129,6 +130,50 @@ class MergeService:
             return ClientError(error_message=str(e), error_code="CONFLICT_CHECK_ERROR")
 
     @log_client_operation()
+    def get_unresolved_conflict_files(self) -> ClientResult[List[str]]:
+        """
+        List unmerged paths whose content still contains conflict markers.
+
+        A tool (or the user) that edits a conflicted file without staging it
+        leaves the path unmerged in the index even though the conflict is gone,
+        so the index alone would report a false positive. This inspects the
+        working-tree content instead.
+
+        Returns:
+            ClientResult[List[str]] with genuinely unresolved paths
+        """
+        conflicts_result = self.get_conflicted_files()
+        match conflicts_result:
+            case ClientSuccess(data=candidates):
+                pass
+            case ClientError() as err:
+                return err
+
+        try:
+            root = self.git.run_command(["git", "rev-parse", "--show-toplevel"]).strip()
+        except GitError as e:
+            return ClientError(error_message=str(e), error_code="CONFLICT_CHECK_ERROR")
+
+        unresolved = []
+        for path in candidates:
+            full_path = Path(root) / path
+            try:
+                content = full_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                # Deleted or unreadable (binary conflicts included): the user
+                # still has to decide, so keep it listed.
+                unresolved.append(path)
+                continue
+
+            if has_conflict_markers(content):
+                unresolved.append(path)
+
+        return ClientSuccess(
+            data=unresolved,
+            message=f"{len(unresolved)} of {len(candidates)} conflicted files still unresolved"
+        )
+
+    @log_client_operation()
     def is_merge_in_progress(self) -> ClientResult[bool]:
         """
         Check whether a merge is currently in progress (MERGE_HEAD exists).
@@ -164,7 +209,7 @@ class MergeService:
             return ClientError(error_message=str(e), error_code="STAGE_ERROR")
 
     @log_client_operation()
-    def continue_merge(self) -> ClientResult[str]:
+    def continue_merge(self, no_verify: bool = True) -> ClientResult[str]:
         """
         Complete an in-progress merge using git's suggested message.
 
@@ -172,11 +217,20 @@ class MergeService:
         the latter opens an editor, and the network layer cannot override
         GIT_EDITOR. Both commit the prepared MERGE_MSG.
 
+        Args:
+            no_verify: Skip pre-commit and commit-msg hooks. The commit only
+                carries git's own merge message, and a hook that fails here
+                leaves the merge stopped halfway.
+
         Returns:
             ClientResult[str] with the merge commit SHA
         """
+        args = ["git", "commit", "--no-edit"]
+        if no_verify:
+            args.append("--no-verify")
+
         try:
-            self.git.run_command(["git", "commit", "--no-edit"])
+            self.git.run_command(args)
             sha = self.git.run_command(["git", "rev-parse", "HEAD"])
             return ClientSuccess(data=sha, message=f"Merge committed: {sha[:8]}")
         except GitError as e:

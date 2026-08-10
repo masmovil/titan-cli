@@ -94,6 +94,32 @@ def classify_merge_result(
     return MergeStatus.FAST_FORWARD
 
 
+def has_conflict_markers(content: str) -> bool:
+    """
+    Check whether file content still contains git conflict markers.
+
+    Git keeps a path listed as unmerged until it is staged, so the index alone
+    cannot tell "resolved but not staged" from "still conflicted". The content
+    can.
+
+    Args:
+        content: Working-tree content of the file
+
+    Returns:
+        True when an unresolved conflict block is still present
+    """
+    starts = False
+    ends = False
+
+    for line in content.splitlines():
+        if line.startswith("<<<<<<<"):
+            starts = True
+        elif line.startswith(">>>>>>>"):
+            ends = True
+
+    return starts and ends
+
+
 def build_conflict_resolution_prompt(
     conflicted_files: List[str],
     source_ref: str,
@@ -157,6 +183,7 @@ __all__ = [
     "resolve_merge_source",
     "build_merge_ref",
     "classify_merge_result",
+    "has_conflict_markers",
     "build_conflict_resolution_prompt",
     "format_merge_summary",
 ]
