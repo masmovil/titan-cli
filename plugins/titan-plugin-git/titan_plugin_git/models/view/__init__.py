@@ -4,6 +4,7 @@ from .status import UIGitStatus
 from .commit import UIGitCommit
 from .tag import UIGitTag
 from .worktree import UIGitWorktree
+from .merge import MergeStatus, UIMergeResult
 
 __all__ = [
     "UIGitBranch",
@@ -11,4 +12,6 @@ __all__ = [
     "UIGitCommit",
     "UIGitTag",
     "UIGitWorktree",
+    "MergeStatus",
+    "UIMergeResult",
 ]
