@@ -114,6 +114,20 @@ def test_cycle_between_workflows_terminates():
     assert len(usage.steps) == 1
 
 
+def test_diamond_reference_traverses_shared_workflow_once():
+    """A nested workflow reachable via two paths must not duplicate its steps."""
+    workflows = {
+        "Top": _workflow("Top", [{"workflow": "Left"}, {"workflow": "Right"}]),
+        "Left": _workflow("Left", [{"workflow": "Shared"}]),
+        "Right": _workflow("Right", [{"workflow": "Shared"}]),
+        "Shared": _workflow("Shared", [{"plugin": "core", "step": "core_step"}]),
+    }
+
+    usage = _service(workflows).discover_workflow("Top")
+
+    assert len(usage.steps) == 1
+
+
 def test_params_ai_block_in_yaml_is_ignored():
     """The declaration is the only source of a step's policy."""
     workflows = {

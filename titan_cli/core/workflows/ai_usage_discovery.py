@@ -95,6 +95,10 @@ class AIUsageDiscoveryService:
             if nested_workflow_name:
                 if nested_workflow_name in seen_workflows:
                     continue
+                # Mark before recursing, on the shared set: this guards cycles AND
+                # diamonds (a nested workflow reachable via two paths would otherwise
+                # be traversed once per path, duplicating its steps in the result).
+                seen_workflows.add(nested_workflow_name)
                 try:
                     nested_workflow = self._workflow_registry.get_workflow(nested_workflow_name)
                 except Exception:
@@ -108,7 +112,7 @@ class AIUsageDiscoveryService:
                     nested_workflow = None
                 if nested_workflow:
                     discovered.extend(
-                        self._discover_steps(nested_workflow, seen_workflows | {nested_workflow_name})
+                        self._discover_steps(nested_workflow, seen_workflows)
                     )
                 continue
 
