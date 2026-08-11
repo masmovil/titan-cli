@@ -225,14 +225,32 @@ class JsonContract(AgentContract):
     def _extract_object(text: str) -> Optional[str]:
         """
         Pull the JSON object out of a response that may be wrapped in prose or
-        markdown fences. Greedy on purpose: it takes the outermost braces, so a
-        body containing its own JSON snippet does not truncate the answer.
+        markdown fences. Every fenced block is a candidate (the first fence may
+        be code, not the answer), with the full text as the final fallback for
+        unfenced replies. The first candidate holding a parseable object wins;
+        if none parses, the first brace match is returned so the caller reports
+        the JSON error instead of "no object found". Greedy on the braces on
+        purpose: it takes the outermost pair, so a body containing its own JSON
+        snippet does not truncate the answer.
         """
-        fenced = _FENCED_BLOCK.search(text)
-        candidate = fenced.group(1) if fenced else text
+        candidates = [fence.group(1) for fence in _FENCED_BLOCK.finditer(text)]
+        candidates.append(text)
 
-        match = _OUTERMOST_OBJECT.search(candidate)
-        return match.group(0) if match else None
+        fallback = None
+        for candidate in candidates:
+            match = _OUTERMOST_OBJECT.search(candidate)
+            if not match:
+                continue
+            payload = match.group(0)
+            try:
+                json.loads(payload)
+            except json.JSONDecodeError:
+                if fallback is None:
+                    fallback = payload
+                continue
+            return payload
+
+        return fallback
 
     def _validate(self, data: dict) -> ContractParse:
         properties = self.schema.get("properties", {})
