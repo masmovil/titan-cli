@@ -491,14 +491,30 @@ class AIExecutor:
                 details={"connection_id": client.connection_id},
             )
 
+        content = response.content or ""
+        if not content.strip():
+            logger.warning(
+                "ai_remote_generate_empty",
+                connection_id=client.connection_id,
+                model=getattr(response, "model", None),
+            )
+            return AIExecutionError(
+                error_message=(
+                    f"AI connection '{client.connection_id}' returned an empty response."
+                ),
+                error_code="EXECUTION_FAILED",
+                decision=decision,
+                details={"connection_id": client.connection_id},
+            )
+
         logger.info(
             "ai_remote_generate_ok",
             connection_id=client.connection_id,
             model=getattr(response, "model", None),
             duration=round(time.monotonic() - started, 3),
-            response_chars=len(response.content or ""),
+            response_chars=len(content),
         )
-        return AIExecutionSuccess(decision=decision, data=response.content)
+        return AIExecutionSuccess(decision=decision, data=content)
 
     def _generate_headless(
         self,
@@ -564,14 +580,24 @@ class AIExecutor:
                 details={"cli": cli, "exit_code": response.exit_code},
             )
 
+        stdout = response.stdout or ""
+        if not stdout.strip():
+            logger.warning("ai_headless_execute_empty", cli=cli, model=model)
+            return AIExecutionError(
+                error_message=f"'{cli}' exited successfully but produced no output.",
+                error_code="EXECUTION_FAILED",
+                decision=decision,
+                details={"cli": cli, "exit_code": response.exit_code},
+            )
+
         logger.info(
             "ai_headless_execute_ok",
             cli=cli,
             model=model,
             duration=round(time.monotonic() - started, 3),
-            response_chars=len(response.stdout or ""),
+            response_chars=len(stdout),
         )
-        return AIExecutionSuccess(decision=decision, data=response.stdout)
+        return AIExecutionSuccess(decision=decision, data=stdout)
 
 
 __all__ = ["AIExecutor", "DEFAULT_PREFERRED"]
