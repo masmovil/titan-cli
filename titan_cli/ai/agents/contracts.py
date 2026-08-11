@@ -133,13 +133,24 @@ class TextContract(AgentContract):
         # "SUBTITLE:") or that is merely mentioned inside an earlier section's
         # content anchor the slice at the wrong offset, which silently returns
         # corrupted content instead of failing into the repair retry.
+        #
+        # Each label must open a line exactly once. A second line-start
+        # occurrence (quoted text, a list item like "TITLE: draft" inside
+        # another section) makes the slice boundaries ambiguous, so it fails
+        # into the repair retry instead of silently taking the first hit.
         found = []
         occupied = {}
         for label in self.sections:
             pattern = re.compile(rf"^[ \t]*{re.escape(label)}[ \t]*:", re.MULTILINE | re.IGNORECASE)
-            match = pattern.search(text)
-            if match is None:
+            matches = list(pattern.finditer(text))
+            if not matches:
                 return ContractParse(ok=False, error=f"missing section '{label}:'")
+            if len(matches) > 1:
+                return ContractParse(
+                    ok=False,
+                    error=f"section '{label}:' appears {len(matches)} times",
+                )
+            match = matches[0]
 
             clash = occupied.get(match.start())
             if clash is not None:

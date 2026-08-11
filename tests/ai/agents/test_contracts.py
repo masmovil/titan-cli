@@ -81,6 +81,17 @@ def test_sections_are_read_in_the_order_they_appear():
     assert result.data == {"title": "feat: Reordered", "description": "Body first."}
 
 
+def test_a_duplicated_section_label_is_a_failure():
+    contract = TextContract(sections=("TITLE", "DESCRIPTION"))
+
+    result = contract.parse(
+        "TITLE: feat: Real title\n\nDESCRIPTION:\nA list of drafts:\nTITLE: draft"
+    )
+
+    assert not result.ok
+    assert "TITLE" in result.error
+
+
 def test_a_missing_section_is_a_failure():
     contract = TextContract(sections=("TITLE", "DESCRIPTION"))
 
