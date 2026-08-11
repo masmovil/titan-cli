@@ -15,6 +15,7 @@ from titan_cli.ai.router.enums import AIProviderType, AITask
 from titan_cli.ai.router.resolver import AIRouteNeedsInput
 from titan_cli.core.logging import get_logger
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Exit, Skip
+from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.result import ClientSuccess, ClientError
 from titan_cli.external_cli.adapters import get_headless_adapter, list_available_headless_clis
 from titan_cli.ui.tui.widgets import ChoiceOption, OptionItem, PromptChoice
@@ -1466,7 +1467,9 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         strategy=str(strategy.strategy),
     )
     with ctx.textual.loading(f"Asking {cli_display} to plan the review…"):
-        response = adapter.execute(prompt, cwd=project_root, timeout=240)
+        response = run_interruptible(
+            lambda: adapter.execute(prompt, cwd=project_root, timeout=240)
+        )
     _log_ai_response(
         step_name="ai_review_plan",
         cli_name=adapter.cli_name.value,
@@ -1726,13 +1729,15 @@ def _retry_findings_batch_reformat(
     schema = findings_json_schema() if structured else None
     disallowed_tools = list(FINDINGS_DISALLOWED_TOOLS) if adapter.supports_tool_restriction else None
     _log_ai_prompt("ai_review_findings_reformat_retry", adapter.cli_name.value, reformat_prompt, batch_id=batch_id)
-    response = adapter.execute(
-        reformat_prompt,
-        cwd=cwd,
-        timeout=REFORMAT_RETRY_TIMEOUT_SECONDS,
-        json_schema=schema,
-        disallowed_tools=disallowed_tools,
-        effort=effort if adapter.supports_effort_control else None,
+    response = run_interruptible(
+        lambda: adapter.execute(
+            reformat_prompt,
+            cwd=cwd,
+            timeout=REFORMAT_RETRY_TIMEOUT_SECONDS,
+            json_schema=schema,
+            disallowed_tools=disallowed_tools,
+            effort=effort if adapter.supports_effort_control else None,
+        )
     )
     _log_ai_response(
         step_name="ai_review_findings_reformat_retry",
@@ -2025,13 +2030,18 @@ def _execute_findings_batch(
     from ..operations.findings_operations import parse_findings_response
 
     adapter_started_at = time.monotonic()
-    response = adapter.execute(
-        prompt,
-        cwd=project_root,
-        timeout=300,
-        json_schema=findings_schema,
-        disallowed_tools=disallowed_tools,
-        effort=effort,
+    # run_interruptible here also covers the pooled path: on app exit each worker
+    # raises WorkflowAborted, its future completes, and the step thread's
+    # future.result() re-raises it instead of blocking on a live CLI call.
+    response = run_interruptible(
+        lambda: adapter.execute(
+            prompt,
+            cwd=project_root,
+            timeout=300,
+            json_schema=findings_schema,
+            disallowed_tools=disallowed_tools,
+            effort=effort,
+        )
     )
     adapter_duration_seconds = time.monotonic() - adapter_started_at
     worktree_reference_count = sum(
@@ -2847,13 +2857,15 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     )
     adapter_started_at = time.monotonic()
     with ctx.textual.loading(f"Asking {cli_display} to verify {len(to_verify)} finding(s)…"):
-        response = adapter.execute(
-            prompt,
-            cwd=project_root,
-            timeout=VERIFICATION_TIMEOUT_SECONDS,
-            json_schema=verification_json_schema() if use_structured_output else None,
-            disallowed_tools=disallowed_tools,
-            effort=effort,
+        response = run_interruptible(
+            lambda: adapter.execute(
+                prompt,
+                cwd=project_root,
+                timeout=VERIFICATION_TIMEOUT_SECONDS,
+                json_schema=verification_json_schema() if use_structured_output else None,
+                disallowed_tools=disallowed_tools,
+                effort=effort,
+            )
         )
     adapter_duration_seconds = time.monotonic() - adapter_started_at
     _log_ai_response(
@@ -3652,7 +3664,9 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
         with ctx.textual.loading(
             f"Asking {cli_display} to analyse {batch_label} ({len(batch)} thread(s))…"
         ):
-            response = adapter.execute(prompt, cwd=project_root, timeout=300)
+            response = run_interruptible(
+                lambda: adapter.execute(prompt, cwd=project_root, timeout=300)
+            )
         adapter_duration_seconds = time.monotonic() - adapter_started_at
         logger.info(
             "thread_resolution_adapter_call",
