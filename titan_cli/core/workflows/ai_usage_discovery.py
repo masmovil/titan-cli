@@ -79,6 +79,10 @@ class AIUsageDiscoveryService:
             logger.exception("ai_usage_discovery_workflow_load_failed", workflow=workflow_name)
             return None
         if not workflow:
+            # Names usually come from the registry's own discover(), so resolving
+            # to nothing is a registry inconsistency, not a normal miss - log it
+            # for the same visibility reasons as the load-failure branch above.
+            logger.warning("ai_usage_discovery_workflow_not_found", workflow=workflow_name)
             return None
 
         steps = self._discover_steps(workflow, seen_workflows={workflow_name})
