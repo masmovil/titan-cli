@@ -733,14 +733,29 @@ class AIConfigScreen(BaseScreen):
         )
 
         preferences = ai_config.preferences if ai_config else None
-        self._routings = {
-            routing.task: routing
-            for routing in build_task_routings(
-                discovery.discover_all(),
-                resolver,
-                persisted_tasks=list(preferences.tasks) if preferences else [],
+        try:
+            self._routings = {
+                routing.task: routing
+                for routing in build_task_routings(
+                    discovery.discover_all(),
+                    resolver,
+                    persisted_tasks=list(preferences.tasks) if preferences else [],
+                )
+            }
+        except Exception as e:
+            # A single broken plugin or malformed workflow must not take down the
+            # whole AI Configuration screen; degrade this tab and keep the rest.
+            from titan_cli.core.logging import get_logger
+            get_logger(__name__).exception("ai_config_task_routing_load_failed")
+            self._routings = {}
+            container.mount(
+                DimText(
+                    "Could not discover AI task usage. Check the logs for details.",
+                    classes="section-note",
+                )
             )
-        }
+            self.app.notify(f"Failed to load task routing: {e}", severity="error")
+            return
 
         if not self._routings:
             container.mount(
