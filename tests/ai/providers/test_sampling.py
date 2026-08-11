@@ -48,3 +48,8 @@ class TestRejectionDetection:
     def test_ignores_a_temperature_range_complaint(self):
         """A value out of range is the caller's bug, not a refusal of the parameter."""
         assert is_temperature_rejection(Exception("temperature must be between 0 and 1")) is False
+
+    def test_ignores_a_range_complaint_that_also_says_unsupported(self):
+        """An out-of-range value borrows the refusal wording but must not disable the parameter."""
+        error = Exception("temperature: 3.0 is not supported; must be between 0 and 1")
+        assert is_temperature_rejection(error) is False

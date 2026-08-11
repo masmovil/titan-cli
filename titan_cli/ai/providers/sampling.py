@@ -28,6 +28,25 @@ _FAMILIES_REJECTING_TEMPERATURE = (
 
 _models_rejecting_temperature: Set[str] = set()
 
+# Phrasing that means the model does not accept the parameter at all.
+_REFUSAL_MARKERS = (
+    "deprecated",
+    "not supported",
+    "unsupported",
+    "not permitted",
+)
+
+# Phrasing that means the *value* was wrong rather than the parameter refused.
+_VALUE_COMPLAINT_MARKERS = (
+    "between",
+    "range",
+    "less than",
+    "greater than",
+    "must be",
+    "minimum",
+    "maximum",
+)
+
 
 def rejects_temperature(model: str) -> bool:
     """Whether `temperature` should be left out of requests for this model."""
@@ -54,10 +73,13 @@ def is_temperature_rejection(error: Exception) -> bool:
     text = str(error).lower()
     if "temperature" not in text:
         return False
-    return any(
-        marker in text
-        for marker in ("deprecated", "not supported", "unsupported", "not permitted")
-    )
+    # An out-of-range value also names the parameter and calls it unsupported, but it is the
+    # caller passing a bad number, not the model refusing the parameter. Treating it as a
+    # refusal would silently strip valid temperatures for the rest of the session, so any
+    # message describing an allowed range or value is left to surface to the caller.
+    if any(marker in text for marker in _VALUE_COMPLAINT_MARKERS):
+        return False
+    return any(marker in text for marker in _REFUSAL_MARKERS)
 
 
 __all__ = [
