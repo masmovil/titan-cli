@@ -127,22 +127,35 @@ class TextContract(AgentContract):
         if not self.sections:
             return ContractParse(ok=True, data=text.strip())
 
-        upper = text.upper()
+        # A label only counts when it opens a line. Searching anywhere in the
+        # text would let a label that is a substring of another ("TITLE" inside
+        # "SUBTITLE:") or that is merely mentioned inside an earlier section's
+        # content anchor the slice at the wrong offset, which silently returns
+        # corrupted content instead of failing into the repair retry.
         found = []
+        occupied = {}
         for label in self.sections:
-            index = upper.find(f"{label.upper()}:")
-            if index == -1:
+            pattern = re.compile(rf"^[ \t]*{re.escape(label)}[ \t]*:", re.MULTILINE | re.IGNORECASE)
+            match = pattern.search(text)
+            if match is None:
                 return ContractParse(ok=False, error=f"missing section '{label}:'")
-            found.append((index, label))
+
+            clash = occupied.get(match.start())
+            if clash is not None:
+                return ContractParse(
+                    ok=False,
+                    error=f"sections '{clash}:' and '{label}:' matched the same heading",
+                )
+            occupied[match.start()] = label
+            found.append((match.start(), match.end(), label))
 
         # Slice between labels in the order they actually appear, not the order
         # they were declared - a model that reorders them is still answerable.
         found.sort()
         result = {}
-        for position, (index, label) in enumerate(found):
-            start = index + len(label) + 1
+        for position, (_, header_end, label) in enumerate(found):
             end = found[position + 1][0] if position + 1 < len(found) else len(text)
-            result[self.keys.get(label, label.lower())] = text[start:end].strip()
+            result[self.keys.get(label, label.lower())] = text[header_end:end].strip()
 
         return ContractParse(ok=True, data=result)
 
