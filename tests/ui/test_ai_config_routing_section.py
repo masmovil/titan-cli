@@ -428,3 +428,34 @@ class TestScreenMounts:
         assert "No default set yet" in result["before"]
         assert "gemini" in result["after"]
         assert result["focus_kept"]
+
+    def test_confirming_the_only_installed_cli_saves_it(self, monkeypatch):
+        """
+        With one CLI installed the switch pre-selects it as a suggestion, so the only
+        possible pick re-selects the current segment - that confirmation must still save.
+        """
+        config = self._config()
+        saved = []
+        config.set_default_ai_cli.side_effect = saved.append
+        self._stub_screen_dependencies(monkeypatch, [], ("claude",))
+
+        result = {}
+
+        async def run():
+            app = TitanApp(config, initial_screen=lambda: AIConfigScreen(config))
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                screen = app.screen
+                result["before"] = str(screen.query_one("#cli-status", Static).renderable)
+                switch = screen.query_one(SegmentedSwitch)
+                switch.focus()
+                await pilot.pause()
+                await pilot.press("home")
+                await pilot.pause()
+                result["after"] = str(screen.query_one("#cli-status", Static).renderable)
+
+        asyncio.run(run())
+
+        assert saved == ["claude"]
+        assert "No default set yet" in result["before"]
+        assert "Titan will run claude" in result["after"]

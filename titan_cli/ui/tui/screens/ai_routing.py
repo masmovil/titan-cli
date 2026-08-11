@@ -433,6 +433,9 @@ class CliDefaultPicker(Container):
             options=[SegmentedSwitchOption(value=name, label=name) for name in self.installed],
             value=self.current or self.suggestion or self.installed[0],
             autofocus=False,
+            # Until saved, the highlighted segment is only a suggestion: picking it must
+            # still emit Changed, or confirming it could never persist a default.
+            emit_on_reselect=True,
             id="cli-default-switch",
         )
         yield Static(self._status_text(), id="cli-status")

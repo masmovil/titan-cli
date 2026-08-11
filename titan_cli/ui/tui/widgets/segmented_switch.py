@@ -116,6 +116,7 @@ class SegmentedSwitch(Widget):
         on_change: Optional[Callable[[str], None]] = None,
         boxed: bool = True,
         autofocus: bool = True,
+        emit_on_reselect: bool = False,
         **kwargs,
     ) -> None:
         """
@@ -128,6 +129,10 @@ class SegmentedSwitch(Widget):
             autofocus: Whether to take focus on mount. Turn it off when the switch is one
                 control among several - inside a tab, for instance, where taking focus would
                 pull the user away from whatever tab they are actually looking at.
+            emit_on_reselect: Also emit ``Changed`` when the user explicitly picks the
+                segment that is already active (click, home/end). Turn it on when the
+                initial value is only a suggestion that the user must confirm - otherwise
+                confirming it would be a silent no-op.
         """
         super().__init__(**kwargs)
         if not options:
@@ -138,6 +143,7 @@ class SegmentedSwitch(Widget):
         self._segment_values: dict[str, str] = {}
         self.boxed = boxed
         self.autofocus_on_mount = autofocus
+        self.emit_on_reselect = emit_on_reselect
 
         option_values = {option.value for option in options}
         initial_value = value if value in option_values else options[0].value
@@ -173,7 +179,7 @@ class SegmentedSwitch(Widget):
         """Handle mouse selection of a segment."""
         segment_value = self._segment_values.get(getattr(event.widget, "id", ""))
         if segment_value is not None:
-            self._set_value(segment_value, emit=True)
+            self._set_value(segment_value, emit=True, explicit=True)
             event.stop()
 
     def on_key(self, event) -> None:
@@ -185,10 +191,10 @@ class SegmentedSwitch(Widget):
             self._move_selection(1)
             event.stop()
         elif event.key == "home":
-            self._set_value(self.options[0].value, emit=True)
+            self._set_value(self.options[0].value, emit=True, explicit=True)
             event.stop()
         elif event.key == "end":
-            self._set_value(self.options[-1].value, emit=True)
+            self._set_value(self.options[-1].value, emit=True, explicit=True)
             event.stop()
 
     def set_value(self, value: str) -> None:
@@ -201,9 +207,17 @@ class SegmentedSwitch(Widget):
         next_index = max(0, min(len(self.options) - 1, current_index + step))
         self._set_value(self.options[next_index].value, emit=True)
 
-    def _set_value(self, value: str, emit: bool) -> None:
-        """Update the selected value and optionally emit a change event."""
+    def _set_value(self, value: str, emit: bool, explicit: bool = False) -> None:
+        """
+        Update the selected value and optionally emit a change event.
+
+        Re-selecting the current value normally stays silent; an explicit pick (click,
+        home/end - not a clamped arrow move) emits anyway when ``emit_on_reselect`` is set,
+        so that confirming a pre-selected suggestion still reaches the listener.
+        """
         if value == self.value:
+            if emit and explicit and self.emit_on_reselect:
+                self._emit_changed()
             return
 
         self.value = value
