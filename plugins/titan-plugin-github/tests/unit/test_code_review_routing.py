@@ -124,14 +124,21 @@ def test_a_task_preference_for_a_cli_is_honored_over_nothing():
 
 def test_findings_and_verification_share_one_task_setting():
     """verify_findings is part of the findings pass, so one preference governs both."""
-    executor = _executor(default_cli="gemini")
+    executor = _executor(
+        task_preferences={
+            AITask.CODE_REVIEW_FINDINGS: AIProviderPreference(provider=AIProviderType.OFF)
+        }
+    )
 
-    findings_adapter, _, _ = code_review_steps._resolve_review_adapter(
+    findings_adapter, _, findings_off = code_review_steps._resolve_review_adapter(
         _ctx(executor), ai_review_findings
     )
-    verify_adapter, _, _ = code_review_steps._resolve_review_adapter(_ctx(executor), verify_findings)
+    verify_adapter, _, verify_off = code_review_steps._resolve_review_adapter(
+        _ctx(executor), verify_findings
+    )
 
-    assert findings_adapter.cli_name == verify_adapter.cli_name == "gemini"
+    assert findings_adapter is None and findings_off is True
+    assert verify_adapter is None and verify_off is True
 
 
 # --- every failure names its reason ---------------------------------------
