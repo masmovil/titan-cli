@@ -144,29 +144,30 @@ def test_aiconfig_no_connections():
     assert not config.providers
 
 
-def test_aiconfig_default_not_in_connections():
-    """Test AIConfig raises ValidationError if default is not in connections."""
-    with pytest.raises(
-        ValidationError,
-        match="Default connection 'non-existent' not found in configured connections.",
-    ):
-        AIConfig(
-            default_connection="non-existent",
-            connections={
-                "corp-gemini": AIConnectionConfig(
-                    name="Corporate Gemini",
-                    connection_type=AIConnectionType.DIRECT_PROVIDER,
-                    provider="gemini",
-                    default_model="gemini-2.0",
-                )
-            },
-        )
+def test_aiconfig_default_not_in_connections_still_loads():
+    """
+    A default pointing at a connection that no longer exists - renamed by hand, say - must
+    not stop the config from loading. Refusing here makes the application unstartable, and
+    the only screen that could repair the value lives inside it. Resolution reports it
+    instead, by name, with the app running.
+    """
+    config = AIConfig(
+        default_connection="non-existent",
+        connections={
+            "corp-gemini": AIConnectionConfig(
+                name="Corporate Gemini",
+                connection_type=AIConnectionType.DIRECT_PROVIDER,
+                provider="gemini",
+                default_model="gemini-2.0",
+            )
+        },
+    )
+
+    assert config.default_connection == "non-existent"
+    assert "non-existent" not in config.connections
 
 
-def test_aiconfig_empty_connections_with_default():
-    """Test AIConfig raises ValidationError if default is set but connections is empty."""
-    with pytest.raises(
-        ValidationError,
-        match="Default connection 'some-default' not found in configured connections.",
-    ):
-        AIConfig(default_connection="some-default", connections={})
+def test_aiconfig_empty_connections_with_default_still_loads():
+    config = AIConfig(default_connection="some-default", connections={})
+
+    assert config.default_connection == "some-default"

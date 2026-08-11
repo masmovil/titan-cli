@@ -260,7 +260,6 @@ def _handle_ai_review(
                 "context_key": "pr_review_context",
                 "prompt_template": build_ai_review_prompt(response_file),
                 "ask_confirmation": False,
-                "cli_preference": "auto",
                 "pre_launch_warning": "When you're done using the AI CLI, press Ctrl+C twice to exit and return to Titan.",
             }
         )

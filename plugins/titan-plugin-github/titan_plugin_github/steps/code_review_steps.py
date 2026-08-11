@@ -8,12 +8,16 @@ import re
 import threading
 import time
 from difflib import SequenceMatcher
-from typing import List, Optional
+from typing import Callable, List, Optional, Tuple
 
+from titan_cli.ai.router.declaration import declare_ai_usage
+from titan_cli.ai.router.enums import AIProviderType, AITask
+from titan_cli.ai.router.resolver import AIRouteNeedsInput
 from titan_cli.core.logging import get_logger
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Exit, Skip
+from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.external_cli.adapters import HEADLESS_ADAPTER_REGISTRY, get_headless_adapter
+from titan_cli.external_cli.adapters import get_headless_adapter, list_available_headless_clis
 from titan_cli.ui.tui.widgets import ChoiceOption, OptionItem, PromptChoice
 
 from ..managers.diff_context_manager import get_or_create_diff_manager
@@ -891,11 +895,8 @@ def _get_review_diff(
 def _resolve_headless_adapter(cli_preference: str):
     """Return the first available headless adapter, or None."""
     if cli_preference == "auto":
-        for cli_name in HEADLESS_ADAPTER_REGISTRY:
-            candidate = get_headless_adapter(cli_name)
-            if candidate.is_available():
-                return candidate
-        return None
+        available = list_available_headless_clis()
+        return get_headless_adapter(available[0]) if available else None
 
     try:
         candidate = get_headless_adapter(cli_preference)
@@ -903,6 +904,57 @@ def _resolve_headless_adapter(cli_preference: str):
         return None
 
     return candidate if candidate.is_available() else None
+
+
+def _resolve_review_adapter(
+    ctx: WorkflowContext, step: Callable
+) -> Tuple[Optional[object], Optional[str], bool]:
+    """
+    Return the headless CLI configured for this step's task, or None plus the reason.
+
+    The user's per-task choice (AI Configuration screen) decides which CLI runs a
+    review step, so no step asks. `None` comes back with a user-facing reason when
+    the task is off, no default CLI is set, the configured one isn't installed, or
+    the stored preference is something this step cannot run. Every caller shows that
+    reason and then takes its own degraded path: a review without AI is a worse
+    result, not a crash, and the reason is what lets the user fix it.
+
+    The third element is True only when the user deliberately turned AI off for
+    this task. Callers that must not present "AI never ran" as a clean result use
+    it to tell the intentional skip apart from a routing failure.
+
+    Without the façade (a step called outside a workflow run) the previous behavior
+    stands: first available CLI.
+    """
+    router = getattr(ctx, "ai_router", None)
+    if router is None:
+        return _resolve_headless_adapter("auto"), None, False
+
+    resolution = router.resolve(policy=step)
+
+    if isinstance(resolution, AIRouteNeedsInput):
+        return None, f"{resolution.reason} — set it in AI Configuration (main menu)", False
+
+    if resolution.provider == AIProviderType.OFF:
+        return None, "AI is turned off for this task", True
+
+    if resolution.provider != AIProviderType.CLI_HEADLESS or not resolution.cli:
+        return None, (
+            f"'{resolution.provider}' cannot run this step, which needs a CLI "
+            f"— change it in AI Configuration (main menu)"
+        ), False
+
+    adapter = _resolve_headless_adapter(resolution.cli)
+    if adapter is None:
+        return None, f"the configured CLI '{resolution.cli}' is not available", False
+
+    return adapter, None, False
+
+
+def _announce_review_adapter(ctx: WorkflowContext, adapter: object) -> None:
+    """Announce which CLI will run this review step."""
+    if adapter and hasattr(adapter, "cli_name"):
+        ctx.textual.ai_chip(f"CLI, automatic · {adapter.cli_name.value}")
 
 
 # ============================================================================
@@ -1299,6 +1351,11 @@ def select_review_strategy(ctx: WorkflowContext) -> WorkflowResult:
 # ============================================================================
 
 
+@declare_ai_usage(
+    task=AITask.CODE_REVIEW_PLAN,
+    executes=[AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
     """
     First AI call: decide which files to read and which checklist items apply.
@@ -1310,11 +1367,13 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
 
     On parse failure, falls back to a local conservative heuristic plan.
 
+    Which CLI runs it comes from the `code_review_plan` task preference
+    (AI Configuration screen), not from the workflow.
+
     Requires (from ctx.data):
         change_manifest (ChangeManifest)
         existing_comments_index (List[ExistingCommentIndexEntry])
         review_checklist (List[ReviewChecklistItem])
-        cli_preference (str): "claude" | "gemini" | "codex" | "auto"
 
     Outputs (saved to ctx.data):
         review_plan (ReviewPlan)
@@ -1334,7 +1393,6 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
     excluded_files = ctx.get("excluded_review_files", [])
     strategy = ctx.get("review_strategy")
     review_profile = _get_review_profile(ctx)
-    cli_preference = ctx.data.get("cli_preference", "auto")
     project_root = ctx.data.get("project_root")
 
     if not manifest or not strategy:
@@ -1366,10 +1424,12 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("success")
         return Success("Deterministic review plan built", metadata={"review_plan": fallback})
 
-    adapter = _resolve_headless_adapter(cli_preference)
+    adapter, route_note, _ = _resolve_review_adapter(ctx, ai_review_plan)
 
     if not adapter:
-        ctx.textual.warning_text("No headless CLI available — using default review plan")
+        ctx.textual.warning_text(
+            f"{route_note or 'No headless CLI available'} — using default review plan"
+        )
         fallback = build_default_review_plan(
             candidates,
             excluded_files,
@@ -1382,6 +1442,8 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         _show_review_plan_summary(ctx, fallback)
         ctx.textual.end_step("success")
         return Success("Default review plan used (no CLI available)", metadata={"review_plan": fallback})
+
+    _announce_review_adapter(ctx, adapter)
 
     prompt = build_review_plan_prompt(
         manifest,
@@ -1405,7 +1467,9 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         strategy=str(strategy.strategy),
     )
     with ctx.textual.loading(f"Asking {cli_display} to plan the review…"):
-        response = adapter.execute(prompt, cwd=project_root, timeout=240)
+        response = run_interruptible(
+            lambda: adapter.execute(prompt, cwd=project_root, timeout=240)
+        )
     _log_ai_response(
         step_name="ai_review_plan",
         cli_name=adapter.cli_name.value,
@@ -1665,13 +1729,15 @@ def _retry_findings_batch_reformat(
     schema = findings_json_schema() if structured else None
     disallowed_tools = list(FINDINGS_DISALLOWED_TOOLS) if adapter.supports_tool_restriction else None
     _log_ai_prompt("ai_review_findings_reformat_retry", adapter.cli_name.value, reformat_prompt, batch_id=batch_id)
-    response = adapter.execute(
-        reformat_prompt,
-        cwd=cwd,
-        timeout=REFORMAT_RETRY_TIMEOUT_SECONDS,
-        json_schema=schema,
-        disallowed_tools=disallowed_tools,
-        effort=effort if adapter.supports_effort_control else None,
+    response = run_interruptible(
+        lambda: adapter.execute(
+            reformat_prompt,
+            cwd=cwd,
+            timeout=REFORMAT_RETRY_TIMEOUT_SECONDS,
+            json_schema=schema,
+            disallowed_tools=disallowed_tools,
+            effort=effort if adapter.supports_effort_control else None,
+        )
     )
     _log_ai_response(
         step_name="ai_review_findings_reformat_retry",
@@ -1964,13 +2030,18 @@ def _execute_findings_batch(
     from ..operations.findings_operations import parse_findings_response
 
     adapter_started_at = time.monotonic()
-    response = adapter.execute(
-        prompt,
-        cwd=project_root,
-        timeout=300,
-        json_schema=findings_schema,
-        disallowed_tools=disallowed_tools,
-        effort=effort,
+    # run_interruptible here also covers the pooled path: on app exit each worker
+    # raises WorkflowAborted, its future completes, and the step thread's
+    # future.result() re-raises it instead of blocking on a live CLI call.
+    response = run_interruptible(
+        lambda: adapter.execute(
+            prompt,
+            cwd=project_root,
+            timeout=300,
+            json_schema=findings_schema,
+            disallowed_tools=disallowed_tools,
+            effort=effort,
+        )
     )
     adapter_duration_seconds = time.monotonic() - adapter_started_at
     worktree_reference_count = sum(
@@ -2038,6 +2109,11 @@ def _execute_findings_batch(
             return {"status": "failed", "raw": None, "detail": "parse error"}
 
 
+@declare_ai_usage(
+    task=AITask.CODE_REVIEW_FINDINGS,
+    executes=[AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     """
     Second AI call: find actionable problems in the exact code context.
@@ -2056,9 +2132,11 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     together, hunks_only) runs after the per-file batches; its findings are deduped
     against theirs before aggregation.
 
+    Which CLI runs it comes from the `code_review_findings` task preference
+    (AI Configuration screen), not from the workflow.
+
     Requires (from ctx.data):
         review_context_package (ReviewContextPackage)
-        cli_preference (str): "claude" | "gemini" | "codex" | "auto"
 
     Outputs (saved to ctx.data):
         raw_findings (list | str): Raw AI output before normalization
@@ -2073,7 +2151,6 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
 
     batches = ctx.get("review_context_batches")
     strategy = ctx.get("review_strategy")
-    cli_preference = ctx.data.get("cli_preference", "auto")
     project_root = ctx.data.get("worktree_path") or ctx.data.get("project_root")
 
     if not batches:
@@ -2090,20 +2167,34 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         summarize_findings_prompt_parts,
     )
 
-    adapter = _resolve_headless_adapter(cli_preference)
+    adapter, route_note, ai_off = _resolve_review_adapter(ctx, ai_review_findings)
 
     if not adapter:
-        ctx.textual.warning_text("No headless CLI available — skipping AI findings")
+        reason = route_note or "No headless CLI available"
         ctx.data["raw_findings"] = build_default_findings()
-        # Keep the outputs consistent with every other exit of this step: downstream
-        # reads ai_findings_failed, and it must be explicitly False here (nothing
-        # failed — nothing ran).
-        ctx.data["ai_findings_failed"] = False
-        ctx.textual.end_step("success")
-        return Success(
-            "No findings (no CLI available)",
-            metadata={"raw_findings": [], "ai_findings_failed": False},
+        if ai_off:
+            # The user turned AI off for this task: nothing failed — nothing was
+            # meant to run. Downstream reads ai_findings_failed, and it must be
+            # explicitly False here.
+            ctx.textual.warning_text(f"{reason} — skipping AI findings")
+            ctx.data["ai_findings_failed"] = False
+            ctx.textual.end_step("success")
+            return Success(
+                "No findings (AI is off for this task)",
+                metadata={"raw_findings": [], "ai_findings_failed": False},
+            )
+        # Routing failure (no CLI configured, not installed, wrong provider): the AI
+        # never ran, so an empty result must not look like a clean review — same
+        # contract as the all-batches-failed exit below. Empty findings are still
+        # published so downstream steps run via on_error: continue.
+        ctx.data["ai_findings_failed"] = True
+        ctx.textual.error_text(
+            f"{reason} — AI findings could not run. No code was reviewed."
         )
+        ctx.textual.end_step("error")
+        return Error(f"AI findings could not run: {reason}")
+
+    _announce_review_adapter(ctx, adapter)
 
     # Structured output forces the CLI to return findings via a schema-validated tool
     # call instead of relying on the model to follow a "respond only with JSON" prompt
@@ -2598,6 +2689,7 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
     deduped: list = []
     removed = 0
     removed_existing = 0
+    removed_adjudicated = 0
     seen_keys: set[tuple[str, int | None, str]] = set()
 
     for finding in findings:
@@ -2607,6 +2699,8 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
             removed += 1
             if is_dup:
                 removed_existing += 1
+                if any(ex.is_adjudicated and is_duplicate(finding, ex) for ex in existing_index):
+                    removed_adjudicated += 1
             logger.debug("Deduplicated finding: %s @ %s:%s", finding.title, finding.path, finding.line)
         else:
             deduped.append(finding)
@@ -2634,14 +2728,17 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
         "findings_deduplicated",
         deduped_findings_count=len(deduped),
         findings_removed_due_to_existing_threads=removed_existing,
-        findings_removed_due_to_adjudicated_threads=sum(
-            1 for finding in findings for ex in existing_index if ex.is_adjudicated and is_duplicate(finding, ex)
-        ),
+        findings_removed_due_to_adjudicated_threads=removed_adjudicated,
     )
     ctx.textual.end_step("success")
     return Success("Findings deduplicated", metadata={"deduped_findings_count": len(deduped)})
 
 
+@declare_ai_usage(
+    task=AITask.CODE_REVIEW_FINDINGS,
+    executes=[AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     """
     Adversarial verification pass: try to REFUTE each finding before the human gate.
@@ -2655,11 +2752,13 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     Generalizes the retired `_looks_like_contradicted_api_claim` heuristic.
     Gated by ReviewProfile.findings_verification_enabled (default True).
 
+    Routes under the same `code_review_findings` task preference as
+    `ai_review_findings`: it is the same pass, so one setting governs both.
+
     Requires (from ctx.data):
         deduped_findings (List[Finding])
         review_context_batches (List[FocusContextBatch])
         review_strategy (ReviewStrategy)
-        cli_preference (str)
 
     Outputs (saved to ctx.data):
         deduped_findings (List[Finding]): verified set, refuted findings removed
@@ -2709,11 +2808,15 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("skip")
         return Skip("No findings eligible for verification")
 
-    adapter = _resolve_headless_adapter(ctx.data.get("cli_preference", "auto"))
+    adapter, route_note, _ = _resolve_review_adapter(ctx, verify_findings)
     if not adapter:
-        ctx.textual.dim_text("No headless CLI available — findings pass unverified.")
+        ctx.textual.dim_text(
+            f"{route_note or 'No headless CLI available'} — findings pass unverified."
+        )
         ctx.textual.end_step("skip")
         return Skip("No CLI available for verification")
+
+    _announce_review_adapter(ctx, adapter)
 
     strategy = ctx.get("review_strategy")
     batches = ctx.get("review_context_batches", [])
@@ -2755,13 +2858,15 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     )
     adapter_started_at = time.monotonic()
     with ctx.textual.loading(f"Asking {cli_display} to verify {len(to_verify)} finding(s)…"):
-        response = adapter.execute(
-            prompt,
-            cwd=project_root,
-            timeout=VERIFICATION_TIMEOUT_SECONDS,
-            json_schema=verification_json_schema() if use_structured_output else None,
-            disallowed_tools=disallowed_tools,
-            effort=effort,
+        response = run_interruptible(
+            lambda: adapter.execute(
+                prompt,
+                cwd=project_root,
+                timeout=VERIFICATION_TIMEOUT_SECONDS,
+                json_schema=verification_json_schema() if use_structured_output else None,
+                disallowed_tools=disallowed_tools,
+                effort=effort,
+            )
         )
     adapter_duration_seconds = time.monotonic() - adapter_started_at
     _log_ai_response(
@@ -3474,6 +3579,11 @@ def build_thread_review_contexts(ctx: WorkflowContext) -> WorkflowResult:
     return Success("Thread contexts built", metadata={"thread_review_contexts_count": len(contexts)})
 
 
+@declare_ai_usage(
+    task="thread_resolution",
+    executes=[AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
     """
     AI call: decide what to do with each open thread.
@@ -3489,9 +3599,11 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
     On total failure (no batch produced usable output), falls back to empty
     decisions (no actions).
 
+    Which CLI runs it comes from the `thread_resolution` task preference
+    (AI Configuration screen), not from the workflow.
+
     Requires (from ctx.data):
         thread_review_contexts (List[ThreadReviewContext])
-        cli_preference (str): "claude" | "gemini" | "codex" | "auto"
 
     Outputs (saved to ctx.data):
         raw_thread_decisions (list): Raw AI output aggregated across batches, before normalization
@@ -3505,7 +3617,6 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
     ctx.textual.begin_step("AI Thread Resolution")
 
     contexts = ctx.get("thread_review_contexts")
-    cli_preference = ctx.data.get("cli_preference", "auto")
     project_root = ctx.data.get("project_root")
 
     if not contexts:
@@ -3513,13 +3624,17 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("skip")
         return Skip("No thread_review_contexts in context")
 
-    adapter = _resolve_headless_adapter(cli_preference)
+    adapter, route_note, _ = _resolve_review_adapter(ctx, ai_thread_resolution)
 
     if not adapter:
-        ctx.textual.warning_text("No headless CLI available — skipping AI thread resolution")
+        ctx.textual.warning_text(
+            f"{route_note or 'No headless CLI available'} — skipping AI thread resolution"
+        )
         ctx.data["raw_thread_decisions"] = []
         ctx.textual.end_step("success")
         return Success("No decisions (no CLI available)", metadata={"raw_thread_decisions": []})
+
+    _announce_review_adapter(ctx, adapter)
 
     # Split into batches so one call never has to carry every open thread at
     # once — each thread's full conversation/hunk/commit context stays intact,
@@ -3550,7 +3665,9 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
         with ctx.textual.loading(
             f"Asking {cli_display} to analyse {batch_label} ({len(batch)} thread(s))…"
         ):
-            response = adapter.execute(prompt, cwd=project_root, timeout=300)
+            response = run_interruptible(
+                lambda: adapter.execute(prompt, cwd=project_root, timeout=300)
+            )
         adapter_duration_seconds = time.monotonic() - adapter_started_at
         logger.info(
             "thread_resolution_adapter_call",

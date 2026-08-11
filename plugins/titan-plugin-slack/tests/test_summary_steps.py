@@ -1,5 +1,11 @@
 from unittest.mock import MagicMock
 
+from titan_cli.ai.router import (
+    AIExecutionError,
+    AIExecutionSuccess,
+    AIProviderType,
+    AIRouteDecision,
+)
 from titan_cli.core.result import ClientSuccess
 from titan_cli.engine import Error, Skip, Success
 from titan_cli.engine.context import WorkflowContext
@@ -21,6 +27,19 @@ def _build_context() -> WorkflowContext:
     loading_mock.__exit__ = MagicMock(return_value=None)
     ctx.textual.loading = MagicMock(return_value=loading_mock)
     return ctx
+
+
+def _ai_router(result) -> MagicMock:
+    """A façade stub whose generate_text returns the given execution result."""
+    router = MagicMock()
+    router.generate_text.return_value = result
+    return router
+
+
+def _generated(text: str) -> AIExecutionSuccess:
+    return AIExecutionSuccess(
+        decision=AIRouteDecision(provider=AIProviderType.REMOTE), data=text
+    )
 
 
 def test_select_target_returns_error_for_short_query() -> None:
@@ -99,11 +118,36 @@ def test_ai_summarize_messages_skips_without_ai() -> None:
     assert isinstance(result, Skip)
 
 
+def test_ai_summarize_messages_skips_when_ai_is_turned_off() -> None:
+    ctx = _build_context()
+    ctx.ai_router = _ai_router(
+        AIExecutionError(
+            error_message="AI is turned off for this task.",
+            error_code="AI_DISABLED",
+            log_level="info",
+        )
+    )
+    ctx.data["slack_messages"] = [UISlackMessage(ts="1", text="Hello", user="U123")]
+
+    result = ai_summarize_messages_step(ctx)
+
+    assert isinstance(result, Skip)
+    assert "turned off" in result.message
+
+
+def test_ai_summarize_messages_routes_through_the_ai_facade() -> None:
+    ctx = _build_context()
+    ctx.ai_router = _ai_router(_generated("Summary text"))
+    ctx.data["slack_messages"] = [UISlackMessage(ts="1", text="Hello", user="U123")]
+
+    ai_summarize_messages_step(ctx)
+
+    assert ctx.ai_router.generate_text.call_args.kwargs["policy"] is ai_summarize_messages_step
+
+
 def test_ai_summarize_messages_returns_summary() -> None:
     ctx = _build_context()
-    ctx.ai = MagicMock()
-    ctx.ai.is_available.return_value = True
-    ctx.ai.generate.return_value = MagicMock(content="Summary text")
+    ctx.ai_router = _ai_router(_generated("Summary text"))
     ctx.data["slack_messages"] = [UISlackMessage(ts="1", text="Hello", user="U123")]
     ctx.data["slack_target_name"] = "general"
 
@@ -115,9 +159,7 @@ def test_ai_summarize_messages_returns_summary() -> None:
 
 def test_ai_summarize_messages_returns_error_for_empty_summary() -> None:
     ctx = _build_context()
-    ctx.ai = MagicMock()
-    ctx.ai.is_available.return_value = True
-    ctx.ai.generate.return_value = MagicMock(content="   ")
+    ctx.ai_router = _ai_router(_generated("   "))
     ctx.data["slack_messages"] = [UISlackMessage(ts="1", text="Hello", user="U123")]
 
     result = ai_summarize_messages_step(ctx)
@@ -128,9 +170,12 @@ def test_ai_summarize_messages_returns_error_for_empty_summary() -> None:
 
 def test_ai_summarize_messages_returns_visual_error_for_rate_limit() -> None:
     ctx = _build_context()
-    ctx.ai = MagicMock()
-    ctx.ai.is_available.return_value = True
-    ctx.ai.generate.side_effect = RuntimeError("Rate limit exceeded: 429 RESOURCE_EXHAUSTED")
+    ctx.ai_router = _ai_router(
+        AIExecutionError(
+            error_message="Rate limit exceeded: 429 RESOURCE_EXHAUSTED",
+            error_code="EXECUTION_FAILED",
+        )
+    )
     ctx.data["slack_messages"] = [UISlackMessage(ts="1", text="Hello", user="U123")]
 
     result = ai_summarize_messages_step(ctx)

@@ -5,6 +5,11 @@ Anthropic AI provider (Claude)
 from titan_cli.core.models import AIDirectProvider
 
 from .base import AIProvider
+from .sampling import (
+    is_temperature_rejection,
+    rejects_temperature,
+    remember_temperature_rejection,
+)
 from ..models import AIRequest, AIResponse
 from ..exceptions import (
     AIProviderAuthenticationError,
@@ -73,14 +78,16 @@ class AnthropicProvider(AIProvider):
             api_params = {
                 "model": self.model,
                 "max_tokens": request.max_tokens,
-                "temperature": request.temperature,
                 "messages": messages
             }
+
+            if request.temperature is not None and not rejects_temperature(self.model):
+                api_params["temperature"] = request.temperature
 
             if system_content:
                 api_params["system"] = system_content
 
-            response = self.client.messages.create(**api_params)
+            response = self._create_message(api_params)
 
             # Calculate total tokens
             input_tokens = response.usage.input_tokens
@@ -113,6 +120,23 @@ class AnthropicProvider(AIProvider):
                 )
             else:
                 raise AIProviderAPIError(f"Anthropic API error: {e}")
+
+    def _create_message(self, api_params: dict):
+        """
+        Send the request, retrying without `temperature` if the model refuses it.
+
+        Newer models reject the parameter instead of ignoring it, which fails the whole
+        request. The retry costs one extra round trip the first time a given model is used;
+        after that the model is remembered and `temperature` is never sent to it again.
+        """
+        try:
+            return self.client.messages.create(**api_params)
+        except Exception as e:
+            if "temperature" not in api_params or not is_temperature_rejection(e):
+                raise
+            remember_temperature_rejection(self.model)
+            del api_params["temperature"]
+            return self.client.messages.create(**api_params)
 
     @property
     def name(self) -> str:

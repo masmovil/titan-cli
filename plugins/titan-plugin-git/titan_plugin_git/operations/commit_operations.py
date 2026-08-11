@@ -7,44 +7,48 @@ These functions can be used by any step and are easily testable.
 
 from typing import Optional, Tuple
 
+from titan_cli.core.diffs import (
+    SAMPLED_DIFF_NOTE,
+    budget_diff_across_files,
+    format_file_summary,
+)
+
 
 def build_ai_commit_prompt(diff_text: str, files_list: list, max_diff_chars: int = 8000) -> str:
     """
     Build the AI prompt for generating a commit message.
 
+    The prompt always carries a complete per-file summary, even when the diff itself has to
+    be cut: the message has to describe the whole commit, and it can only weigh what it was
+    shown.
+
     Args:
         diff_text: Full git diff output
         files_list: List of changed file paths
-        max_diff_chars: Maximum characters to include from diff (default: 8000)
+        max_diff_chars: Character budget for the diff body, shared across files
 
     Returns:
         Complete prompt string for AI
-
-    Examples:
-        >>> diff = "diff --git a/file.py\\n+new line"
-        >>> files = ["file.py"]
-        >>> prompt = build_ai_commit_prompt(diff, files, max_diff_chars=100)
-        >>> "Changed Files" in prompt
-        True
-        >>> "file.py" in prompt
-        True
     """
-    # Build files summary
-    files_summary = "\n".join([f"  - {f}" for f in files_list]) if files_list else "(checking diff)"
+    # One file list, not two: the per-file counts carry the same paths and say how much each
+    # one changed. Listing them twice doubled the part of the prompt that grows with the size
+    # of the commit, for no extra information.
+    stat_summary = format_file_summary(diff_text)
+    if not stat_summary:
+        stat_summary = (
+            "\n".join(f"  - {f}" for f in files_list) if files_list else "(checking diff)"
+        )
 
-    # Limit diff size to avoid token overflow
-    diff_preview = diff_text[:max_diff_chars] if len(diff_text) > max_diff_chars else diff_text
-    truncated = len(diff_text) > max_diff_chars
-
-    if truncated:
-        diff_preview += "\n\n[... diff truncated due to size ...]"
+    diff_preview = budget_diff_across_files(diff_text, max_diff_chars)
+    truncated = len(diff_preview) < len(diff_text)
 
     prompt = f"""Analyze these code changes and generate a conventional commit message.
 
-## Changed Files ({len(files_list)} total)
-{files_summary}
+## Changed files ({len(files_list)} total), with lines added and removed
+{stat_summary}
 
 ## Diff
+{SAMPLED_DIFF_NOTE if truncated else ""}
 ```diff
 {diff_preview}
 ```
@@ -55,6 +59,14 @@ Generate ONE single-line conventional commit message following this EXACT format
 - Types: feat, fix, refactor, docs, test, chore, style, perf
 - Description: clear summary in imperative mood, starting with CAPITAL letter (be descriptive, concise, and at least 5 words long)
 - NO line breaks, NO body, NO additional explanation
+
+The single line must summarise the WHOLE commit as well as one line can:
+- Describe the overall change, not the first detail you happened to read
+- When the commit spans several areas, name the change that ties them together rather than
+  picking one file's story - a message that describes a fraction of the commit is wrong even
+  when the fraction is accurate
+- Prefer the production behaviour that changed over the tests that came with it
+- Choose the type that fits the main change, not the largest number of lines
 
 Examples (notice they start with capital letter and are all one line):
 - feat: Add OAuth2 integration with Google provider

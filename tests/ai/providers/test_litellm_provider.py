@@ -358,3 +358,109 @@ class TestLiteLLMProvider:
         )
 
         assert provider.validate_api_key() is True
+
+    @staticmethod
+    def _successful_completion(model: str = "claude-opus-5"):
+        choice = Mock()
+        choice.message.content = "Generated response"
+        choice.finish_reason = "stop"
+        response = Mock()
+        response.choices = [choice]
+        response.model = model
+        response.usage = Mock(prompt_tokens=1, completion_tokens=2, total_tokens=3)
+        return response
+
+    @patch("titan_cli.ai.providers.litellm.LiteLLMClient")
+    def test_model_refusing_temperature_is_retried_without_it(self, mock_litellm_client):
+        """A model that rejects `temperature` still gets its answer, minus the parameter."""
+        mock_client = Mock()
+        mock_litellm_client.return_value = self._make_gateway_client(client=mock_client)
+
+        mock_client.chat.completions.create.side_effect = [
+            APIError(
+                "litellm.BadRequestError: AnthropicException - "
+                '{"message":"`temperature` is deprecated for this model."}',
+                request=Mock(),
+                body=None,
+            ),
+            self._successful_completion("temp-refuser-1"),
+        ]
+
+        provider = LiteLLMProvider(base_url="http://localhost:4000", model="temp-refuser-1")
+        request = AIRequest(
+            messages=[AIMessage(role="user", content="Hello")],
+            temperature=0.7,
+        )
+
+        response = provider.generate(request)
+
+        assert response.content == "Generated response"
+        assert mock_client.chat.completions.create.call_count == 2
+        first, second = mock_client.chat.completions.create.call_args_list
+        assert first.kwargs["temperature"] == 0.7
+        assert "temperature" not in second.kwargs
+
+    @patch("titan_cli.ai.providers.litellm.LiteLLMClient")
+    def test_refusal_is_remembered_so_later_calls_skip_temperature(self, mock_litellm_client):
+        """The wasted round trip happens once per model, not once per call."""
+        mock_client = Mock()
+        mock_litellm_client.return_value = self._make_gateway_client(client=mock_client)
+
+        mock_client.chat.completions.create.side_effect = [
+            APIError(
+                "`temperature` is deprecated for this model.", request=Mock(), body=None
+            ),
+            self._successful_completion("temp-refuser-2"),
+            self._successful_completion("temp-refuser-2"),
+        ]
+
+        provider = LiteLLMProvider(base_url="http://localhost:4000", model="temp-refuser-2")
+        request = AIRequest(
+            messages=[AIMessage(role="user", content="Hello")],
+            temperature=0.7,
+        )
+
+        provider.generate(request)
+        provider.generate(request)
+
+        assert mock_client.chat.completions.create.call_count == 3
+        assert "temperature" not in mock_client.chat.completions.create.call_args_list[2].kwargs
+
+    @patch("titan_cli.ai.providers.litellm.LiteLLMClient")
+    def test_unrelated_bad_request_is_not_retried(self, mock_litellm_client):
+        """Only a refusal of `temperature` is retried - anything else surfaces as-is."""
+        mock_client = Mock()
+        mock_litellm_client.return_value = self._make_gateway_client(client=mock_client)
+
+        mock_client.chat.completions.create.side_effect = APIError(
+            "context length exceeded", request=Mock(), body=None
+        )
+
+        provider = LiteLLMProvider(base_url="http://localhost:4000", model="temp-refuser-3")
+        request = AIRequest(
+            messages=[AIMessage(role="user", content="Hello")],
+            temperature=0.7,
+        )
+
+        with pytest.raises(AIProviderAPIError):
+            provider.generate(request)
+
+        assert mock_client.chat.completions.create.call_count == 1
+
+    @patch("titan_cli.ai.providers.litellm.LiteLLMClient")
+    def test_known_family_never_sends_temperature(self, mock_litellm_client):
+        """A recognized model skips the parameter outright - no failed first call."""
+        mock_client = Mock()
+        mock_litellm_client.return_value = self._make_gateway_client(client=mock_client)
+        mock_client.chat.completions.create.return_value = self._successful_completion()
+
+        provider = LiteLLMProvider(base_url="http://localhost:4000", model="claude-opus-5")
+        request = AIRequest(
+            messages=[AIMessage(role="user", content="Hello")],
+            temperature=0.7,
+        )
+
+        provider.generate(request)
+
+        mock_client.chat.completions.create.assert_called_once()
+        assert "temperature" not in mock_client.chat.completions.create.call_args.kwargs

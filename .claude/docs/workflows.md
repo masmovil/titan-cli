@@ -60,7 +60,7 @@ Calls a registered step function from a plugin.
 **Special plugin values:**
 - `plugin: project` → calls a step from `.titan/steps/` in the current project
 - `plugin: user` → calls a step from `~/.titan/steps/`
-- `plugin: core` → calls a built-in Titan step. Available core steps: `ai_code_assistant`, `select_cli`. Note: core steps have a different signature — they receive `(step_config, ctx)` instead of just `(ctx)`.
+- `plugin: core` → calls a built-in Titan step. Available core steps: `ai_code_assistant`. Note: core steps have a different signature — they receive `(step_config, ctx)` instead of just `(ctx)`.
 
 ### 2. Shell Command
 

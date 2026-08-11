@@ -44,7 +44,6 @@ steps:
     step: ai_code_assistant
     params:
       context_key: "merge_conflict_context"
-      cli_preference: "auto"
       ask_confirmation: true
       fail_on_decline: false
     on_error: continue

@@ -10,6 +10,7 @@ from titan_cli.core.models import (
     AIDirectProvider,
     AIGatewayBackend,
 )
+from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.secrets import SecretManager
 from .dependencies import get_install_command
 from .exceptions import AIConfigurationError
@@ -68,7 +69,16 @@ class AIClient:
 
         requested_id = connection_id or ai_config.default_connection
 
-        if requested_id and requested_id in ai_config.connections:
+        if requested_id and requested_id not in ai_config.connections:
+            # Naming a connection that is gone - typically a default left behind by a rename -
+            # is answered by saying so. Quietly using a different one would send the user's
+            # prompts somewhere they never chose, and they would have no way to notice.
+            raise AIConfigurationError(
+                f"AI connection '{requested_id}' does not exist. "
+                f"Pick one in AI Configuration (main menu)."
+            )
+
+        if requested_id:
             self.connection_id = requested_id
         elif ai_config.connections:
             self.connection_id = list(ai_config.connections.keys())[0]
@@ -150,6 +160,7 @@ class AIClient:
         messages: List[AIMessage],
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        json_schema: Optional[dict] = None,
     ) -> AIResponse:
         """
         Generate a response using the configured AI connection.
@@ -158,6 +169,10 @@ class AIClient:
             messages: List of conversation messages.
             max_tokens: Optional override for the maximum number of tokens.
             temperature: Optional override for the temperature.
+            json_schema: Accepted and ignored. Remote connections here do not
+                enforce a response shape, and the caller validates the answer
+                either way; the parameter exists so the same call works whether
+                the answer comes from a connection or a local CLI.
 
         Returns:
             AI response with generated content.
@@ -189,7 +204,10 @@ class AIClient:
                 )
             ),
         )
-        return self.provider.generate(request)
+        # The SDK's HTTP request blocks with no way to poll for app exit, so it
+        # runs interruptibly: if the TUI closes mid-request, the workflow thread
+        # aborts instead of hanging interpreter shutdown until the response lands.
+        return run_interruptible(lambda: self.provider.generate(request))
 
     def chat(
         self,

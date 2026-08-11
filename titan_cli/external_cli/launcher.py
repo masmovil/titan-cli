@@ -1,4 +1,3 @@
-# titan_cli/utils/cli_launcher.py
 import subprocess
 import sys
 import shutil
@@ -26,27 +25,39 @@ class CLILauncher:
                                        If the CLI accepts a positional argument for the prompt, set to None.
     """
 
-    def __init__(self, cli_name: str, install_instructions: Optional[str] = None, prompt_flag: Optional[str] = None):
+    def __init__(
+        self,
+        cli_name: str,
+        install_instructions: Optional[str] = None,
+        prompt_flag: Optional[str] = None,
+        model_flag: Optional[str] = None,
+    ):
         self.cli_name = cli_name
         self.install_instructions = install_instructions
         self.prompt_flag = prompt_flag
+        self.model_flag = model_flag
 
     def is_available(self) -> bool:
         """Check if the CLI tool is installed."""
         return shutil.which(self.cli_name) is not None
 
-    def launch(self, prompt: Optional[str] = None, cwd: Optional[str] = None) -> int:
+    def launch(self, prompt: Optional[str] = None, cwd: Optional[str] = None, model: Optional[str] = None) -> int:
         """
         Launch the CLI tool in the current terminal.
 
         Args:
             prompt: Optional initial prompt to send to the CLI
             cwd: Working directory (default: current)
+            model: Optional model identifier to launch the CLI with. Ignored if this CLI
+                has no registered `model_flag`.
 
         Returns:
             Exit code from the CLI tool
         """
         cmd = [self.cli_name]
+
+        if model and self.model_flag:
+            cmd.extend([self.model_flag, model])
 
         if prompt:
             if self.prompt_flag:

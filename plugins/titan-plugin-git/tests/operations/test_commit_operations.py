@@ -21,26 +21,89 @@ class TestBuildAICommitPrompt:
         diff = "diff --git a/file.py\n+new line"
         files = ["file.py"]
         prompt = build_ai_commit_prompt(diff, files)
-        assert "Changed Files" in prompt
+        assert "Changed files" in prompt
         assert "file.py" in prompt
         assert "diff --git a/file.py" in prompt
         assert "CRITICAL Instructions" in prompt
 
     def test_truncate_long_diff(self):
-        """Should truncate diff if too long."""
+        """Should cut a diff that busts the budget, and say it did."""
         diff = "a" * 10000
         files = ["file.py"]
         prompt = build_ai_commit_prompt(diff, files, max_diff_chars=100)
-        assert len(prompt) < 1100  # Much shorter than original diff
-        assert "truncated" in prompt.lower()
+        assert len(prompt) < 2500  # Much shorter than the original diff
+        assert "omitted" in prompt.lower()
 
     def test_no_truncation_for_short_diff(self):
-        """Should not truncate short diff."""
+        """Should not cut a short diff."""
         diff = "short diff"
         files = ["file.py"]
         prompt = build_ai_commit_prompt(diff, files, max_diff_chars=100)
-        assert "truncated" not in prompt.lower()
+        assert "omitted" not in prompt.lower()
+        assert "sampled" not in prompt.lower()
         assert "short diff" in prompt
+
+    def test_every_file_is_represented_when_the_diff_is_cut(self):
+        """
+        The bug this guards: clipping the first N characters gave the whole budget to
+        whichever files git emitted first, so a message could confidently describe a
+        fraction of the commit. A commit of production code plus tests was once summarised
+        as `test:` because the tests were all that fit.
+        """
+        diff = "".join(
+            f"diff --git a/file{i}.py b/file{i}.py\n"
+            f"--- a/file{i}.py\n+++ b/file{i}.py\n"
+            + "".join(f"+line {j} of file {i}\n" for j in range(200))
+            for i in range(6)
+        )
+        files = [f"file{i}.py" for i in range(6)]
+
+        prompt = build_ai_commit_prompt(diff, files, max_diff_chars=3000)
+
+        for i in range(6):
+            assert f"diff --git a/file{i}.py" in prompt, f"file{i}.py has no diff at all"
+
+    def test_prompt_size_does_not_grow_with_the_number_of_files(self):
+        """
+        A per-file floor is what makes each slice worth reading, and it is also how a fixed
+        cost quietly becomes one that scales with the commit. Both the diff body and the
+        file summary are capped, so a 3000-file commit costs about what a 20-file one does.
+        """
+
+        def diff_of(n_files):
+            return "".join(
+                f"diff --git a/f{i}.py b/f{i}.py\n--- a/f{i}.py\n+++ b/f{i}.py\n"
+                + "".join(f"+line {j} in file {i}\n" for j in range(200))
+                for i in range(n_files)
+            )
+
+        small = build_ai_commit_prompt(diff_of(20), [f"f{i}.py" for i in range(20)])
+        huge = build_ai_commit_prompt(diff_of(3000), [f"f{i}.py" for i in range(3000)])
+
+        assert len(huge) < len(small) * 1.5
+        assert "more changed files" in huge
+
+    def test_the_total_file_count_is_always_stated(self):
+        """Even when most files are only counted, the message needs to know how many."""
+        files = [f"f{i}.py" for i in range(500)]
+        diff = "".join(f"diff --git a/f{i}.py b/f{i}.py\n+one\n" for i in range(500))
+
+        prompt = build_ai_commit_prompt(diff, files)
+
+        assert "500 total" in prompt
+
+    def test_per_file_line_counts_cover_every_file(self):
+        """The counts are the complete picture even when the diff body is not."""
+        diff = (
+            "diff --git a/small.py b/small.py\n--- a/small.py\n+++ b/small.py\n+one\n-two\n"
+            "diff --git a/big.py b/big.py\n--- a/big.py\n+++ b/big.py\n"
+            + "".join(f"+line {j}\n" for j in range(500))
+        )
+
+        prompt = build_ai_commit_prompt(diff, ["small.py", "big.py"], max_diff_chars=200)
+
+        assert "small.py: +1 -1" in prompt
+        assert "big.py: +500 -0" in prompt
 
     def test_multiple_files(self):
         """Should list all files."""
