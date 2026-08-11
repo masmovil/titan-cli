@@ -234,6 +234,61 @@ class TestDiffServiceGetBranchDiff:
 
 
 @pytest.mark.unit
+class TestDiffServiceGetBranchNumstat:
+    """Test DiffService.get_branch_numstat()"""
+
+    def test_parses_numstat_lines(self, service, mock_git_network):
+        """Test parses add/del/path triplets into UIFileChurn entries"""
+        mock_git_network.run_command.return_value = (
+            "120\t5\tsrc/app/main.py\n"
+            "0\t452\tsrc/old/removed.py\n"
+        )
+
+        result = service.get_branch_numstat("main", "feature")
+
+        assert isinstance(result, ClientSuccess)
+        assert [(c.path, c.additions, c.deletions) for c in result.data] == [
+            ("src/app/main.py", 120, 5),
+            ("src/old/removed.py", 0, 452),
+        ]
+        args = mock_git_network.run_command.call_args.args[0]
+        assert "--numstat" in args
+        assert "--no-renames" in args
+        assert "origin/main...feature" in args
+
+    def test_marks_binary_files(self, service, mock_git_network):
+        """Test binary files ('-' counters) come back flagged with zero counts"""
+        mock_git_network.run_command.return_value = "-\t-\tassets/logo.png\n10\t2\tsrc/a.py"
+
+        result = service.get_branch_numstat("main", "feature")
+
+        assert isinstance(result, ClientSuccess)
+        binary = result.data[0]
+        assert binary.path == "assets/logo.png"
+        assert binary.is_binary is True
+        assert binary.additions == 0 and binary.deletions == 0
+        assert result.data[1].is_binary is False
+
+    def test_uses_remote_prefix_for_both_branches_when_use_remote(self, service, mock_git_network):
+        """Test use_remote=True prefixes both refs with the default remote"""
+        mock_git_network.run_command.return_value = ""
+
+        service.get_branch_numstat("main", "feature", use_remote=True)
+
+        args = mock_git_network.run_command.call_args.args[0]
+        assert "origin/main...origin/feature" in args
+
+    def test_error_returns_client_error(self, service, mock_git_network):
+        """Test git error returns ClientError"""
+        mock_git_network.run_command.side_effect = GitCommandError("unknown branch")
+
+        result = service.get_branch_numstat("main", "feature")
+
+        assert isinstance(result, ClientError)
+        assert result.error_code == "DIFF_ERROR"
+
+
+@pytest.mark.unit
 class TestDiffServiceGetDiffStat:
     """Test DiffService.get_diff_stat()"""
 

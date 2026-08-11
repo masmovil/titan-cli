@@ -22,6 +22,7 @@ from .services import (
     WorktreeService,
 )
 from ..models.view import (
+    UIFileChurn,
     UIGitBranch,
     UIGitCommit,
     UIGitStatus,
@@ -336,6 +337,22 @@ class GitClient:
             ClientResult[str] with diff output
         """
         return self.diff_service.get_branch_diff(base_branch, head_branch, context_lines, use_remote)
+
+    def get_branch_numstat(
+        self, base_branch: str, head_branch: str, use_remote: bool = False
+    ) -> ClientResult[List[UIFileChurn]]:
+        """
+        Get per-file addition/deletion counters between two branches.
+
+        Args:
+            base_branch: Base branch name
+            head_branch: Head branch name
+            use_remote: If True, both branches are treated as remote refs (default: False)
+
+        Returns:
+            ClientResult[List[UIFileChurn]] with one entry per changed file
+        """
+        return self.diff_service.get_branch_numstat(base_branch, head_branch, use_remote)
 
     def get_diff_stat(self, base_ref: str, head_ref: str = "HEAD") -> ClientResult[str]:
         """Get diff stat summary."""

@@ -486,6 +486,29 @@ client.get_branch_diff(
 - `context_lines`: Optional. Number of diff context lines.
 - `use_remote`: Optional. Treat both branches as remote refs.
 
+### Get per-file change counters between branches
+
+Returns a `UIFileChurn` list with exact additions/deletions per changed file
+(`git diff --numstat`). Binary files are included with `is_binary=True` and zero
+counters. Useful when an API source reports zeroed counters for files whose diff
+it cannot render.
+
+**Call:**
+
+```python
+client.get_branch_numstat(
+    base_branch="main",
+    head_branch="feature/search",
+    use_remote=False,
+)
+```
+
+**Parameters:**
+
+- `base_branch`: Required. Base branch.
+- `head_branch`: Required. Head branch.
+- `use_remote`: Optional. Treat both branches as remote refs.
+
 ### Get a diff stat between refs
 
 Returns a summary of file-level changes between refs.

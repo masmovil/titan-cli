@@ -232,9 +232,14 @@ def score_review_candidates(
             score += 3
             reasons.append("new file")
 
-        for rule in matching_scoring_rules(entry.path, review_profile):
-            score += rule.score_delta
-            reasons.append(rule.reason)
+        if not entry.is_test:
+            # Scoring rules describe production roles (viewmodels, utils, config
+            # surfaces...). A test file matching them by name would inherit the
+            # criticality of the code it tests; tests score on their own change
+            # size plus the explicit test bonus below.
+            for rule in matching_scoring_rules(entry.path, review_profile):
+                score += rule.score_delta
+                reasons.append(rule.reason)
 
         if entry.path in repeated_callsite_paths:
             score -= 2

@@ -962,6 +962,41 @@ def _announce_review_adapter(ctx: WorkflowContext, adapter: object) -> None:
 # ============================================================================
 
 
+def _fetch_local_churn_for_truncated_files(
+    ctx: WorkflowContext, pr: UIPullRequest, files: list
+) -> Optional[dict]:
+    """Fetch real per-file counters from local git when the API reports 0/0.
+
+    GitHub's files endpoint returns additions=0/deletions=0 for files whose diff
+    it cannot render (too large or binary). Left as-is, those files score as if
+    nothing changed. A local numstat has the exact counters — available for
+    same-repo PRs, where the fetch step already ran `git fetch --all`. Fork PRs
+    and sessions without the git plugin keep the API values.
+    """
+    has_truncated = any(
+        f.additions == 0 and f.deletions == 0 and f.status.value != "renamed" for f in files
+    )
+    if not has_truncated or not ctx.git or pr.is_cross_repository:
+        return None
+
+    numstat_result = ctx.git.get_branch_numstat(pr.base_ref, pr.head_ref, use_remote=True)
+    match numstat_result:
+        case ClientSuccess(data=churns):
+            churn_by_path = {c.path: (c.additions, c.deletions) for c in churns if not c.is_binary}
+            logger.debug(
+                "manifest_churn_fallback",
+                truncated_candidates=sum(
+                    1 for f in files if f.additions == 0 and f.deletions == 0
+                ),
+                numstat_files=len(churn_by_path),
+            )
+            return churn_by_path
+        case ClientError(error_message=err):
+            logger.warning("manifest_numstat_failed", error=err)
+            return None
+    return None
+
+
 def build_change_manifest(ctx: WorkflowContext) -> WorkflowResult:
     """
     Build a structured manifest of the PR changes (no AI involved).
@@ -992,8 +1027,12 @@ def build_change_manifest(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("error")
         return Error("No PR data in context (run fetch_pr_review_bundle first)")
 
+    churn_by_path = _fetch_local_churn_for_truncated_files(ctx, pr, files)
+
     try:
-        manifest = build_change_manifest_operation(pr, files)
+        manifest = build_change_manifest_operation(
+            pr, files, _get_review_profile(ctx), churn_by_path=churn_by_path
+        )
     except Exception as e:
         ctx.textual.error_text(f"Failed to build change manifest: {e}")
         ctx.textual.end_step("error")

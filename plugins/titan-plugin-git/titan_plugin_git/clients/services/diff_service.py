@@ -5,11 +5,14 @@ Diff Service
 Business logic for Git diff operations.
 Uses network layer to execute commands and returns diff outputs.
 """
+from typing import List
+
 from titan_cli.core.result import ClientResult, ClientSuccess, ClientError
 from titan_cli.core.logging import log_client_operation
 
 from ..network import GitNetwork
-from ...exceptions import GitCommandError
+from ...exceptions import GitCommandError, GitError
+from ...models.view import UIFileChurn
 
 
 class DiffService:
@@ -200,6 +203,58 @@ class DiffService:
                 message=f"Diff between {base_branch} and {head_branch} retrieved"
             )
         except GitCommandError as e:
+            return ClientError(error_message=str(e), error_code="DIFF_ERROR")
+
+    @log_client_operation()
+    def get_branch_numstat(
+        self, base_branch: str, head_branch: str, use_remote: bool = False
+    ) -> ClientResult[List[UIFileChurn]]:
+        """
+        Get per-file addition/deletion counters between two branches.
+
+        Args:
+            base_branch: Base branch name
+            head_branch: Head branch name
+            use_remote: If True, both branches are prefixed with the configured
+                default_remote. Used for PR reviews where branches are remote
+                refs only (not checked out locally).
+
+        Returns:
+            ClientResult[List[UIFileChurn]] with one entry per changed file.
+            Binary files are included with is_binary=True and zero counters.
+        """
+        try:
+            if use_remote:
+                base_ref = f"{self.default_remote}/{base_branch}"
+                head_ref = f"{self.default_remote}/{head_branch}"
+            else:
+                base_ref = f"{self.default_remote}/{base_branch}"
+                head_ref = head_branch
+
+            # --no-renames keeps the output one plain "add<TAB>del<TAB>path" line
+            # per file: a rename becomes delete+add, so the current path always
+            # appears with its full counters and no "old => new" forms to parse.
+            output = self.git.run_command(
+                ["git", "diff", "--numstat", "--no-renames", f"{base_ref}...{head_ref}"],
+                check=False,
+            )
+
+            churns: List[UIFileChurn] = []
+            for line in output.splitlines():
+                parts = line.split("\t")
+                if len(parts) != 3:
+                    continue
+                added, deleted, path = parts
+                if added == "-" or deleted == "-":
+                    churns.append(UIFileChurn(path=path, additions=0, deletions=0, is_binary=True))
+                    continue
+                churns.append(UIFileChurn(path=path, additions=int(added), deletions=int(deleted)))
+
+            return ClientSuccess(
+                data=churns,
+                message=f"Numstat between {base_branch} and {head_branch} retrieved",
+            )
+        except (GitError, ValueError) as e:
             return ClientError(error_message=str(e), error_code="DIFF_ERROR")
 
     @log_client_operation()
