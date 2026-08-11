@@ -63,20 +63,20 @@ class AIRouteResolver:
         ask the user (no silent fallback).
         """
         if runtime_override is not None:
-            resolved = self._decide(runtime_override, reason="runtime override")
-            if isinstance(resolved, AIRouteDecision):
-                return self._guard_executable(resolved, policy, task, source="requested")
-            return resolved
+            refusal = self._guard_executable(runtime_override, policy, task, source="requested")
+            if refusal is not None:
+                return refusal
+            return self._decide(runtime_override, reason="runtime override")
 
         preferences = self._preferences()
 
         if preferences and task in preferences.tasks:
             resolved = self._resolve_preference(
                 preferences.tasks[task],
+                policy=policy,
+                task=task,
                 reason=f"task preference for '{task}'",
             )
-            if isinstance(resolved, AIRouteDecision):
-                return self._guard_executable(resolved, policy, task)
             if resolved is not None:
                 return resolved
 
@@ -153,32 +153,35 @@ class AIRouteResolver:
 
     def _guard_executable(
         self,
-        decision: AIRouteDecision,
+        provider: AIProviderType,
         policy: Optional[AIRoutePolicy],
         task: str,
         source: str = "configured",
-    ) -> AIRouteResolution:
+    ) -> Optional[AIRouteNeedsInput]:
         """
-        Refuse a provider the step's code can't execute.
+        Refuse a provider the step's code can't execute; None means it can.
 
         The preferences UI only offers what a step declares in `executes`, but
         a preference can predate a step's declaration (or be shared by several
         steps with different abilities), and a runtime override comes from a
         caller that never consulted `executes` at all. Handing the step a
         provider it can't drive would fail later and further from the cause, so
-        it is refused here, by name. `off` is always honored - any step can
-        skip. When the step declared no `executes` at all, the guard does not
-        apply and the decision passes through unchanged.
+        it is refused here, by name. Membership depends only on the provider
+        kind, so the guard runs before any instance-availability probing: a
+        provider the step can never run is refused up front, instead of first
+        sending the user off to configure an instance for it. `off` is always
+        honored - any step can skip. When the step declared no `executes` at
+        all, the guard does not apply.
         """
-        if decision.provider == AIProviderType.OFF:
-            return decision
+        if provider == AIProviderType.OFF:
+            return None
         if not policy or not policy.executes:
-            return decision
-        if decision.provider in policy.executes:
-            return decision
+            return None
+        if provider in policy.executes:
+            return None
         return AIRouteNeedsInput(
             reason=(
-                f"the {source} provider for '{task}' is '{decision.provider}', "
+                f"the {source} provider for '{task}' is '{provider}', "
                 f"which this step cannot run (it supports: "
                 f"{', '.join(str(p) for p in policy.executes)})"
             ),
@@ -193,21 +196,29 @@ class AIRouteResolver:
         )
 
     def _resolve_preference(
-        self, pref: AIProviderPreference, reason: str
+        self,
+        pref: AIProviderPreference,
+        policy: Optional[AIRoutePolicy],
+        task: str,
+        reason: str,
     ) -> Optional[AIRouteResolution]:
         """
         Try to honor a persisted preference.
 
-        The preference names only a kind of provider; `_decide` attaches the global instance
-        and reports by name if that instance is missing or unavailable. Returns `None` when
-        the stored provider value doesn't map to a known `AIProviderType`, so the caller keeps
-        checking lower-precedence sources.
+        The preference names only a kind of provider; the executable guard runs
+        on that kind first, then `_decide` attaches the global instance and
+        reports by name if that instance is missing or unavailable. Returns
+        `None` when the stored provider value doesn't map to a known
+        `AIProviderType`, so the caller keeps checking lower-precedence sources.
         """
         try:
             provider = AIProviderType(pref.provider)
         except ValueError:
             return None
 
+        refusal = self._guard_executable(provider, policy, task)
+        if refusal is not None:
+            return refusal
         return self._decide(provider, reason=reason)
 
     def _identifier_available(self, provider: AIProviderType, identifier: str) -> bool:
