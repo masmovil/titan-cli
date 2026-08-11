@@ -199,6 +199,20 @@ def test_remote_exception_becomes_execution_failed():
     assert "429 rate limited" in result.error_message
 
 
+def test_remote_empty_response_is_execution_failed():
+    """A blank answer is a failure, not an empty AIExecutionSuccess."""
+    executor = _executor(AIRouteDecision(provider=AIProviderType.REMOTE))
+    executor.remote_client = lambda decision: FakeAIClient(  # type: ignore[method-assign]
+        response=AIResponse(content="   \n", model="fake-model")
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "EXECUTION_FAILED"
+    assert "empty response" in result.error_message
+
+
 def test_remote_without_usable_client_is_provider_unavailable():
     executor = _executor(AIRouteDecision(provider=AIProviderType.REMOTE))
     executor.remote_client = lambda decision: None  # type: ignore[method-assign]
@@ -285,6 +299,35 @@ def test_headless_nonzero_exit_returns_stderr(monkeypatch):
     assert result.error_code == "EXECUTION_FAILED"
     assert result.error_message == "model overloaded"
     assert result.details["exit_code"] == 1
+
+
+def test_headless_nonzero_exit_with_empty_stderr_falls_back_to_exit_code(monkeypatch):
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+    adapter = FakeAdapter(response=HeadlessResponse(stdout="", stderr="  \n", exit_code=2))
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter", lambda cli: adapter
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "EXECUTION_FAILED"
+    assert result.error_message == "'claude' exited with code 2"
+
+
+def test_headless_empty_stdout_is_execution_failed(monkeypatch):
+    """A CLI that exits 0 but prints nothing is a failure, not an empty success."""
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+    adapter = FakeAdapter(response=HeadlessResponse(stdout="  \n", stderr="", exit_code=0))
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter", lambda cli: adapter
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "EXECUTION_FAILED"
+    assert "produced no output" in result.error_message
 
 
 def test_headless_exception_becomes_execution_failed(monkeypatch):
