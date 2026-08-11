@@ -63,7 +63,10 @@ class AIRouteResolver:
         ask the user (no silent fallback).
         """
         if runtime_override is not None:
-            return self._decide(runtime_override, reason="runtime override")
+            resolved = self._decide(runtime_override, reason="runtime override")
+            if isinstance(resolved, AIRouteDecision):
+                return self._guard_executable(resolved, policy, task, source="requested")
+            return resolved
 
         preferences = self._preferences()
 
@@ -149,18 +152,23 @@ class AIRouteResolver:
         return self.ai_config.preferences
 
     def _guard_executable(
-        self, decision: AIRouteDecision, policy: Optional[AIRoutePolicy], task: str
+        self,
+        decision: AIRouteDecision,
+        policy: Optional[AIRoutePolicy],
+        task: str,
+        source: str = "configured",
     ) -> AIRouteResolution:
         """
-        Refuse a persisted preference the step's code can't execute.
+        Refuse a provider the step's code can't execute.
 
         The preferences UI only offers what a step declares in `executes`, but
         a preference can predate a step's declaration (or be shared by several
-        steps with different abilities). Handing the step a provider it can't
-        drive would fail later and further from the cause, so it is refused
-        here, by name. `off` is always honored - any step can skip. When the
-        step declared no `executes` at all, the guard does not apply and the
-        decision passes through unchanged.
+        steps with different abilities), and a runtime override comes from a
+        caller that never consulted `executes` at all. Handing the step a
+        provider it can't drive would fail later and further from the cause, so
+        it is refused here, by name. `off` is always honored - any step can
+        skip. When the step declared no `executes` at all, the guard does not
+        apply and the decision passes through unchanged.
         """
         if decision.provider == AIProviderType.OFF:
             return decision
@@ -170,7 +178,7 @@ class AIRouteResolver:
             return decision
         return AIRouteNeedsInput(
             reason=(
-                f"the configured provider for '{task}' is '{decision.provider}', "
+                f"the {source} provider for '{task}' is '{decision.provider}', "
                 f"which this step cannot run (it supports: "
                 f"{', '.join(str(p) for p in policy.executes)})"
             ),
