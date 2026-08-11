@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from titan_cli.ai.agents.contracts import JsonContract, TextContract
 
 
@@ -128,6 +130,13 @@ def test_a_body_containing_json_does_not_truncate_the_answer():
 
     assert result.ok
     assert result.data["body"] == body
+
+
+def test_a_required_name_missing_from_the_schema_is_rejected_at_construction():
+    """Validation only walks the declared properties, so an undeclared required
+    name would otherwise never be enforced - the broken contract must not build."""
+    with pytest.raises(ValueError, match="labels"):
+        _issue_contract(required=("title", "labels"))
 
 
 def test_a_missing_required_field_fails():

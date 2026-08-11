@@ -179,6 +179,20 @@ class JsonContract(AgentContract):
     defaults: Optional[dict] = None
     fallback: Optional[AgentContract] = None
 
+    def __post_init__(self) -> None:
+        # Validation only walks `schema["properties"]`, so a required name that
+        # is not declared there would silently never be enforced. Fail here,
+        # where the broken contract is defined, instead of letting it pass.
+        undeclared = [
+            name for name in self.required
+            if name not in self.schema.get("properties", {})
+        ]
+        if undeclared:
+            raise ValueError(
+                "required fields not declared in schema properties: "
+                + ", ".join(undeclared)
+            )
+
     def json_schema(self) -> Optional[dict]:
         return self.schema
 
