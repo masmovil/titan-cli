@@ -47,10 +47,14 @@ class FakeAIClient:
 
 
 class FakeAdapter:
-    def __init__(self, response=None, error=None):
+    def __init__(self, response=None, error=None, available=True):
         self._response = response or HeadlessResponse(stdout="cli text", stderr="", exit_code=0)
         self._error = error
+        self._available = available
         self.calls = []
+
+    def is_available(self):
+        return self._available
 
     def execute(self, prompt, cwd=None, timeout=60, json_schema=None, model=None):
         self.calls.append(
@@ -295,6 +299,22 @@ def test_headless_exception_becomes_execution_failed(monkeypatch):
     assert isinstance(result, AIExecutionError)
     assert result.error_code == "EXECUTION_FAILED"
     assert "timed out" in result.error_message
+
+
+def test_headless_missing_binary_is_provider_unavailable(monkeypatch):
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+    adapter = FakeAdapter(available=False)
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter",
+        lambda cli: adapter,
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "PROVIDER_UNAVAILABLE"
+    assert "'claude' is not installed" in result.error_message
+    assert adapter.calls == []
 
 
 def test_headless_workflow_aborted_propagates(monkeypatch):

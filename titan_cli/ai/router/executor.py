@@ -547,6 +547,16 @@ class AIExecutor:
                 decision=decision,
             )
 
+        # A missing binary means the provider is not usable, not that it ran and
+        # failed; report it as PROVIDER_UNAVAILABLE with the config hint instead of
+        # letting execute() raise into the generic EXECUTION_FAILED handler below.
+        if not adapter.is_available():
+            return AIExecutionError(
+                error_message=f"'{cli}' is not installed. {CONFIG_HINT}",
+                error_code="PROVIDER_UNAVAILABLE",
+                decision=decision,
+            )
+
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
 
         started = time.monotonic()
