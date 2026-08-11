@@ -237,6 +237,23 @@ class TestGlobalInstanceResolution:
         assert isinstance(resolution, AIRouteNeedsInput)
         assert "no default CLI is configured" in resolution.reason
 
+    def test_first_obstacle_wins_when_every_declared_default_fails(self):
+        """With several failing candidates, the reason surfaced is the first one hit."""
+        resolver = AIRouteResolver(
+            _config(default_cli=None, default_connection=None),
+            FakeAvailability(),
+        )
+        policy = AIRoutePolicy(
+            task="generic_assistant",
+            preferred=[AIProviderType.CLI_HEADLESS, AIProviderType.REMOTE],
+        )
+
+        resolution = resolver.resolve(task="generic_assistant", policy=policy)
+
+        assert isinstance(resolution, AIRouteNeedsInput)
+        assert "no default CLI is configured" in resolution.reason
+        assert "connection" not in resolution.reason
+
 
 def test_off_preference_resolves_to_off(availability):
     resolver = AIRouteResolver(_config(commit_message="off"), availability)
