@@ -17,6 +17,7 @@ from titan_cli.ai.router import (
     declare_ai_usage,
 )
 from titan_cli.ai.router.executor import DEFAULT_PREFERRED, AIExecutor
+from titan_cli.core.interrupt import WorkflowAborted
 from titan_cli.ai.router.resolver import AIRouteNeedsInput
 from titan_cli.external_cli.adapters.base import HeadlessResponse
 
@@ -294,6 +295,22 @@ def test_headless_exception_becomes_execution_failed(monkeypatch):
     assert isinstance(result, AIExecutionError)
     assert result.error_code == "EXECUTION_FAILED"
     assert "timed out" in result.error_message
+
+
+def test_headless_workflow_aborted_propagates(monkeypatch):
+    """
+    WorkflowAborted is a BaseException so that quitting the TUI unwinds the
+    workflow thread; the executor's `except Exception` must let it through
+    instead of converting it into an AIExecutionError.
+    """
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="claude"))
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter",
+        lambda cli: FakeAdapter(error=WorkflowAborted("app closed mid-call")),
+    )
+
+    with pytest.raises(WorkflowAborted):
+        executor.generate_text("prompt", policy=declared_step)
 
 
 def test_unknown_cli_is_provider_unavailable(monkeypatch):
