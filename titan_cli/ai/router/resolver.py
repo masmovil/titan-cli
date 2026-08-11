@@ -66,7 +66,7 @@ class AIRouteResolver:
             refusal = self._guard_executable(runtime_override, policy, task, source="requested")
             if refusal is not None:
                 return refusal
-            return self._decide(runtime_override, reason="runtime override")
+            return self._decide(runtime_override, reason="runtime override", policy=policy)
 
         preferences = self._preferences()
 
@@ -83,7 +83,7 @@ class AIRouteResolver:
             # what to do, where a generic "nothing resolved" would not.
             first_obstacle: Optional[AIRouteNeedsInput] = None
             for provider in policy.preferred:
-                resolved = self._decide(provider, reason=f"step default '{provider}'")
+                resolved = self._decide(provider, reason=f"step default '{provider}'", policy=policy)
                 if isinstance(resolved, AIRouteDecision):
                     return resolved
                 first_obstacle = first_obstacle or resolved
@@ -92,10 +92,15 @@ class AIRouteResolver:
 
         return AIRouteNeedsInput(
             reason="no persisted preference and no available step default",
-            candidates=self._candidates(),
+            candidates=self._candidates(policy),
         )
 
-    def _decide(self, provider: AIProviderType, reason: str) -> AIRouteResolution:
+    def _decide(
+        self,
+        provider: AIProviderType,
+        reason: str,
+        policy: Optional[AIRoutePolicy] = None,
+    ) -> AIRouteResolution:
         """
         Turn a provider TYPE into a decision naming the instance that will run it.
 
@@ -110,7 +115,7 @@ class AIRouteResolver:
         if identifier is None:
             return AIRouteNeedsInput(
                 reason=self._missing_instance_reason(provider),
-                candidates=self._candidates(),
+                candidates=self._candidates(policy),
             )
 
         if not self._identifier_available(provider, identifier):
@@ -119,7 +124,7 @@ class AIRouteResolver:
                     f"the configured {self._instance_noun(provider)} '{identifier}' "
                     f"is not available"
                 ),
-                candidates=self._candidates(),
+                candidates=self._candidates(policy),
             )
 
         if provider == AIProviderType.REMOTE:
@@ -183,15 +188,27 @@ class AIRouteResolver:
                 f"which this step cannot run (it supports: "
                 f"{', '.join(str(p) for p in policy.executes)})"
             ),
-            candidates=self._candidates(),
+            candidates=self._candidates(policy),
         )
 
-    def _candidates(self) -> List[AIProviderAvailability]:
-        return (
+    def _candidates(
+        self, policy: Optional[AIRoutePolicy] = None
+    ) -> List[AIProviderAvailability]:
+        """
+        Providers the user could be offered instead.
+
+        Filtered by the step's `executes` when a policy is in scope: offering a
+        kind the step can't run would just be refused again by the executable
+        guard on the next resolve.
+        """
+        candidates = (
             self.availability.available_remote_connections()
             + self.availability.available_headless_clis()
             + self.availability.available_interactive_clis()
         )
+        if policy and policy.executes:
+            candidates = [c for c in candidates if c.provider in policy.executes]
+        return candidates
 
     def _resolve_preference(
         self,
@@ -218,13 +235,13 @@ class AIRouteResolver:
                     f"the stored preference for '{task}' is '{pref.provider}', "
                     f"which is not a known provider type"
                 ),
-                candidates=self._candidates(),
+                candidates=self._candidates(policy),
             )
 
         refusal = self._guard_executable(provider, policy, task)
         if refusal is not None:
             return refusal
-        return self._decide(provider, reason=reason)
+        return self._decide(provider, reason=reason, policy=policy)
 
     def _identifier_available(self, provider: AIProviderType, identifier: str) -> bool:
         """
