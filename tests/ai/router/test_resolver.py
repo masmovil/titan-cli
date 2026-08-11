@@ -337,6 +337,30 @@ def test_persisted_preference_outside_executes_is_refused(availability):
     assert "cannot run" in resolution.reason
 
 
+def test_runtime_override_outside_executes_is_refused(availability):
+    """
+    A runtime override comes from a caller that never consulted `executes`,
+    so it gets the same guard as a persisted preference: refused by name
+    rather than handed to a step that can't drive it.
+    """
+    resolver = AIRouteResolver(_config(), availability)
+    policy = AIRoutePolicy(
+        task="generic_assistant",
+        executes=[AIProviderType.CLI_INTERACTIVE],
+        preferred=[AIProviderType.CLI_INTERACTIVE],
+    )
+
+    resolution = resolver.resolve(
+        task="generic_assistant",
+        policy=policy,
+        runtime_override=AIProviderType.REMOTE,
+    )
+
+    assert isinstance(resolution, AIRouteNeedsInput)
+    assert "cannot run" in resolution.reason
+    assert "requested" in resolution.reason
+
+
 def test_off_preference_passes_the_executes_guard(availability):
     """Any step can skip - 'off' is honored regardless of executes."""
     resolver = AIRouteResolver(_config(generic_assistant="off"), availability)
