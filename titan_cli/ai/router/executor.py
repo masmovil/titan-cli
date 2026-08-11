@@ -374,12 +374,38 @@ class AIExecutor:
         Accepts a policy object, a decorated step function, or nothing at all.
         An explicit `task` always wins over the policy's own task, so a step
         with one declaration can still route a secondary call elsewhere.
+
+        A function passed as `policy=` that carries no declaration is a broken
+        contract, not a default: it would route under the empty task key that
+        every such call shares, with no `executes` set to guard it. It is
+        refused unless the caller names a `task` itself, and even then the
+        missing declaration is logged.
+
+        Raises:
+            ValueError: If `policy` is a function with no declared policy and
+                no explicit `task` was given.
         """
         declared: Optional[AIRoutePolicy] = None
+        undeclared_callable = False
         if isinstance(policy, AIRoutePolicy):
             declared = policy
         elif callable(policy):
             declared = get_declared_ai_policy(policy)
+            undeclared_callable = declared is None
+
+        if undeclared_callable:
+            name = getattr(policy, "__qualname__", None) or repr(policy)
+            if not task:
+                raise ValueError(
+                    f"{name} was passed as policy= but has no @declare_ai_usage "
+                    f"declaration, so there is no task to route or persist a preference "
+                    f"under. Decorate the step, or pass an explicit task="
+                )
+            logger.warning(
+                "ai_policy_declaration_missing",
+                func=name,
+                task=task,
+            )
 
         if declared is None:
             return AIRoutePolicy(

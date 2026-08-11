@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from titan_cli.ai.headless_generator import HeadlessGenerator
 from titan_cli.ai.models import AIResponse
 from titan_cli.ai.router import (
@@ -144,6 +146,16 @@ def test_undecorated_callable_falls_back_to_default_preferred():
     executor.resolve(policy=plain_step, task="fallback_task")
 
     assert seen["policy"].preferred == DEFAULT_PREFERRED
+
+
+def test_undecorated_callable_without_task_is_refused():
+    def plain_step():
+        return None
+
+    executor = AIExecutor(ai_config=None, secrets=None)
+
+    with pytest.raises(ValueError, match="declare_ai_usage"):
+        executor.resolve(policy=plain_step)
 
 
 # --- remote execution -----------------------------------------------------
