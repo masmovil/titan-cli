@@ -17,9 +17,12 @@ from typing import Callable, Dict, List, Optional, Set
 
 from titan_cli.ai.router.declaration import declared_ai_usage_enforces, get_declared_ai_policy
 from titan_cli.ai.router.models import AIRoutePolicy
+from titan_cli.core.logging import get_logger
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 
 from .workflow_registry import ParsedWorkflow, WorkflowRegistry
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -70,6 +73,10 @@ class AIUsageDiscoveryService:
         try:
             workflow = self._workflow_registry.get_workflow(workflow_name)
         except Exception:
+            # A workflow that fails to load must not be mistaken for one without AI
+            # steps: log it so registry/parsing bugs are visible instead of silently
+            # dropping the workflow from any UI built on this service.
+            logger.exception("ai_usage_discovery_workflow_load_failed", workflow=workflow_name)
             return None
         if not workflow:
             return None
@@ -91,6 +98,13 @@ class AIUsageDiscoveryService:
                 try:
                     nested_workflow = self._workflow_registry.get_workflow(nested_workflow_name)
                 except Exception:
+                    # Same reasoning as discover_workflow: an unloadable nested workflow
+                    # hides its AI steps, so surface the failure in the logs.
+                    logger.exception(
+                        "ai_usage_discovery_nested_workflow_load_failed",
+                        workflow=workflow.name,
+                        nested_workflow=nested_workflow_name,
+                    )
                     nested_workflow = None
                 if nested_workflow:
                     discovered.extend(
