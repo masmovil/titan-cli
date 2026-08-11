@@ -414,8 +414,12 @@ class CliDefaultPicker(Container):
     def __init__(self, installed: Sequence[str], *, current: Optional[str], **kwargs):
         super().__init__(**kwargs)
         self.installed = list(installed)
-        self.current = current
-        self.suggestion = suggested_cli(self.installed, current)
+        # A saved default that is no longer installed must not read as active: the switch
+        # would highlight whatever it falls back to while the status names a CLI that
+        # cannot run. Keep the stale name only to explain the warning.
+        self.stale_current = current if current and current not in self.installed else None
+        self.current = current if current in self.installed else None
+        self.suggestion = suggested_cli(self.installed, self.current)
 
     def compose(self) -> ComposeResult:
         if not self.installed:
@@ -451,6 +455,11 @@ class CliDefaultPicker(Container):
         )
 
     def _status_text(self) -> str:
+        if self.stale_current:
+            return (
+                f"{Icons.WARNING} The default {self.stale_current} is no longer "
+                "installed - pick one below."
+            )
         if self.current:
             return f"{Icons.CHECK} Titan will run {self.current}."
         if self.suggestion:
@@ -471,6 +480,7 @@ class CliDefaultPicker(Container):
         rebuilding it under them would drop focus mid-keystroke.
         """
         self.current = cli_name
+        self.stale_current = None
         self.suggestion = None
         self.query_one("#cli-status", Static).update(self._status_text())
 

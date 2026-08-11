@@ -389,6 +389,32 @@ class TestScreenMounts:
 
         assert captured["clis"] == [("claude", False, True)]
 
+    def test_a_stale_default_warns_instead_of_reading_as_active(self, monkeypatch):
+        """
+        A saved default that is no longer installed must not show the success line while
+        the switch highlights a different, fallback CLI.
+        """
+        config = self._config(default_cli="claude")
+        self._stub_screen_dependencies(monkeypatch, [], ("gemini", "codex"))
+
+        result = {}
+
+        async def run():
+            app = TitanApp(config, initial_screen=lambda: AIConfigScreen(config))
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                picker = app.screen.query_one(CliDefaultPicker)
+                result["current"] = picker.current
+                result["status"] = str(
+                    app.screen.query_one("#cli-status", Static).renderable
+                )
+
+        asyncio.run(run())
+
+        assert result["current"] is None
+        assert "claude" in result["status"]
+        assert "no longer installed" in result["status"]
+
     def test_screen_survives_having_nothing_to_show(self, monkeypatch):
         captured = self._mount(self._config(), [], monkeypatch, clis=())
 
