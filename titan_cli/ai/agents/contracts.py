@@ -13,6 +13,7 @@ guarantee - a CLI can return prose with a successful exit code - so parsing and
 validation always run, schema or no schema.
 """
 
+import copy
 import json
 import re
 from abc import ABC, abstractmethod
@@ -197,7 +198,10 @@ class JsonContract(AgentContract):
         return self.schema
 
     def degraded_value(self) -> Optional[Any]:
-        return self.defaults
+        # Contracts are long-lived (often module-level singletons); handing out
+        # the defaults themselves would let a caller that mutates its degraded
+        # answer corrupt every later call using this contract.
+        return copy.deepcopy(self.defaults)
 
     def format_instructions(self) -> str:
         return (
@@ -260,7 +264,7 @@ class JsonContract(AgentContract):
             if name not in data:
                 if name in self.required:
                     return ContractParse(ok=False, error=f"missing required field '{name}'")
-                result[name] = (self.defaults or {}).get(name)
+                result[name] = self._default_for(name)
                 continue
 
             value = data[name]
@@ -270,12 +274,17 @@ class JsonContract(AgentContract):
                         ok=False,
                         error=f"field '{name}' has the wrong type: got {type(value).__name__}",
                     )
-                result[name] = (self.defaults or {}).get(name)
+                result[name] = self._default_for(name)
                 continue
 
             result[name] = value
 
         return ContractParse(ok=True, data=result)
+
+    def _default_for(self, name: str) -> Any:
+        # Defaults are mutable (lists, dicts) and shared by every parse of this
+        # contract, so each result gets its own copy.
+        return copy.deepcopy((self.defaults or {}).get(name))
 
     @staticmethod
     def _matches(value: Any, spec: Any) -> bool:
