@@ -48,19 +48,23 @@ _VALUE_COMPLAINT_MARKERS = (
 )
 
 
+def _normalize(model: str) -> str:
+    # A gateway alias often embeds the family name even when it is not an exact match.
+    return model.rsplit("/", 1)[-1].lower()
+
+
 def rejects_temperature(model: str) -> bool:
     """Whether `temperature` should be left out of requests for this model."""
-    if model in _models_rejecting_temperature:
+    normalized = _normalize(model)
+    if normalized in _models_rejecting_temperature:
         return True
 
-    # A gateway alias often embeds the family name even when it is not an exact match.
-    normalized = model.rsplit("/", 1)[-1].lower()
     return any(normalized.startswith(family) for family in _FAMILIES_REJECTING_TEMPERATURE)
 
 
 def remember_temperature_rejection(model: str) -> None:
     """Record that a model refuses `temperature`, so later calls skip sending it."""
-    _models_rejecting_temperature.add(model)
+    _models_rejecting_temperature.add(_normalize(model))
 
 
 def is_temperature_rejection(error: Exception) -> bool:
