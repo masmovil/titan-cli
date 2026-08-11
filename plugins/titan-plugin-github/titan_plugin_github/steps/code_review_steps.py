@@ -2689,6 +2689,7 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
     deduped: list = []
     removed = 0
     removed_existing = 0
+    removed_adjudicated = 0
     seen_keys: set[tuple[str, int | None, str]] = set()
 
     for finding in findings:
@@ -2698,6 +2699,8 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
             removed += 1
             if is_dup:
                 removed_existing += 1
+                if any(ex.is_adjudicated and is_duplicate(finding, ex) for ex in existing_index):
+                    removed_adjudicated += 1
             logger.debug("Deduplicated finding: %s @ %s:%s", finding.title, finding.path, finding.line)
         else:
             deduped.append(finding)
@@ -2725,9 +2728,7 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
         "findings_deduplicated",
         deduped_findings_count=len(deduped),
         findings_removed_due_to_existing_threads=removed_existing,
-        findings_removed_due_to_adjudicated_threads=sum(
-            1 for finding in findings for ex in existing_index if ex.is_adjudicated and is_duplicate(finding, ex)
-        ),
+        findings_removed_due_to_adjudicated_threads=removed_adjudicated,
     )
     ctx.textual.end_step("success")
     return Success("Findings deduplicated", metadata={"deduped_findings_count": len(deduped)})
