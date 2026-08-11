@@ -120,6 +120,8 @@ def test_unavailable_runtime_override_needs_input():
     )
 
     assert isinstance(resolution, AIRouteNeedsInput)
+    assert "claude" in resolution.reason
+    assert "not available" in resolution.reason
 
 
 def test_task_preference_wins_over_declared_default(availability):
