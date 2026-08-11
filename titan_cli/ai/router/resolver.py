@@ -71,14 +71,12 @@ class AIRouteResolver:
         preferences = self._preferences()
 
         if preferences and task in preferences.tasks:
-            resolved = self._resolve_preference(
+            return self._resolve_preference(
                 preferences.tasks[task],
                 policy=policy,
                 task=task,
                 reason=f"task preference for '{task}'",
             )
-            if resolved is not None:
-                return resolved
 
         if policy and policy.preferred:
             # Keep the first concrete obstacle: "no default CLI is configured" tells the user
@@ -201,20 +199,27 @@ class AIRouteResolver:
         policy: Optional[AIRoutePolicy],
         task: str,
         reason: str,
-    ) -> Optional[AIRouteResolution]:
+    ) -> AIRouteResolution:
         """
-        Try to honor a persisted preference.
+        Honor a persisted preference, or report why it can't be honored.
 
         The preference names only a kind of provider; the executable guard runs
         on that kind first, then `_decide` attaches the global instance and
-        reports by name if that instance is missing or unavailable. Returns
-        `None` when the stored provider value doesn't map to a known
-        `AIProviderType`, so the caller keeps checking lower-precedence sources.
+        reports by name if that instance is missing or unavailable. A stored
+        provider value that doesn't map to a known `AIProviderType` is reported
+        the same way - falling through to the step's defaults would silently
+        change which AI runs, hiding the broken preference from the user.
         """
         try:
             provider = AIProviderType(pref.provider)
         except ValueError:
-            return None
+            return AIRouteNeedsInput(
+                reason=(
+                    f"the stored preference for '{task}' is '{pref.provider}', "
+                    f"which is not a known provider type"
+                ),
+                candidates=self._candidates(),
+            )
 
         refusal = self._guard_executable(provider, policy, task)
         if refusal is not None:

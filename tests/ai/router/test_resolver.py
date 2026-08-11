@@ -277,14 +277,19 @@ def test_off_needs_no_configured_instance():
     assert decision.provider == AIProviderType.OFF
 
 
-def test_unknown_provider_value_falls_through_to_declared_default(availability):
+def test_unknown_provider_value_is_reported_not_silently_replaced(availability):
+    """
+    A typo'd or schema-stale stored preference must surface by name instead of
+    silently falling through to the step's defaults.
+    """
     resolver = AIRouteResolver(_config(commit_message="carrier_pigeon"), availability)
     policy = AIRoutePolicy(task="commit_message", preferred=[AIProviderType.REMOTE])
 
     decision = resolver.resolve(task="commit_message", policy=policy)
 
-    assert isinstance(decision, AIRouteDecision)
-    assert decision.provider == AIProviderType.REMOTE
+    assert isinstance(decision, AIRouteNeedsInput)
+    assert "carrier_pigeon" in decision.reason
+    assert "commit_message" in decision.reason
 
 
 def test_leftover_instance_keys_in_a_stored_preference_are_ignored(availability):
