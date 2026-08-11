@@ -330,6 +330,19 @@ class TaskRoutingRow(Container):
             yield WarningText(
                 f"{Icons.WARNING} This one can't be changed yet - these steps pick their own AI."
             )
+            # A preference saved while the task was still routable would silently re-apply
+            # the moment it becomes routable again - keep the way out visible.
+            if routing.has_preference:
+                yield DimText(
+                    "A saved preference for this task still exists and will apply "
+                    "if it becomes configurable again."
+                )
+                with Horizontal(classes="task-buttons"):
+                    yield Button(
+                        "Clear",
+                        variant="default",
+                        id=f"task-clear-{widget_key(routing.task)}",
+                    )
             return
 
         yield from self._resolution_lines()

@@ -359,12 +359,34 @@ class TestScreenMounts:
         ]
 
         captured = self._mount(
-            self._config(default_cli="claude", tasks={"code_review_plan": "remote"}),
+            self._config(default_cli="claude"),
             usages,
             monkeypatch,
         )
 
         assert captured["buttons"] == {"code_review_plan": []}
+
+    def test_an_unconfigurable_task_with_a_saved_preference_still_offers_clear(
+        self, monkeypatch
+    ):
+        """
+        A preference persisted while the task was routable would silently re-apply if the
+        task becomes routable again - the row must keep offering the way to remove it.
+        """
+        usages = [
+            DiscoveredWorkflowAIUsage(
+                workflow_name="wf",
+                steps=[_step("code_review_plan", executes=[], enforces=False)],
+            )
+        ]
+
+        captured = self._mount(
+            self._config(default_cli="claude", tasks={"code_review_plan": "remote"}),
+            usages,
+            monkeypatch,
+        )
+
+        assert captured["buttons"] == {"code_review_plan": ["task-clear-code_review_plan"]}
 
     def test_a_configurable_task_offers_change_and_clear(self, monkeypatch):
         usages = [
