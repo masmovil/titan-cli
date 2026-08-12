@@ -141,9 +141,6 @@ def build_review_action_payload(
     """
     Build the GitHub API payload from approved ReviewActionProposal objects.
 
-    Anchors that miss a publishable line by up to 3 lines are snapped to the
-    nearest one instead of degrading to the review body.
-
     Handles new_comment action type only. Actions with action_type='resolve_thread'
     or 'reply_to_thread' are excluded — they are handled separately via direct API
     calls in the submit step.
@@ -202,29 +199,8 @@ def build_review_action_payload(
 
         if action.path and resolved_line and not force_general_body and not path_forced_general:
             file_valid_lines = valid_lines.get(action.path, set())
-            # Snap only against real hunks: under the added-lines-only fallback the
-            # publishable set is sparse and not hunk-shaped, so a nearby "valid" line
-            # is an unrelated added line, not the boundary of the commented block.
-            can_snap = bool(manager and manager.has_github_diff)
-            if resolved_line not in file_valid_lines and file_valid_lines and can_snap:
-                # An anchor 1-3 lines past a hunk boundary usually points at the body
-                # of the block whose header WAS changed (the model reads whole files
-                # and cannot see where hunks end). Snapping to the nearest publishable
-                # line keeps the comment inline next to the code it describes; beyond
-                # that window the general body is more honest than a shifted anchor.
-                snapped_line = _snap_to_nearest_publishable_line(
-                    resolved_line, file_valid_lines, max_distance=3
-                )
-                if snapped_line is not None:
-                    logger.debug(
-                        "inline_anchor_snapped_to_hunk",
-                        action_idx=idx,
-                        path=action.path,
-                        resolved_line=resolved_line,
-                        snapped_line=snapped_line,
-                        distance=abs(snapped_line - resolved_line),
-                    )
-                    resolved_line = snapped_line
+            # Near-miss anchors were already snapped during anchor resolution — before
+            # the approval gate — so the line here is the one the reviewer approved.
             inline_safe = resolved_line in file_valid_lines
             logger.debug("validate_comment_action",
                 action_idx=idx, path=action.path, line=action.line, resolved_line=resolved_line,
@@ -405,12 +381,38 @@ def resolve_action_anchors(
                 anchor_confidence = "low"
                 inline_reason = "context_match"
 
-            is_inline_safe_for_github = resolved_line in manager.get_publishable_lines(action.path)
-            if is_inline_safe_for_github:
+            publishable_lines = manager.get_publishable_lines(action.path)
+            is_inline_safe_for_github = resolved_line in publishable_lines
+            if not is_inline_safe_for_github and publishable_lines and manager.has_github_hunks_for(action.path):
+                # An anchor 1-3 lines past a hunk boundary usually points at the body
+                # of the block whose header WAS changed (the model reads whole files
+                # and cannot see where hunks end). Snapping happens HERE, before the
+                # approval gate, so the reviewer approves the exact line that will
+                # publish. Gated per path on GitHub-quality hunks: under the
+                # added-lines floor the publishable set is sparse and not
+                # hunk-shaped, so a nearby "valid" line is unrelated code.
+                snapped_line = _snap_to_nearest_publishable_line(
+                    resolved_line, publishable_lines, max_distance=3
+                )
+                if snapped_line is not None:
+                    logger.debug(
+                        "inline_anchor_snapped_to_hunk",
+                        path=action.path,
+                        resolved_line=resolved_line,
+                        snapped_line=snapped_line,
+                        distance=abs(snapped_line - resolved_line),
+                    )
+                    why_inline_allowed = (
+                        f"resolved via {resolution_source} to line {resolved_line}, snapped "
+                        f"{abs(snapped_line - resolved_line)} line(s) to nearest hunk line {snapped_line}"
+                    )
+                    resolved_line = snapped_line
+                    is_inline_safe_for_github = True
+            if why_inline_allowed is None and is_inline_safe_for_github:
                 why_inline_allowed = (
                     f"resolved via {resolution_source} to line {resolved_line} present in GitHub-publishable lines"
                 )
-            else:
+            elif why_inline_allowed is None:
                 why_inline_allowed = (
                     f"resolved via {resolution_source} but line {resolved_line} not in GitHub-publishable lines"
                 )

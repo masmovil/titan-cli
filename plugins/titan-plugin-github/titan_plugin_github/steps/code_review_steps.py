@@ -2301,7 +2301,10 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         prompt_parts = build_findings_prompt_parts(batch)
         prompt = prompt_parts["prompt"]
         fitted_batches, changed = get_prompt_budget_manager().fit_batch_to_budget(
-            batch, prompt_parts, strategy.max_prompt_chars
+            batch,
+            prompt_parts,
+            strategy.max_prompt_chars,
+            allow_file_reads=ctx.data.get("review_file_reads_allowed", True),
         )
         if changed:
             logger.debug(
@@ -2826,7 +2829,7 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     passes through. Fail-open: any CLI/parse/budget problem keeps all findings.
 
     Generalizes the retired `_looks_like_contradicted_api_claim` heuristic.
-    Gated by ReviewProfile.findings_verification_enabled (default True).
+    Gated by ReviewProfile.findings_verification_enabled (default False).
 
     Routes under the same `code_review_findings` task preference as
     `ai_review_findings`: it is the same pass, so one setting governs both.

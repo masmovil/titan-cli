@@ -1382,7 +1382,9 @@ def _verify_ctx(findings: list, adapter_stdout: str | None = None) -> WorkflowCo
         max_prompt_chars=20000,
         max_comment_entries=5,
     )
-    ctx.data["review_profile"] = ReviewProfile()
+    # The pass ships disabled by default (it has never refuted a real finding);
+    # these tests exercise the step itself, so they opt in explicitly.
+    ctx.data["review_profile"] = ReviewProfile(findings_verification_enabled=True)
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
     return ctx
@@ -1430,6 +1432,21 @@ def test_verify_findings_fails_open_on_unparseable_response(monkeypatch):
 
     assert isinstance(result, Skip)
     assert ctx.data["deduped_findings"] == [finding]
+
+
+def test_verify_findings_disabled_by_default(monkeypatch):
+    """The pass ships OFF: across every observed real review it refuted nothing,
+    so by default it only adds latency. Projects opt in via profile.yaml."""
+    finding = _make_finding_model()
+    fake_adapter = _FakeStructuredOutputAdapter("should never be called")
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([finding])
+    ctx.data["review_profile"] = ReviewProfile()
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Skip)
+    assert fake_adapter.calls == []
 
 
 def test_verify_findings_skips_when_profile_disables_it(monkeypatch):

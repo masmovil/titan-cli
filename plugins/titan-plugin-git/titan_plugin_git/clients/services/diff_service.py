@@ -237,9 +237,13 @@ class DiffService:
             # --no-renames keeps the output one plain "add<TAB>del<TAB>path" line
             # per file: a rename becomes delete+add, so the current path always
             # appears with its full counters and no "old => new" forms to parse.
+            # quotePath off: git would otherwise C-escape and quote non-ASCII paths,
+            # which then never match the API-reported paths callers look up.
+            # check=True: an invalid ref must surface as an error — with check=False
+            # it would come back as empty stdout, indistinguishable from "no churn".
             output = self.git.run_command(
-                ["git", "diff", "--numstat", "--no-renames", f"{base_ref}...{head_ref}"],
-                check=False,
+                ["git", "-c", "core.quotePath=false", "diff", "--numstat", "--no-renames", f"{base_ref}...{head_ref}"],
+                check=True,
             )
 
             churns: List[UIFileChurn] = []
@@ -277,8 +281,8 @@ class DiffService:
         """
         try:
             output = self.git.run_command(
-                ["git", "diff", "--name-only", "--no-renames", base_ref, head_ref],
-                check=False,
+                ["git", "-c", "core.quotePath=false", "diff", "--name-only", "--no-renames", base_ref, head_ref],
+                check=True,
             )
             paths = [line.strip() for line in output.splitlines() if line.strip()]
             return ClientSuccess(

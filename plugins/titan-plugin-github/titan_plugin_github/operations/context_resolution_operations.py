@@ -215,9 +215,8 @@ def build_review_context_package(
 
     if len(plan.extra_context_requests) > 1:
         logger.info(
-            "extra_context_requests_trimmed: planned=%d resolved=%d dropped=%d",
+            "extra_context_requests_trimmed: planned=%d kept=1 dropped=%d",
             len(plan.extra_context_requests),
-            1,
             len(plan.extra_context_requests) - 1,
         )
 

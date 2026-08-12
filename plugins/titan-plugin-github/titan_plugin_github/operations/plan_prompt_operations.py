@@ -71,6 +71,7 @@ Rules:
 - Keep low-value files excluded unless there is a clear reason to bring one back
 - review_axes should be a small subset of checklist categories that really apply
 - excluded_files should explain what you are intentionally not reviewing deeply
+- excluded_files entries must use exact paths from the data above — never summaries or placeholders; files not shown to you are excluded implicitly and need no entry
 - Return only JSON, no markdown fences"""
 
 
