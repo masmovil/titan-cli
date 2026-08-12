@@ -266,7 +266,7 @@ class PRService:
         """
         try:
             args = ["pr", "diff", str(pr_number)] + self.gh.get_repo_arg()
-            diff = self.gh.run_command(args)
+            diff = self.gh.run_command(args, strip_output=False)
             return ClientSuccess(data=diff, message=f"PR #{pr_number} diff retrieved")
 
         except GitHubAPIError as e:

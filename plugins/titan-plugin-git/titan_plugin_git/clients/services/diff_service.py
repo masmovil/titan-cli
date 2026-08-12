@@ -49,7 +49,8 @@ class DiffService:
         try:
             diff = self.git.run_command(
                 ["git", "diff", f"{base_ref}...{head_ref}"],
-                check=False
+                check=False,
+                strip_output=False
             )
             return ClientSuccess(data=diff, message="Diff retrieved")
         except GitCommandError as e:
@@ -70,7 +71,7 @@ class DiffService:
             self.git.run_command(["git", "add", "--intent-to-add", "."], check=False)
 
             # git diff HEAD shows all changes vs last commit
-            diff = self.git.run_command(["git", "diff", "HEAD"], check=False)
+            diff = self.git.run_command(["git", "diff", "HEAD"], check=False, strip_output=False)
             return ClientSuccess(data=diff, message="Uncommitted diff retrieved")
         except GitCommandError as e:
             return ClientError(error_message=str(e), error_code="DIFF_ERROR")
@@ -94,7 +95,7 @@ class DiffService:
                 return self.get_uncommitted_diff()
 
             self.git.run_command(["git", "add", "--intent-to-add", "--"] + files, check=False)
-            diff = self.git.run_command(["git", "diff", "HEAD", "--"] + files, check=False)
+            diff = self.git.run_command(["git", "diff", "HEAD", "--"] + files, check=False, strip_output=False)
             return ClientSuccess(data=diff, message="Filtered uncommitted diff retrieved")
         except GitCommandError as e:
             return ClientError(error_message=str(e), error_code="DIFF_ERROR")
@@ -108,7 +109,7 @@ class DiffService:
             ClientResult[str] with diff output
         """
         try:
-            diff = self.git.run_command(["git", "diff", "--cached"], check=False)
+            diff = self.git.run_command(["git", "diff", "--cached"], check=False, strip_output=False)
             return ClientSuccess(data=diff, message="Staged diff retrieved")
         except GitCommandError as e:
             return ClientError(error_message=str(e), error_code="DIFF_ERROR")
@@ -122,7 +123,7 @@ class DiffService:
             ClientResult[str] with diff output
         """
         try:
-            diff = self.git.run_command(["git", "diff"], check=False)
+            diff = self.git.run_command(["git", "diff"], check=False, strip_output=False)
             return ClientSuccess(data=diff, message="Unstaged diff retrieved")
         except GitCommandError as e:
             return ClientError(error_message=str(e), error_code="DIFF_ERROR")
@@ -161,7 +162,8 @@ class DiffService:
         try:
             diff = self.git.run_command(
                 ["git", "diff", "HEAD", "--", file_path],
-                check=False
+                check=False,
+                strip_output=False
             )
             return ClientSuccess(data=diff, message=f"Diff for {file_path} retrieved")
         except GitCommandError as e:
@@ -196,7 +198,8 @@ class DiffService:
 
             diff = self.git.run_command(
                 ["git", "diff", f"-U{context_lines}", f"{base_ref}...{head_ref}"],
-                check=False
+                check=False,
+                strip_output=False
             )
             return ClientSuccess(
                 data=diff,

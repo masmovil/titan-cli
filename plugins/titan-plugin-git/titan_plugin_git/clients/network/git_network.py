@@ -79,7 +79,8 @@ class GitNetwork:
         self,
         args: List[str],
         check: bool = True,
-        cwd: Optional[str] = None
+        cwd: Optional[str] = None,
+        strip_output: bool = True
     ) -> str:
         """
         Run git command and return stdout.
@@ -88,6 +89,10 @@ class GitNetwork:
             args: Command arguments (including 'git')
             check: Raise exception on error (default: True)
             cwd: Optional working directory (overrides repo_path)
+            strip_output: Strip surrounding whitespace from stdout (default: True).
+                Pass False for diff output: a diff whose last hunk ends in an empty
+                context line ends with a meaningful " \\n" that stripping destroys,
+                leaving the hunk one line short of what its @@ header declares.
 
         Returns:
             Command stdout as string
@@ -119,7 +124,7 @@ class GitNetwork:
                 subcommand=subcommand,
                 duration=round(time.time() - start, 3),
             )
-            return result.stdout.rstrip()
+            return result.stdout.rstrip() if strip_output else result.stdout
         except subprocess.CalledProcessError as e:
             self._logger.debug(
                 "git_command_failed",

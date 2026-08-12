@@ -23,7 +23,6 @@ def make_strategy(*, size_class: PRSizeClass, max_prompt_chars: int) -> ReviewSt
         max_focus_files=10,
         max_prompt_chars=max_prompt_chars,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
 

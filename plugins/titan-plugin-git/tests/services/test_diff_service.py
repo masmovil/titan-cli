@@ -33,7 +33,7 @@ class TestDiffServiceGetDiff:
         assert isinstance(result, ClientSuccess)
         assert "diff" in result.data
         mock_git_network.run_command.assert_called_once_with(
-            ["git", "diff", "main...HEAD"], check=False
+            ["git", "diff", "main...HEAD"], check=False, strip_output=False
         )
 
     def test_uses_head_as_default(self, service, mock_git_network):
@@ -137,7 +137,7 @@ class TestDiffServiceGetStagedDiff:
 
         assert isinstance(result, ClientSuccess)
         mock_git_network.run_command.assert_called_once_with(
-            ["git", "diff", "--cached"], check=False
+            ["git", "diff", "--cached"], check=False, strip_output=False
         )
 
     def test_empty_staged_returns_empty_string(self, service, mock_git_network):
@@ -171,7 +171,7 @@ class TestDiffServiceGetUnstagedDiff:
 
         assert isinstance(result, ClientSuccess)
         mock_git_network.run_command.assert_called_once_with(
-            ["git", "diff"], check=False
+            ["git", "diff"], check=False, strip_output=False
         )
 
     def test_error_returns_client_error(self, service, mock_git_network):
@@ -196,7 +196,7 @@ class TestDiffServiceGetFileDiff:
 
         assert isinstance(result, ClientSuccess)
         mock_git_network.run_command.assert_called_once_with(
-            ["git", "diff", "HEAD", "--", "src/main.py"], check=False
+            ["git", "diff", "HEAD", "--", "src/main.py"], check=False, strip_output=False
         )
 
     def test_error_returns_client_error(self, service, mock_git_network):

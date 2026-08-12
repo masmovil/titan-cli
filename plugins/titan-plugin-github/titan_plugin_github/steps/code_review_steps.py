@@ -2051,21 +2051,9 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
         f"✓ Context: {files_count} focus file(s) in {batch_count} batch(es)"
         + (f" · {related_count} related file(s)" if related_count else "")
     )
-    # Coverage honesty: name the files that will NOT be reviewed instead of hiding
-    # them behind a count — silent coverage loss is indistinguishable from a full
-    # review otherwise.
-    trimmed_paths = sorted(
-        {entry.path for batch in package.batches for entry in batch.excluded_files}
-    )
-    if trimmed_paths:
-        ctx.textual.warning_text(
-            f"⚠ {len(trimmed_paths)} file(s) will NOT be reviewed (context budget exceeded): "
-            + ", ".join(trimmed_paths)
-        )
     logger.debug(
         "review_context_summary",
         comments_in_context=sum(len(batch.comment_context) for batch in package.batches),
-        trimmed_paths=trimmed_paths,
     )
     _show_review_context_batches(ctx, package.batches)
     ctx.textual.end_step("success")

@@ -564,7 +564,6 @@ def test_ai_review_findings_splits_oversized_batch_via_prompt_budget_manager(mon
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -613,7 +612,6 @@ def test_ai_review_findings_parses_markdown_fenced_response(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -667,7 +665,6 @@ def test_ai_review_findings_recovers_via_reformat_retry(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -697,7 +694,6 @@ def test_ai_review_findings_marks_batch_failed_when_reformat_retry_also_fails(mo
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -740,7 +736,6 @@ def test_ai_review_findings_partial_batch_failure_still_succeeds_with_flag(monke
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -792,7 +787,6 @@ def test_ai_review_findings_returns_error_when_all_batches_fail(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -849,7 +843,6 @@ def test_ai_review_findings_non_list_payload_goes_through_reformat_retry(monkeyp
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -880,7 +873,6 @@ def test_ai_review_findings_non_list_payload_marks_failed_when_retry_also_non_li
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -939,7 +931,6 @@ def test_ai_review_findings_uses_structured_output_when_supported(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -969,7 +960,6 @@ def test_ai_review_findings_structured_output_retry_also_requests_schema(monkeyp
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1002,7 +992,6 @@ def test_ai_review_findings_restricts_tools_when_supported(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1028,7 +1017,6 @@ def test_ai_review_findings_omits_disallowed_tools_when_unsupported(monkeypatch)
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1056,7 +1044,6 @@ def test_ai_review_findings_reformat_retry_also_restricts_tools(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1103,7 +1090,6 @@ def test_ai_review_findings_caps_effort_for_worktree_reference_batch(monkeypatch
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1129,7 +1115,6 @@ def test_ai_review_findings_omits_effort_when_no_worktree_reference(monkeypatch)
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1396,7 +1381,6 @@ def _verify_ctx(findings: list, adapter_stdout: str | None = None) -> WorkflowCo
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["review_profile"] = ReviewProfile()
     ctx.data["cli_preference"] = "auto"
@@ -1487,7 +1471,6 @@ def test_verify_findings_fails_open_when_prompt_over_budget(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=100,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     result = verify_findings(ctx)
 
@@ -1551,7 +1534,6 @@ def _concurrency_ctx(batch_count: int, concurrency: int) -> WorkflowContext:
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1642,7 +1624,6 @@ def _rescue_ctx(adapter_stdouts: list[str]) -> tuple[WorkflowContext, "_FakeSequ
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
         suspicious_empty_findings=True,
     )
     ctx.data["review_candidates"] = [
@@ -1725,7 +1706,6 @@ def test_ai_review_findings_no_rescue_when_not_suspicious(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
         suspicious_empty_findings=False,
     )
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
@@ -1781,7 +1761,6 @@ def _synthesis_ctx(
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
         suspicious_empty_findings=False,
     )
     ctx.data["review_diff"] = diff if diff is not None else _synthesis_diff()
@@ -2056,7 +2035,6 @@ def _timeout_ctx(adapter_script: list[tuple[int, str]], *, worktree_reference: b
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["review_diff"] = (
         "diff --git a/border.py b/border.py\n"

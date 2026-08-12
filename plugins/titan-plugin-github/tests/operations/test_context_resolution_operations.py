@@ -79,7 +79,6 @@ def test_build_review_context_package_batches_by_manager_content_budget():
         max_focus_files=10,
         max_prompt_chars=4000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -89,6 +88,43 @@ def test_build_review_context_package_batches_by_manager_content_budget():
     assert len(package.batches) == 3
     assert [batch.batch_id for batch in package.batches] == ["batch_1", "batch_2", "batch_3"]
     assert [list(batch.files_context.keys()) for batch in package.batches] == [["a.py"], ["b.py"], ["c.py"]]
+
+
+def test_direct_strategy_overflow_spills_to_extra_batch_instead_of_dropping():
+    """A tiny PR's single-call strategy used to DROP the file that didn't fit next
+    to an earlier, generously-resolved one — a small file could lose its entire
+    review because a sibling resolved to a rich read mode first. Overflow now
+    spills into extra batches — coverage is never silently lost at packaging time."""
+    paths = ["big_first.py", "second.py"]
+    diff = "".join(make_diff(path, "x" * 3000) for path in paths)
+    plan = ReviewPlan(
+        focus_files=[
+            FileReviewPlan(path=path, priority=FileReviewPriority.HIGH, read_mode=FileReadMode.HUNKS_ONLY)
+            for path in paths
+        ],
+        review_axes=[ChecklistCategory.FUNCTIONAL_CORRECTNESS],
+    )
+    manifest = make_manifest(paths)
+    checklist = [
+        ReviewChecklistItem(
+            id=ChecklistCategory.FUNCTIONAL_CORRECTNESS,
+            name="Functional correctness",
+            description="Does it work",
+        )
+    ]
+    strategy = ReviewStrategy(
+        strategy=ReviewStrategyType.DIRECT_FINDINGS,
+        size_class=PRSizeClass.TINY,
+        max_focus_files=4,
+        max_prompt_chars=4000,
+        max_comment_entries=5,
+    )
+
+    package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
+
+    reviewed_paths = {path for batch in package.batches for path in batch.files_context}
+    assert reviewed_paths == set(paths)
+    assert len(package.batches) == 2
 
 
 def test_build_review_context_package_keeps_small_files_in_one_batch():
@@ -115,7 +151,6 @@ def test_build_review_context_package_keeps_small_files_in_one_batch():
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -154,7 +189,6 @@ def test_worktree_reference_entries_get_a_high_fixed_cost_and_split_batches():
         max_focus_files=10,
         max_prompt_chars=2000 + 3500,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -195,7 +229,6 @@ def test_worktree_reference_files_are_capped_at_one_per_batch_even_with_ample_bu
         max_focus_files=10,
         max_prompt_chars=100_000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -230,7 +263,6 @@ def test_mixed_batch_closes_before_a_second_worktree_reference_file():
         max_focus_files=10,
         max_prompt_chars=100_000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -335,7 +367,6 @@ def _single_file_setup(read_mode, path="a.py"):
         max_focus_files=10,
         max_prompt_chars=100_000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     return diff, plan, make_manifest([path]), checklist, strategy
 

@@ -321,7 +321,6 @@ def select_review_strategy(classification: PRClassification) -> ReviewStrategy:
             max_focus_files=4,
             max_prompt_chars=14000,
             max_comment_entries=8,
-            batching_enabled=False,
             suspicious_empty_findings=False,
             reason="small enough for direct findings without planning overhead",
         )
@@ -332,7 +331,6 @@ def select_review_strategy(classification: PRClassification) -> ReviewStrategy:
             max_focus_files=6,
             max_prompt_chars=22000,
             max_comment_entries=10,
-            batching_enabled=False,
             suspicious_empty_findings=True,
             reason="limited scope; direct findings remain affordable",
         )
@@ -343,7 +341,6 @@ def select_review_strategy(classification: PRClassification) -> ReviewStrategy:
             max_focus_files=8,
             max_prompt_chars=32000,
             max_comment_entries=10,
-            batching_enabled=False,
             suspicious_empty_findings=True,
             reason="moderate PR size benefits from a lightweight focus plan",
         )
@@ -354,7 +351,6 @@ def select_review_strategy(classification: PRClassification) -> ReviewStrategy:
             max_focus_files=8 if classification.is_repetitive_migration else 10,
             max_prompt_chars=18000 if classification.is_repetitive_migration else 24000,
             max_comment_entries=8,
-            batching_enabled=True,
             suspicious_empty_findings=True,
             reason=(
                 "repetitive migration pattern; prioritize shared helpers and representative call sites"
@@ -368,7 +364,6 @@ def select_review_strategy(classification: PRClassification) -> ReviewStrategy:
         max_focus_files=12,
         max_prompt_chars=18000,
         max_comment_entries=6,
-        batching_enabled=True,
         suspicious_empty_findings=True,
         reason="very large PR requires strict batching and narrow prompt budgets",
     )

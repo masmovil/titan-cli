@@ -249,7 +249,8 @@ def test_payload_rejects_wide_context_only_line_with_github_diff_attached():
 
 def test_payload_snaps_near_miss_anchor_to_nearest_hunk_line():
     """An anchor 1-3 lines outside a hunk snaps to the nearest publishable line
-    instead of degrading to the body (real case: PR #3623 lines 159→158, 100→98)."""
+    instead of degrading to the body — the model reads whole files and routinely
+    anchors on the body of a block whose header is the actual changed line."""
     from titan_plugin_github.managers.diff_context_manager import DiffContextManager
 
     manager = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
