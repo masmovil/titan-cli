@@ -29,7 +29,6 @@ For full contract details for every public step, including documented inputs, ou
 | `prompt_for_issue_body_step` | Prompt and Selection | `create-issue-ai` |
 | `prompt_for_self_assign` | Prompt and Selection | `create-issue-ai` |
 | `prompt_for_labels` | Prompt and Selection | `create-pr-ai` |
-| `select_cli` | Prompt and Selection | - |
 | `ai_suggest_issue_title_and_body` | Issue Creation | `create-issue-ai` |
 | `preview_and_confirm_issue` | Issue Creation | - |
 | `create_issue` | Issue Creation | `create-issue-ai` |
@@ -86,7 +85,6 @@ Use these steps when a workflow needs interactive user input before creation or 
 - `prompt_for_issue_body_step`: capture the raw issue request before AI expansion
 - `prompt_for_self_assign`: ask whether the current user should be assigned to the issue
 - `prompt_for_labels`: prompt for repository labels and save the selection to a configurable context key
-- `select_cli`: choose which external CLI a workflow should use
 
 ## Issue Creation
 
@@ -1494,7 +1492,9 @@ How to read these contracts:
     each non-nit finding against the code it targets; findings refuted with evidence
     are dropped before the human gate. Fail-open: any CLI, parse, or budget problem
     keeps all findings. Gated by `findings_verification_enabled` in the project
-    review profile (`.titan/review/profile.yaml`, default `true`).
+    review profile (`.titan/review/profile.yaml`, default `false` — opt in per
+    project; disabled by default because in observed real reviews the pass has
+    not refuted findings and only added latency).
 
     **Workflow usage**
 
@@ -1515,7 +1515,6 @@ How to read these contracts:
     | `deduped_findings` | List[Finding] | Findings after duplicate removal |
     | `review_context_batches` | List[FocusContextBatch] | Source of the focused hunks shown to the verifier |
     | `review_strategy` | ReviewStrategy | Prompt budget cap |
-    | `cli_preference` | str | Headless CLI selection |
 
     **Outputs (saved to ctx.data)**
 

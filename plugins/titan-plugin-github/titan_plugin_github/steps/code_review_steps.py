@@ -8,12 +8,16 @@ import re
 import threading
 import time
 from difflib import SequenceMatcher
-from typing import List, Optional
+from typing import Callable, List, Optional, Tuple
 
+from titan_cli.ai.router.declaration import declare_ai_usage
+from titan_cli.ai.router.enums import AIProviderType, AITask
+from titan_cli.ai.router.resolver import AIRouteNeedsInput
 from titan_cli.core.logging import get_logger
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Exit, Skip
+from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.external_cli.adapters import HEADLESS_ADAPTER_REGISTRY, get_headless_adapter
+from titan_cli.external_cli.adapters import get_headless_adapter, list_available_headless_clis
 from titan_cli.ui.tui.widgets import ChoiceOption, OptionItem, PromptChoice
 
 from ..managers.diff_context_manager import get_or_create_diff_manager
@@ -251,7 +255,12 @@ def _show_review_plan_validation_summary(ctx: WorkflowContext, plan) -> None:
 
 
 def _filter_invalid_inline_comments(ctx: WorkflowContext, pr_number: int, payload: dict) -> tuple[dict, list[dict]]:
-    """Probe inline comments individually, keep only those GitHub accepts."""
+    """Probe inline comments individually, keep only those GitHub accepts.
+
+    Rejected comments are not dropped: their content moves into the review body
+    (same format as the pre-submit general-body fallback), so a reviewer-approved
+    finding is always published even when GitHub refuses its inline anchor.
+    """
     if not ctx.github or not payload.get("comments"):
         return payload, []
 
@@ -293,8 +302,16 @@ def _filter_invalid_inline_comments(ctx: WorkflowContext, pr_number: int, payloa
         "commit_id": payload["commit_id"],
         "comments": valid_comments,
     }
+    body_parts: list[str] = []
     if payload.get("body"):
-        filtered_payload["body"] = payload["body"]
+        body_parts.append(payload["body"])
+    for comment in rejected_comments:
+        location = f"**{comment.get('path')}**" if comment.get("path") else "General"
+        if comment.get("line"):
+            location += f" (line {comment.get('line')})"
+        body_parts.append(f"{location}:\n{comment.get('body', '')}")
+    if body_parts:
+        filtered_payload["body"] = "\n\n---\n\n".join(body_parts)
     return filtered_payload, rejected_comments
 
 
@@ -752,19 +769,42 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
     # comments; publish validation must use GitHub's hunks. When unavailable, the manager
     # falls back to added-lines-only, which GitHub always accepts.
     github_diff = diff if diff_is_github_source else None
+    publish_validation_source = "github_diff"
     if github_diff is None:
         github_diff_result = ctx.github.get_pr_diff(pr_number)
         match github_diff_result:
             case ClientSuccess(data=gh_diff) if gh_diff and gh_diff.strip():
                 github_diff = gh_diff
             case _:
-                logger.warning(
-                    "github_diff_unavailable_for_publish_validation",
-                    pr_number=pr_number,
-                    fallback="added_lines_only",
-                )
+                # GitHub refuses to serve diffs over 20k lines (HTTP 406). A local
+                # three-dot diff at 3 context lines produces near-identical hunks —
+                # GitHub renders PR diffs from the merge base with -U3 context — so
+                # it stands in as the publishable-lines source. Residual divergence
+                # (rename detection edge cases) is absorbed by the 422 recovery.
+                if ctx.git and not pr.is_cross_repository:
+                    local_u3_result = ctx.git.get_branch_diff(
+                        pr.base_ref, pr.head_ref, context_lines=3, use_remote=True
+                    )
+                    match local_u3_result:
+                        case ClientSuccess(data=local_diff) if local_diff and local_diff.strip():
+                            github_diff = local_diff
+                            publish_validation_source = "local_u3_diff"
+                        case _:
+                            pass
+                if github_diff is None:
+                    publish_validation_source = "added_lines_only"
+                    logger.warning(
+                        "github_diff_unavailable_for_publish_validation",
+                        pr_number=pr_number,
+                        fallback="added_lines_only",
+                    )
     if github_diff:
         diff_manager.attach_github_diff(github_diff)
+    logger.debug(
+        "publish_validation_diff_source",
+        pr_number=pr_number,
+        source=publish_validation_source,
+    )
 
     ctx.textual.show_diff_stat(formatted_files, formatted_summary, title="Files affected:")
 
@@ -891,11 +931,8 @@ def _get_review_diff(
 def _resolve_headless_adapter(cli_preference: str):
     """Return the first available headless adapter, or None."""
     if cli_preference == "auto":
-        for cli_name in HEADLESS_ADAPTER_REGISTRY:
-            candidate = get_headless_adapter(cli_name)
-            if candidate.is_available():
-                return candidate
-        return None
+        available = list_available_headless_clis()
+        return get_headless_adapter(available[0]) if available else None
 
     try:
         candidate = get_headless_adapter(cli_preference)
@@ -905,9 +942,95 @@ def _resolve_headless_adapter(cli_preference: str):
     return candidate if candidate.is_available() else None
 
 
+def _resolve_review_adapter(
+    ctx: WorkflowContext, step: Callable
+) -> Tuple[Optional[object], Optional[str], bool]:
+    """
+    Return the headless CLI configured for this step's task, or None plus the reason.
+
+    The user's per-task choice (AI Configuration screen) decides which CLI runs a
+    review step, so no step asks. `None` comes back with a user-facing reason when
+    the task is off, no default CLI is set, the configured one isn't installed, or
+    the stored preference is something this step cannot run. Every caller shows that
+    reason and then takes its own degraded path: a review without AI is a worse
+    result, not a crash, and the reason is what lets the user fix it.
+
+    The third element is True only when the user deliberately turned AI off for
+    this task. Callers that must not present "AI never ran" as a clean result use
+    it to tell the intentional skip apart from a routing failure.
+
+    Without the façade (a step called outside a workflow run) the previous behavior
+    stands: first available CLI.
+    """
+    router = getattr(ctx, "ai_router", None)
+    if router is None:
+        return _resolve_headless_adapter("auto"), None, False
+
+    resolution = router.resolve(policy=step)
+
+    if isinstance(resolution, AIRouteNeedsInput):
+        return None, f"{resolution.reason} — set it in AI Configuration (main menu)", False
+
+    if resolution.provider == AIProviderType.OFF:
+        return None, "AI is turned off for this task", True
+
+    if resolution.provider != AIProviderType.CLI_HEADLESS or not resolution.cli:
+        return None, (
+            f"'{resolution.provider}' cannot run this step, which needs a CLI "
+            f"— change it in AI Configuration (main menu)"
+        ), False
+
+    adapter = _resolve_headless_adapter(resolution.cli)
+    if adapter is None:
+        return None, f"the configured CLI '{resolution.cli}' is not available", False
+
+    return adapter, None, False
+
+
+def _announce_review_adapter(ctx: WorkflowContext, adapter: object) -> None:
+    """Announce which CLI will run this review step."""
+    if adapter and hasattr(adapter, "cli_name"):
+        ctx.textual.ai_chip(f"CLI, automatic · {adapter.cli_name.value}")
+
+
 # ============================================================================
 # PHASE 2: CHEAP CONTEXT STEPS (pre-AI, deterministic)
 # ============================================================================
+
+
+def _fetch_local_churn_for_truncated_files(
+    ctx: WorkflowContext, pr: UIPullRequest, files: list
+) -> Optional[dict]:
+    """Fetch real per-file counters from local git when the API reports 0/0.
+
+    GitHub's files endpoint returns additions=0/deletions=0 for files whose diff
+    it cannot render (too large or binary). Left as-is, those files score as if
+    nothing changed. A local numstat has the exact counters — available for
+    same-repo PRs, where the fetch step already ran `git fetch --all`. Fork PRs
+    and sessions without the git plugin keep the API values.
+    """
+    has_truncated = any(
+        f.additions == 0 and f.deletions == 0 and f.status.value != "renamed" for f in files
+    )
+    if not has_truncated or not ctx.git or pr.is_cross_repository:
+        return None
+
+    numstat_result = ctx.git.get_branch_numstat(pr.base_ref, pr.head_ref, use_remote=True)
+    match numstat_result:
+        case ClientSuccess(data=churns):
+            churn_by_path = {c.path: (c.additions, c.deletions) for c in churns if not c.is_binary}
+            logger.debug(
+                "manifest_churn_fallback",
+                truncated_candidates=sum(
+                    1 for f in files if f.additions == 0 and f.deletions == 0
+                ),
+                numstat_files=len(churn_by_path),
+            )
+            return churn_by_path
+        case ClientError(error_message=err):
+            logger.warning("manifest_numstat_failed", error=err)
+            return None
+    return None
 
 
 def build_change_manifest(ctx: WorkflowContext) -> WorkflowResult:
@@ -940,8 +1063,12 @@ def build_change_manifest(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("error")
         return Error("No PR data in context (run fetch_pr_review_bundle first)")
 
+    churn_by_path = _fetch_local_churn_for_truncated_files(ctx, pr, files)
+
     try:
-        manifest = build_change_manifest_operation(pr, files)
+        manifest = build_change_manifest_operation(
+            pr, files, _get_review_profile(ctx), churn_by_path=churn_by_path
+        )
     except Exception as e:
         ctx.textual.error_text(f"Failed to build change manifest: {e}")
         ctx.textual.end_step("error")
@@ -1299,6 +1426,11 @@ def select_review_strategy(ctx: WorkflowContext) -> WorkflowResult:
 # ============================================================================
 
 
+@declare_ai_usage(
+    task=AITask.CODE_REVIEW_PLAN,
+    executes=[AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
     """
     First AI call: decide which files to read and which checklist items apply.
@@ -1310,11 +1442,13 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
 
     On parse failure, falls back to a local conservative heuristic plan.
 
+    Which CLI runs it comes from the `code_review_plan` task preference
+    (AI Configuration screen), not from the workflow.
+
     Requires (from ctx.data):
         change_manifest (ChangeManifest)
         existing_comments_index (List[ExistingCommentIndexEntry])
         review_checklist (List[ReviewChecklistItem])
-        cli_preference (str): "claude" | "gemini" | "codex" | "auto"
 
     Outputs (saved to ctx.data):
         review_plan (ReviewPlan)
@@ -1334,7 +1468,6 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
     excluded_files = ctx.get("excluded_review_files", [])
     strategy = ctx.get("review_strategy")
     review_profile = _get_review_profile(ctx)
-    cli_preference = ctx.data.get("cli_preference", "auto")
     project_root = ctx.data.get("project_root")
 
     if not manifest or not strategy:
@@ -1366,10 +1499,12 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("success")
         return Success("Deterministic review plan built", metadata={"review_plan": fallback})
 
-    adapter = _resolve_headless_adapter(cli_preference)
+    adapter, route_note, _ = _resolve_review_adapter(ctx, ai_review_plan)
 
     if not adapter:
-        ctx.textual.warning_text("No headless CLI available — using default review plan")
+        ctx.textual.warning_text(
+            f"{route_note or 'No headless CLI available'} — using default review plan"
+        )
         fallback = build_default_review_plan(
             candidates,
             excluded_files,
@@ -1382,6 +1517,8 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         _show_review_plan_summary(ctx, fallback)
         ctx.textual.end_step("success")
         return Success("Default review plan used (no CLI available)", metadata={"review_plan": fallback})
+
+    _announce_review_adapter(ctx, adapter)
 
     prompt = build_review_plan_prompt(
         manifest,
@@ -1405,7 +1542,9 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
         strategy=str(strategy.strategy),
     )
     with ctx.textual.loading(f"Asking {cli_display} to plan the review…"):
-        response = adapter.execute(prompt, cwd=project_root, timeout=240)
+        response = run_interruptible(
+            lambda: adapter.execute(prompt, cwd=project_root, timeout=240)
+        )
     _log_ai_response(
         step_name="ai_review_plan",
         cli_name=adapter.cli_name.value,
@@ -1519,12 +1658,25 @@ def validate_review_plan(ctx: WorkflowContext) -> WorkflowResult:
 
     offered_ids = frozenset(item.id for item in checklist)
     validator = ReviewPlanValidator(manifest, offered_ids)
+
+    # Invalid entries are dropped one by one; the AI's remaining selection survives.
+    # Only a plan with no valid focus file left falls back to the deterministic plan.
+    plan, sanitize_warnings = validator.sanitize(plan)
+    if sanitize_warnings:
+        for warning in sanitize_warnings:
+            ctx.textual.warning_text(f"  ⚠ {warning}")
+        logger.warning(
+            "review_plan_entries_dropped",
+            dropped=len(sanitize_warnings),
+            warnings=sanitize_warnings,
+        )
+
     is_valid, errors = validator.validate_semantically(plan)
 
     if not is_valid:
-        # Log errors but don't halt — auto-correct by falling back to default plan
         for err in errors:
             ctx.textual.warning_text(f"  ⚠ {err}")
+        logger.warning("review_plan_validation_failed", errors=errors)
 
         candidates = ctx.get("review_candidates", [])
         excluded_files = ctx.get("excluded_review_files", [])
@@ -1665,13 +1817,15 @@ def _retry_findings_batch_reformat(
     schema = findings_json_schema() if structured else None
     disallowed_tools = list(FINDINGS_DISALLOWED_TOOLS) if adapter.supports_tool_restriction else None
     _log_ai_prompt("ai_review_findings_reformat_retry", adapter.cli_name.value, reformat_prompt, batch_id=batch_id)
-    response = adapter.execute(
-        reformat_prompt,
-        cwd=cwd,
-        timeout=REFORMAT_RETRY_TIMEOUT_SECONDS,
-        json_schema=schema,
-        disallowed_tools=disallowed_tools,
-        effort=effort if adapter.supports_effort_control else None,
+    response = run_interruptible(
+        lambda: adapter.execute(
+            reformat_prompt,
+            cwd=cwd,
+            timeout=REFORMAT_RETRY_TIMEOUT_SECONDS,
+            json_schema=schema,
+            disallowed_tools=disallowed_tools,
+            effort=effort if adapter.supports_effort_control else None,
+        )
     )
     _log_ai_response(
         step_name="ai_review_findings_reformat_retry",
@@ -1910,21 +2064,9 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
         f"✓ Context: {files_count} focus file(s) in {batch_count} batch(es)"
         + (f" · {related_count} related file(s)" if related_count else "")
     )
-    # Coverage honesty: name the files that will NOT be reviewed instead of hiding
-    # them behind a count — silent coverage loss is indistinguishable from a full
-    # review otherwise.
-    trimmed_paths = sorted(
-        {entry.path for batch in package.batches for entry in batch.excluded_files}
-    )
-    if trimmed_paths:
-        ctx.textual.warning_text(
-            f"⚠ {len(trimmed_paths)} file(s) will NOT be reviewed (context budget exceeded): "
-            + ", ".join(trimmed_paths)
-        )
     logger.debug(
         "review_context_summary",
         comments_in_context=sum(len(batch.comment_context) for batch in package.batches),
-        trimmed_paths=trimmed_paths,
     )
     _show_review_context_batches(ctx, package.batches)
     ctx.textual.end_step("success")
@@ -1964,13 +2106,18 @@ def _execute_findings_batch(
     from ..operations.findings_operations import parse_findings_response
 
     adapter_started_at = time.monotonic()
-    response = adapter.execute(
-        prompt,
-        cwd=project_root,
-        timeout=300,
-        json_schema=findings_schema,
-        disallowed_tools=disallowed_tools,
-        effort=effort,
+    # run_interruptible here also covers the pooled path: on app exit each worker
+    # raises WorkflowAborted, its future completes, and the step thread's
+    # future.result() re-raises it instead of blocking on a live CLI call.
+    response = run_interruptible(
+        lambda: adapter.execute(
+            prompt,
+            cwd=project_root,
+            timeout=300,
+            json_schema=findings_schema,
+            disallowed_tools=disallowed_tools,
+            effort=effort,
+        )
     )
     adapter_duration_seconds = time.monotonic() - adapter_started_at
     worktree_reference_count = sum(
@@ -2038,6 +2185,11 @@ def _execute_findings_batch(
             return {"status": "failed", "raw": None, "detail": "parse error"}
 
 
+@declare_ai_usage(
+    task=AITask.CODE_REVIEW_FINDINGS,
+    executes=[AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     """
     Second AI call: find actionable problems in the exact code context.
@@ -2056,9 +2208,11 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
     together, hunks_only) runs after the per-file batches; its findings are deduped
     against theirs before aggregation.
 
+    Which CLI runs it comes from the `code_review_findings` task preference
+    (AI Configuration screen), not from the workflow.
+
     Requires (from ctx.data):
         review_context_package (ReviewContextPackage)
-        cli_preference (str): "claude" | "gemini" | "codex" | "auto"
 
     Outputs (saved to ctx.data):
         raw_findings (list | str): Raw AI output before normalization
@@ -2073,7 +2227,6 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
 
     batches = ctx.get("review_context_batches")
     strategy = ctx.get("review_strategy")
-    cli_preference = ctx.data.get("cli_preference", "auto")
     project_root = ctx.data.get("worktree_path") or ctx.data.get("project_root")
 
     if not batches:
@@ -2090,20 +2243,34 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         summarize_findings_prompt_parts,
     )
 
-    adapter = _resolve_headless_adapter(cli_preference)
+    adapter, route_note, ai_off = _resolve_review_adapter(ctx, ai_review_findings)
 
     if not adapter:
-        ctx.textual.warning_text("No headless CLI available — skipping AI findings")
+        reason = route_note or "No headless CLI available"
         ctx.data["raw_findings"] = build_default_findings()
-        # Keep the outputs consistent with every other exit of this step: downstream
-        # reads ai_findings_failed, and it must be explicitly False here (nothing
-        # failed — nothing ran).
-        ctx.data["ai_findings_failed"] = False
-        ctx.textual.end_step("success")
-        return Success(
-            "No findings (no CLI available)",
-            metadata={"raw_findings": [], "ai_findings_failed": False},
+        if ai_off:
+            # The user turned AI off for this task: nothing failed — nothing was
+            # meant to run. Downstream reads ai_findings_failed, and it must be
+            # explicitly False here.
+            ctx.textual.warning_text(f"{reason} — skipping AI findings")
+            ctx.data["ai_findings_failed"] = False
+            ctx.textual.end_step("success")
+            return Success(
+                "No findings (AI is off for this task)",
+                metadata={"raw_findings": [], "ai_findings_failed": False},
+            )
+        # Routing failure (no CLI configured, not installed, wrong provider): the AI
+        # never ran, so an empty result must not look like a clean review — same
+        # contract as the all-batches-failed exit below. Empty findings are still
+        # published so downstream steps run via on_error: continue.
+        ctx.data["ai_findings_failed"] = True
+        ctx.textual.error_text(
+            f"{reason} — AI findings could not run. No code was reviewed."
         )
+        ctx.textual.end_step("error")
+        return Error(f"AI findings could not run: {reason}")
+
+    _announce_review_adapter(ctx, adapter)
 
     # Structured output forces the CLI to return findings via a schema-validated tool
     # call instead of relying on the model to follow a "respond only with JSON" prompt
@@ -2134,7 +2301,10 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         prompt_parts = build_findings_prompt_parts(batch)
         prompt = prompt_parts["prompt"]
         fitted_batches, changed = get_prompt_budget_manager().fit_batch_to_budget(
-            batch, prompt_parts, strategy.max_prompt_chars
+            batch,
+            prompt_parts,
+            strategy.max_prompt_chars,
+            allow_file_reads=ctx.data.get("review_file_reads_allowed", True),
         )
         if changed:
             logger.debug(
@@ -2598,6 +2768,7 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
     deduped: list = []
     removed = 0
     removed_existing = 0
+    removed_adjudicated = 0
     seen_keys: set[tuple[str, int | None, str]] = set()
 
     for finding in findings:
@@ -2607,6 +2778,8 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
             removed += 1
             if is_dup:
                 removed_existing += 1
+                if any(ex.is_adjudicated and is_duplicate(finding, ex) for ex in existing_index):
+                    removed_adjudicated += 1
             logger.debug("Deduplicated finding: %s @ %s:%s", finding.title, finding.path, finding.line)
         else:
             deduped.append(finding)
@@ -2634,14 +2807,17 @@ def dedupe_findings(ctx: WorkflowContext) -> WorkflowResult:
         "findings_deduplicated",
         deduped_findings_count=len(deduped),
         findings_removed_due_to_existing_threads=removed_existing,
-        findings_removed_due_to_adjudicated_threads=sum(
-            1 for finding in findings for ex in existing_index if ex.is_adjudicated and is_duplicate(finding, ex)
-        ),
+        findings_removed_due_to_adjudicated_threads=removed_adjudicated,
     )
     ctx.textual.end_step("success")
     return Success("Findings deduplicated", metadata={"deduped_findings_count": len(deduped)})
 
 
+@declare_ai_usage(
+    task=AITask.CODE_REVIEW_FINDINGS,
+    executes=[AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     """
     Adversarial verification pass: try to REFUTE each finding before the human gate.
@@ -2653,13 +2829,15 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     passes through. Fail-open: any CLI/parse/budget problem keeps all findings.
 
     Generalizes the retired `_looks_like_contradicted_api_claim` heuristic.
-    Gated by ReviewProfile.findings_verification_enabled (default True).
+    Gated by ReviewProfile.findings_verification_enabled (default False).
+
+    Routes under the same `code_review_findings` task preference as
+    `ai_review_findings`: it is the same pass, so one setting governs both.
 
     Requires (from ctx.data):
         deduped_findings (List[Finding])
         review_context_batches (List[FocusContextBatch])
         review_strategy (ReviewStrategy)
-        cli_preference (str)
 
     Outputs (saved to ctx.data):
         deduped_findings (List[Finding]): verified set, refuted findings removed
@@ -2709,11 +2887,15 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("skip")
         return Skip("No findings eligible for verification")
 
-    adapter = _resolve_headless_adapter(ctx.data.get("cli_preference", "auto"))
+    adapter, route_note, _ = _resolve_review_adapter(ctx, verify_findings)
     if not adapter:
-        ctx.textual.dim_text("No headless CLI available — findings pass unverified.")
+        ctx.textual.dim_text(
+            f"{route_note or 'No headless CLI available'} — findings pass unverified."
+        )
         ctx.textual.end_step("skip")
         return Skip("No CLI available for verification")
+
+    _announce_review_adapter(ctx, adapter)
 
     strategy = ctx.get("review_strategy")
     batches = ctx.get("review_context_batches", [])
@@ -2755,13 +2937,15 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     )
     adapter_started_at = time.monotonic()
     with ctx.textual.loading(f"Asking {cli_display} to verify {len(to_verify)} finding(s)…"):
-        response = adapter.execute(
-            prompt,
-            cwd=project_root,
-            timeout=VERIFICATION_TIMEOUT_SECONDS,
-            json_schema=verification_json_schema() if use_structured_output else None,
-            disallowed_tools=disallowed_tools,
-            effort=effort,
+        response = run_interruptible(
+            lambda: adapter.execute(
+                prompt,
+                cwd=project_root,
+                timeout=VERIFICATION_TIMEOUT_SECONDS,
+                json_schema=verification_json_schema() if use_structured_output else None,
+                disallowed_tools=disallowed_tools,
+                effort=effort,
+            )
         )
     adapter_duration_seconds = time.monotonic() - adapter_started_at
     _log_ai_response(
@@ -3059,6 +3243,36 @@ def _detect_submit_time_sha_drift(ctx: WorkflowContext, pr_number: int, reviewed
     return drift
 
 
+def _resolve_drift_changed_files(ctx: WorkflowContext, drift) -> Optional[set]:
+    """Return the paths the drift's push touched, or None when unknowable.
+
+    The new head only exists locally after a fetch — the push happened after the
+    review's own fetch. Any failure returns None so the caller falls back to
+    degrading every comment, never to publishing stale anchors.
+    """
+    if not ctx.git or not drift.reviewed_sha or not drift.current_sha:
+        return None
+    match ctx.git.fetch(all=True):
+        case ClientError(error_message=err):
+            # The new head may already be present from an earlier fetch, so let
+            # get_changed_files decide — it returns an error (→ None) if not.
+            logger.warning("drift_fetch_failed", error=err)
+        case _:
+            pass
+    match ctx.git.get_changed_files(drift.reviewed_sha, drift.current_sha):
+        case ClientSuccess(data=paths):
+            return set(paths)
+        case ClientError(error_message=err):
+            logger.warning(
+                "drift_changed_files_unavailable",
+                reviewed_sha=drift.reviewed_sha,
+                current_sha=drift.current_sha,
+                error=err,
+            )
+            return None
+    return None
+
+
 def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     """
     Submit approved ReviewActionProposal objects to GitHub.
@@ -3141,9 +3355,11 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                 return Error(f"Missing commit SHA for inline review: {err}")
 
     # The anchors were resolved against commit_sha's diff. If the PR has been pushed to
-    # since, every inline line describes code that moved — degrade them to the review body
-    # rather than publish comments on the wrong lines.
+    # since, inline lines on the files that push touched describe code that moved —
+    # degrade those to the review body rather than publish comments on the wrong lines.
+    # Anchors on files the push did NOT touch are still exact, so they stay inline.
     force_general_body = False
+    force_general_paths: set = set()
     if comment_actions:
         drift = _detect_submit_time_sha_drift(ctx, pr_number, commit_sha)
         if drift.drifted:
@@ -3151,15 +3367,43 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
             ctx.textual.dim_text(
                 f"reviewed: {drift.reviewed_sha[:8]} · current: {drift.current_sha[:8]}"
             )
-            ctx.textual.text(
-                f"The {len(comment_actions)} comment(s) will go in the review body instead "
-                "of inline, since their line numbers no longer match the PR's diff."
-            )
-            if not ctx.textual.ask_confirm("Publish the review anyway?", default=True):
+            pushed_paths = _resolve_drift_changed_files(ctx, drift)
+            comment_paths = {a.path for a in comment_actions if a.path}
+            if pushed_paths is not None:
+                force_general_paths = comment_paths & pushed_paths
+                # Untouched files have identical anchors under the new head, so the
+                # review can anchor everything to it instead of the stale SHA.
+                commit_sha = drift.current_sha
+                logger.debug(
+                    "sha_drift_scoped_to_files",
+                    pr_number=pr_number,
+                    pushed_files=len(pushed_paths),
+                    comments_degraded=len(force_general_paths),
+                    comments_kept_inline=len(comment_paths - force_general_paths),
+                )
+            if pushed_paths is None:
+                ctx.textual.text(
+                    f"The {len(comment_actions)} comment(s) will go in the review body instead "
+                    "of inline, since their line numbers no longer match the PR's diff."
+                )
+                force_general_body = True
+            elif force_general_paths:
+                ctx.textual.text(
+                    f"The push touched {len(force_general_paths)} of the commented file(s): "
+                    "their comment(s) will go in the review body; the rest stay inline."
+                )
+                for path in sorted(force_general_paths):
+                    ctx.textual.dim_text(f"  {path}")
+            else:
+                ctx.textual.dim_text(
+                    "The push did not touch any commented file — all comments stay inline."
+                )
+            if (force_general_body or force_general_paths) and not ctx.textual.ask_confirm(
+                "Publish the review anyway?", default=True
+            ):
                 ctx.textual.warning_text("Review cancelled")
                 ctx.textual.end_step("skip")
                 return Skip("User cancelled after head SHA drift")
-            force_general_body = True
 
     # Show AI's opinion and prepare action options
     ctx.textual.text("")
@@ -3209,6 +3453,7 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
         diff,
         diff_manager=diff_manager,
         force_general_body=force_general_body,
+        force_general_paths=force_general_paths,
     )
 
     if review_body and review_body.strip():
@@ -3269,7 +3514,7 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                         rejection_breakdown[kind] = rejection_breakdown.get(kind, 0) + 1
                     ctx.textual.warning_text(
                         f"⚠ {len(rejected_comments)} comment(s) can't be placed inline and will be "
-                        "left out:"
+                        "added to the review body instead:"
                     )
                     for comment in rejected_comments:
                         ctx.textual.dim_text(
@@ -3474,6 +3719,11 @@ def build_thread_review_contexts(ctx: WorkflowContext) -> WorkflowResult:
     return Success("Thread contexts built", metadata={"thread_review_contexts_count": len(contexts)})
 
 
+@declare_ai_usage(
+    task="thread_resolution",
+    executes=[AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
     """
     AI call: decide what to do with each open thread.
@@ -3489,9 +3739,11 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
     On total failure (no batch produced usable output), falls back to empty
     decisions (no actions).
 
+    Which CLI runs it comes from the `thread_resolution` task preference
+    (AI Configuration screen), not from the workflow.
+
     Requires (from ctx.data):
         thread_review_contexts (List[ThreadReviewContext])
-        cli_preference (str): "claude" | "gemini" | "codex" | "auto"
 
     Outputs (saved to ctx.data):
         raw_thread_decisions (list): Raw AI output aggregated across batches, before normalization
@@ -3505,7 +3757,6 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
     ctx.textual.begin_step("AI Thread Resolution")
 
     contexts = ctx.get("thread_review_contexts")
-    cli_preference = ctx.data.get("cli_preference", "auto")
     project_root = ctx.data.get("project_root")
 
     if not contexts:
@@ -3513,13 +3764,17 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("skip")
         return Skip("No thread_review_contexts in context")
 
-    adapter = _resolve_headless_adapter(cli_preference)
+    adapter, route_note, _ = _resolve_review_adapter(ctx, ai_thread_resolution)
 
     if not adapter:
-        ctx.textual.warning_text("No headless CLI available — skipping AI thread resolution")
+        ctx.textual.warning_text(
+            f"{route_note or 'No headless CLI available'} — skipping AI thread resolution"
+        )
         ctx.data["raw_thread_decisions"] = []
         ctx.textual.end_step("success")
         return Success("No decisions (no CLI available)", metadata={"raw_thread_decisions": []})
+
+    _announce_review_adapter(ctx, adapter)
 
     # Split into batches so one call never has to carry every open thread at
     # once — each thread's full conversation/hunk/commit context stays intact,
@@ -3550,7 +3805,9 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
         with ctx.textual.loading(
             f"Asking {cli_display} to analyse {batch_label} ({len(batch)} thread(s))…"
         ):
-            response = adapter.execute(prompt, cwd=project_root, timeout=300)
+            response = run_interruptible(
+                lambda: adapter.execute(prompt, cwd=project_root, timeout=300)
+            )
         adapter_duration_seconds = time.monotonic() - adapter_started_at
         logger.info(
             "thread_resolution_adapter_call",

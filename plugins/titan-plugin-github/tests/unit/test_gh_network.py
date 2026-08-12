@@ -84,6 +84,21 @@ def test_run_command_success(gh_network, mock_subprocess):
     assert call_args[1]["check"] is True
 
 
+def test_run_command_strip_output_false_preserves_trailing_context_line(gh_network, mock_subprocess):
+    """A diff whose last hunk ends in an empty context line ends with ' \\n' —
+    stripping it leaves the hunk one line short of its @@ header's declared
+    count, which desyncs the parser and blocks inline comment placement."""
+    mock_result = Mock()
+    mock_result.returncode = 0
+    mock_result.stdout = '@@ -1,2 +1,2 @@\n+code\n \n'
+    mock_result.stderr = ""
+    mock_subprocess.return_value = mock_result
+
+    output = gh_network.run_command(["pr", "diff", "123"], strip_output=False)
+
+    assert output == '@@ -1,2 +1,2 @@\n+code\n \n'
+
+
 def test_run_command_with_stdin(gh_network, mock_subprocess):
     """Test command execution with stdin input"""
     # Setup mock

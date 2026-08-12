@@ -41,6 +41,10 @@ class CodexHeadlessAdapter:
     def supports_effort_control(self) -> bool:
         return False
 
+    @property
+    def supports_model_selection(self) -> bool:
+        return True
+
     def is_available(self) -> bool:
         return shutil.which("codex") is not None
 
@@ -52,11 +56,15 @@ class CodexHeadlessAdapter:
         json_schema: Optional[dict[str, Any]] = None,
         disallowed_tools: Optional[list[str]] = None,
         effort: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> HeadlessResponse:
         # Use flags for non-interactive headless execution:
         # - --json: machine-readable JSONL output
         # - --ephemeral: don't save session to disk
-        cmd = ["codex", "exec", "--json", "--ephemeral", prompt]
+        cmd = ["codex", "exec", "--json", "--ephemeral"]
+        if model is not None:
+            cmd += ["-m", model]
+        cmd.append(prompt)
         try:
             result = subprocess.run(
                 cmd,

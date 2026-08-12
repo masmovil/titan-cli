@@ -71,6 +71,11 @@ class HeadlessCliAdapter(Protocol):
         """Whether this adapter can set a reasoning-effort tier for the CLI's own session."""
         ...
 
+    @property
+    def supports_model_selection(self) -> bool:
+        """Whether this adapter can select a specific model for the CLI's own session."""
+        ...
+
     def is_available(self) -> bool:
         """Return True if the CLI is installed and reachable."""
         ...
@@ -83,6 +88,7 @@ class HeadlessCliAdapter(Protocol):
         json_schema: Optional[dict[str, Any]] = None,
         disallowed_tools: Optional[list[str]] = None,
         effort: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> HeadlessResponse:
         """
         Run the CLI with the given prompt in headless mode.
@@ -98,6 +104,8 @@ class HeadlessCliAdapter(Protocol):
                 `supports_tool_restriction` is False.
             effort: Optional reasoning-effort tier (e.g. "low", "medium", "high"). Ignored by
                 adapters where `supports_effort_control` is False.
+            model: Optional model identifier to run the CLI with (e.g. "claude-opus-4-8").
+                Ignored by adapters where `supports_model_selection` is False.
 
         Returns:
             HeadlessResponse with stdout, stderr, and exit_code. When `json_schema` is

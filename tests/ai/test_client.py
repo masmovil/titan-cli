@@ -1,5 +1,4 @@
 import pytest
-from pydantic import ValidationError
 from unittest.mock import MagicMock
 
 from titan_cli.ai.client import AIClient
@@ -82,36 +81,39 @@ def test_aiclient_init_default_connection(
 
 
 def test_aiclient_init_fallback_default_not_exist_fails():
-    """Test AIConfig raises ValidationError if default connection does not exist."""
-    with pytest.raises(
-        ValidationError,
-        match="Default connection 'non_existent' not found in configured connections.",
-    ):
-        AIConfig(
-            default_connection="non_existent",
-            connections={
-                "some_connection": AIProviderConfig(
-                    name="Some Connection",
-                    connection_type=AIConnectionType.DIRECT_PROVIDER,
-                    provider="openai",
-                    default_model="gpt-3.5",
-                )
-            },
-        )
+    """
+    A default connection that does not exist is reported when something tries to use it,
+    not when the config loads - loading must never be what stops Titan from starting.
+    """
+    ai_config = AIConfig(
+        default_connection="non_existent",
+        connections={
+            "some_connection": AIProviderConfig(
+                name="Some Connection",
+                connection_type=AIConnectionType.DIRECT_PROVIDER,
+                provider="openai",
+                default_model="gpt-3.5",
+            )
+        },
+    )
+
+    with pytest.raises(AIConfigurationError):
+        AIClient(ai_config, MagicMock())
 
 
-def test_aiclient_init_invalid_connection_id_falls_back(
+def test_aiclient_init_invalid_connection_id_is_refused_by_name(
     mock_ai_config_multiple_connections, mock_secret_manager
 ):
-    """Test AIClient falls back to the first available connection when initializing with a non-existent connection_id."""
-    client = AIClient(
-        ai_config=mock_ai_config_multiple_connections,
-        secrets=mock_secret_manager,
-        connection_id="non_existent_connection",
-    )
-    first_connection_id = list(mock_ai_config_multiple_connections.connections.keys())[0]
-    assert client.connection_id == first_connection_id
-    assert client.connection_id in mock_ai_config_multiple_connections.connections
+    """
+    Asking for a connection that does not exist must say so, not quietly answer with a
+    different one - the prompts would go somewhere the user never chose, unnoticed.
+    """
+    with pytest.raises(AIConfigurationError, match="non_existent_connection"):
+        AIClient(
+            ai_config=mock_ai_config_multiple_connections,
+            secrets=mock_secret_manager,
+            connection_id="non_existent_connection",
+        )
 
 
 def test_aiclient_no_connections_configured():

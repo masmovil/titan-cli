@@ -206,7 +206,6 @@ class ReviewStrategy(BaseModel):
     max_focus_files: int
     max_prompt_chars: int
     max_comment_entries: int
-    batching_enabled: bool = False
     suspicious_empty_findings: bool = False
     reason: str = ""
 
@@ -326,7 +325,6 @@ class FocusContextBatch(BaseModel):
     comment_context: list[CommentContextEntry] = Field(default_factory=list)
     checklist_applicable: list[ReviewChecklistItem] = Field(default_factory=list)
     related_files: dict[str, str] = Field(default_factory=dict)
-    excluded_files: list[ExcludedFileEntry] = Field(default_factory=list)
     pr_manifest: Optional[PullRequestManifest] = None
     approximate_chars: int = 0
     prompt_budget_target_chars: int = 0

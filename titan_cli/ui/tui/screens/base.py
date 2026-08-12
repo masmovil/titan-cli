@@ -132,7 +132,7 @@ class BaseScreen(Screen):
         status_bar.ai_info = ai_info
         status_bar.project_name = project_name
 
-    def on_resume(self) -> None:
+    def on_screen_resume(self) -> None:
         """Called when screen is resumed (e.g., after another screen is dismissed)."""
         # Refresh status bar with latest config values
         if self.show_status_bar:

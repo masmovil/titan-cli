@@ -10,7 +10,6 @@ from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.steps.command_step import execute_command_step as execute_external_command_step
 from titan_cli.engine.steps.ai_assistant_step import execute_ai_assistant_step
-from titan_cli.engine.steps.select_cli_step import execute_select_cli_step
 
 
 
@@ -23,7 +22,6 @@ class WorkflowExecutor:
     # Core steps available to all workflows
     CORE_STEPS = {
         "ai_code_assistant": execute_ai_assistant_step,
-        "select_cli": execute_select_cli_step,
     }
 
     def __init__(self, plugin_registry: PluginRegistry, workflow_registry: WorkflowRegistry):

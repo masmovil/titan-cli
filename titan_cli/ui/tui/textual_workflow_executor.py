@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 from textual.message import Message
 
+from titan_cli.core.interrupt import WorkflowAborted, abort_requested
 from titan_cli.core.workflows import ParsedWorkflow
 from titan_cli.core.workflows.workflow_exceptions import WorkflowExecutionError
 from titan_cli.core.workflows.workflow_registry import WorkflowRegistry
@@ -18,7 +19,6 @@ from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import WorkflowResult, Success, Error, is_error, is_skip, is_exit
 from titan_cli.engine.steps.command_step import execute_command_step as execute_external_command_step
 from titan_cli.engine.steps.ai_assistant_step import execute_ai_assistant_step
-from titan_cli.engine.steps.select_cli_step import execute_select_cli_step
 from titan_cli.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +35,6 @@ class TextualWorkflowExecutor:
     # Core steps available to all workflows
     CORE_STEPS = {
         "ai_code_assistant": execute_ai_assistant_step,
-        "select_cli": execute_select_cli_step,
     }
 
     # Message classes for communication with the screen
@@ -219,6 +218,13 @@ class TextualWorkflowExecutor:
         try:
             step_index = 0
             for step_data in workflow.steps:
+                # Once the app is gone there is nobody to render for and nothing
+                # to confirm with - stop before running another step.
+                if abort_requested():
+                    raise WorkflowAborted(
+                        "Application closed during workflow execution"
+                    )
+
                 step_config = WorkflowStepModel(**step_data)
 
                 # Hooks are resolved by the registry, so we just skip the placeholder

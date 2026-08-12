@@ -254,3 +254,38 @@ def test_get_commit_review_context_returns_api_error_on_network_failure(pr_servi
 
     assert isinstance(result, ClientError)
     assert result.error_code == "API_ERROR"
+
+
+def test_get_pr_commit_sha_reads_head_ref_oid(pr_service, mock_gh_network):
+    """Test the head SHA comes from headRefOid, not from the commits list."""
+    mock_gh_network.run_command.return_value = json.dumps({"headRefOid": "4a999bc6"})
+
+    result = pr_service.get_pr_commit_sha(3355)
+
+    assert isinstance(result, ClientSuccess)
+    assert result.data == "4a999bc6"
+    args = mock_gh_network.run_command.call_args[0][0]
+    assert "headRefOid" in args
+    # gh caps the commits list at 100 entries, so its last element is not the head
+    # on long-lived PRs; anchoring comments to it gets them rejected as unresolvable.
+    assert "commits" not in args
+
+
+def test_get_pr_commit_sha_missing_head_returns_error(pr_service, mock_gh_network):
+    """Test an empty headRefOid is reported rather than passed on as a valid SHA."""
+    mock_gh_network.run_command.return_value = json.dumps({"headRefOid": ""})
+
+    result = pr_service.get_pr_commit_sha(123)
+
+    assert isinstance(result, ClientError)
+    assert result.error_code == "NO_COMMITS"
+
+
+def test_get_pr_commit_sha_returns_api_error_on_network_failure(pr_service, mock_gh_network):
+    """Test GitHub API failure handling."""
+    mock_gh_network.run_command.side_effect = GitHubAPIError("Not Found")
+
+    result = pr_service.get_pr_commit_sha(123)
+
+    assert isinstance(result, ClientError)
+    assert result.error_code == "API_ERROR"

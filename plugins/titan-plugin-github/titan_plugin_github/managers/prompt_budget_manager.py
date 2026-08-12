@@ -39,8 +39,15 @@ class PromptBudgetManager:
         batch: FocusContextBatch,
         prompt_parts: dict[str, str],
         budget_chars: int,
+        allow_file_reads: bool = True,
     ) -> tuple[list[FocusContextBatch], bool]:
-        """Shrink or split a batch until it fits the prompt budget, or mark it oversized."""
+        """Shrink or split a batch until it fits the prompt budget, or mark it oversized.
+
+        ``allow_file_reads=False`` forbids the worktree_reference degradation: that
+        mode instructs the model to read the file from disk, which is exactly what
+        the caller ruled out when the checkout is not provably the PR's revision.
+        The batch then degrades through the remaining steps or reports oversized.
+        """
         prompt = prompt_parts["prompt"]
         actual_chars = len(prompt)
         if actual_chars <= budget_chars:
@@ -67,7 +74,7 @@ class PromptBudgetManager:
             return [left, right], True
 
         only_path, only_entry = file_items[0]
-        if not only_entry.worktree_reference:
+        if not only_entry.worktree_reference and allow_file_reads:
             degraded_entry = only_entry.model_copy(
                 update={
                     "full_content": None,

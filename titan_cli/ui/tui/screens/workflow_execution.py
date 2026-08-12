@@ -15,6 +15,11 @@ from textual.worker import Worker, WorkerState
 from titan_cli.ui.tui.widgets import HeaderWidget
 from titan_cli.ui.tui.icons import Icons
 
+from titan_cli.core.interrupt import (
+    WorkflowAborted,
+    clear_abort_check,
+    set_abort_check,
+)
 from titan_cli.core.secrets import SecretManager
 from titan_cli.core.workflows import ParsedWorkflow
 from titan_cli.engine.builder import WorkflowContextBuilder
@@ -163,6 +168,11 @@ class WorkflowExecutionScreen(BaseScreen):
 
     def _execute_workflow(self) -> None:
         """Execute the workflow in a background thread."""
+        # Let blocking calls made from this thread (AI requests, headless CLI
+        # subprocesses) notice when the app closes, so quitting mid-call doesn't
+        # leave this non-daemon thread hanging interpreter shutdown.
+        app = self.app
+        set_abort_check(lambda: not app.is_running)
         try:
             # We're already in the project directory (current working directory)
             # No need to change directory
@@ -180,6 +190,8 @@ class WorkflowExecutionScreen(BaseScreen):
 
             # Add AI if configured
             ctx_builder.with_ai()
+            ctx_builder.with_ai_router()
+            ctx_builder.with_titan_config(self.config)
 
             # Add registered plugins to context
             for plugin_name in self.config.registry.list_installed():
@@ -216,6 +228,10 @@ class WorkflowExecutionScreen(BaseScreen):
             # Execute workflow (this is synchronous and may take time)
             executor.execute(self.workflow, execution_context)
 
+        except WorkflowAborted:
+            # The app closed while a step was blocked in an AI call or prompt.
+            # There is no UI left to report to; just let this thread die.
+            logger.info("workflow_aborted_on_app_exit", workflow_name=self.workflow_name)
         except (WorkflowNotFoundError, WorkflowExecutionError) as e:
             self._output(f"\n[red]{Icons.ERROR} Workflow failed: {e}[/red]")
             self._output("[dim]Press ESC or Q to return[/dim]")
@@ -223,6 +239,7 @@ class WorkflowExecutionScreen(BaseScreen):
             self._output(f"\n[red]{Icons.ERROR} Unexpected error: {type(e).__name__}: {e}[/red]")
             self._output("[dim]Press ESC or Q to return[/dim]")
         finally:
+            clear_abort_check()
             # Restore original working directory
             os.chdir(self._original_cwd)
 

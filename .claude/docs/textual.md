@@ -170,6 +170,11 @@ ctx.textual.bold_primary_text("Bold primary message")
 ctx.textual.success_text("Operation successful")
 ctx.textual.error_text("Operation failed")
 ctx.textual.warning_text("Warning message")
+
+# Tinted, content-width chip — for a fact ABOUT the output, not part of it.
+# Its one use today is naming the AI that served the step; pass it straight to the façade:
+#   ctx.ai_router.generate_text(prompt, policy=my_step, announce=ctx.textual.ai_chip)
+ctx.textual.ai_chip("claude · CLI, automatic")
 ```
 
 **Note**: There are no `italic_text()` / `dim_italic_text()` methods on `ctx.textual`. If you need italic text, mount the `ItalicText` / `DimItalicText` widgets directly (from `titan_cli.ui.tui.widgets`).

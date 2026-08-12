@@ -5,6 +5,9 @@ AI-powered PR description generation step.
 Uses PRAgent to analyze branch context and generate PR content.
 """
 
+from titan_cli.ai.router.declaration import declare_ai_usage
+from titan_cli.ai.router.enums import AIProviderType, AITask
+from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.core.logging import get_logger
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 
@@ -14,6 +17,15 @@ from ..messages import msg
 logger = get_logger(__name__)
 
 
+@declare_ai_usage(
+    task=AITask.PR_DESCRIPTION,
+    # The agent drives whatever generator it is handed, so either transport
+    # works. Remote leads because a CLI costs a subprocess per agent call, and
+    # this agent makes two.
+    executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+    preferred=[AIProviderType.REMOTE],
+    enforces=True,
+)
 def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Generate PR title and description using PRAgent.
@@ -24,7 +36,7 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     - Appropriate detail level based on PR size
 
     Requires:
-        ctx.ai: An initialized AIClient
+        ctx.ai_router: The AI execution façade (falls back to ctx.ai)
         ctx.git: An initialized GitClient
         ctx.github: An initialized GitHubClient
 
@@ -48,8 +60,26 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
     # Begin step container
     ctx.textual.begin_step("AI PR Description")
 
-    # Check if AI is configured
-    if not ctx.ai or not ctx.ai.is_available():
+    # Use whatever the user chose for this task; the agent drives it either way.
+    generator = ctx.ai
+    if ctx.ai_router:
+        match ctx.ai_router.resolve_generator(
+            policy=ai_suggest_pr_description_step,
+            cwd=ctx.git.repo_path if ctx.git else None,
+            announce=ctx.textual.ai_chip,
+        ):
+            case AIExecutionSuccess(data=resolved):
+                generator = resolved
+            case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
+                ctx.textual.dim_text(disabled_message)
+                ctx.textual.end_step("skip")
+                return Skip(disabled_message)
+            case AIExecutionError(error_message=err):
+                ctx.textual.error_text(err)
+                ctx.textual.end_step("error")
+                return Error(err)
+
+    if not generator or not generator.is_available():
         ctx.textual.dim_text(msg.GitHub.AI.AI_NOT_CONFIGURED)
         ctx.textual.end_step("skip")
         return Skip(msg.GitHub.AI.AI_NOT_CONFIGURED)
@@ -76,7 +106,7 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
 
         # Create PRAgent instance
         pr_agent = PRAgent(
-            ai_client=ctx.ai,
+            generator=generator,
             git_client=ctx.git,
             github_client=ctx.github
         )

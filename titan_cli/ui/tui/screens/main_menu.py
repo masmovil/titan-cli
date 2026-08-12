@@ -22,7 +22,6 @@ from titan_cli.core.plugins.community_sources import (
 )
 from .base import BaseScreen
 
-from .cli_launcher import CLILauncherScreen
 from .ai_config import AIConfigScreen
 from .plugin_management import PluginManagementScreen
 
@@ -31,7 +30,6 @@ class MainMenuScreen(BaseScreen):
     Main menu screen with navigation options.
 
     Displays the primary actions available in Titan:
-    - Launch External CLI
     - Project Management
     - Workflows
     - Plugin Management
@@ -112,9 +110,7 @@ class MainMenuScreen(BaseScreen):
         with Container(id="menu-container"):
 
             # Build menu options
-            options = [
-                Option("🚀 Launch External CLI", id="cli"),
-            ]
+            options = []
 
             # Only show Workflows if there are enabled plugins
             installed_plugins = self.config.registry.list_installed()
@@ -181,8 +177,6 @@ class MainMenuScreen(BaseScreen):
 
         if action == "exit":
             self.app.exit()
-        elif action == "cli":
-            self.handle_cli_action()
         elif action == "projects":
             self.handle_projects_action()
         elif action == "run_workflow":
@@ -191,10 +185,6 @@ class MainMenuScreen(BaseScreen):
             self.handle_plugin_management_action()
         elif action == "ai_config":
             self.handle_ai_config_action()
-
-    def handle_cli_action(self) -> None:
-        """Handle Launch External CLI action."""
-        self.app.push_screen(CLILauncherScreen(self.config))
 
     def handle_projects_action(self) -> None:
         """Handle Project Management action."""

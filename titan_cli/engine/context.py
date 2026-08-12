@@ -35,8 +35,13 @@ class WorkflowContext:
     # Plugin registry
     plugin_manager: Optional[Any] = None
 
+    # TitanConfig instance (for steps that need to persist user preferences)
+    titan_config: Optional[Any] = None
+
     # Service clients (populated by builder)
     ai: Optional[Any] = None
+    # AIExecutor - resolves and runs AI calls on the provider the user chose per task
+    ai_router: Optional[Any] = None
     git: Optional[Any] = None
     github: Optional[Any] = None
     github_managers: Optional[Any] = None

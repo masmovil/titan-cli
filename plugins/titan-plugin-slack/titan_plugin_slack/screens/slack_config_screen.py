@@ -440,6 +440,10 @@ class SlackConfigScreen(BaseScreen):
                     scope="user",
                 )
             token_written = True
+            # The plugin reads this token while initializing, and the config
+            # reload above ran before the token existed. Nothing in the config
+            # files changed since, so only an explicit rebuild picks it up.
+            self.config.load(force_plugin_init=True)
             self._reconfigure_project_mode = False
             self._has_changes = True
             self.app.notify("Slack connected successfully.", severity="information")
@@ -496,6 +500,9 @@ class SlackConfigScreen(BaseScreen):
         self.config.secrets.delete(self._get_project_token_key(), scope="user")
         self.config.secrets.delete(self._get_project_refresh_token_key(), scope="user")
         self.config.secrets.delete(self._get_project_token_expires_at_key(), scope="user")
+        # Same reason as connecting: the token the plugin holds lives outside the
+        # config files, so dropping it has to be announced explicitly.
+        self.config.load(force_plugin_init=True)
         self._reconfigure_project_mode = False
         self._has_changes = True
         self.app.notify("Slack account disconnected for this project.", severity="information")

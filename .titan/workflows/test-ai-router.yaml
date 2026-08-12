@@ -1,0 +1,17 @@
+name: "Test AI Router"
+description: "Minimal manual test for ai-exec-008: seeds ctx.data, then launches ai_code_assistant so you can exercise remember/skip-ask behavior."
+
+steps:
+  - id: seed_data
+    name: "Seed Context"
+    command: "echo 'fake test failure: line 42 assertion error'"
+
+  - id: ai-help
+    name: "AI Help"
+    plugin: core
+    step: ai_code_assistant
+    params:
+      context_key: "command_output"
+      prompt_template: "Help me fix this:\n\n{context}"
+      ask_confirmation: false
+    on_error: continue

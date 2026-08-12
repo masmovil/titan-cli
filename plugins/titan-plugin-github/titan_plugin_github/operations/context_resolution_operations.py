@@ -13,7 +13,6 @@ from ..models.review_models import (
     ChangeManifest,
     CommentContextEntry,
     ContextRequest,
-    ExcludedFileEntry,
     FileContextEntry,
     FileReviewPlan,
     FocusContextBatch,
@@ -216,9 +215,8 @@ def build_review_context_package(
 
     if len(plan.extra_context_requests) > 1:
         logger.info(
-            "extra_context_requests_trimmed: planned=%d resolved=%d dropped=%d",
+            "extra_context_requests_trimmed: planned=%d kept=1 dropped=%d",
             len(plan.extra_context_requests),
-            1,
             len(plan.extra_context_requests) - 1,
         )
 
@@ -232,7 +230,6 @@ def build_review_context_package(
     current_files: dict[str, FileContextEntry] = {}
     current_chars = _estimate_related_chars(related_files) + _estimate_comment_chars(comment_context)
     batch_index = 1
-    carry_excluded: list[ExcludedFileEntry] = []
 
     for file_plan in plan.focus_files:
         entry = _resolve_file_context(
@@ -245,7 +242,11 @@ def build_review_context_package(
         exceeds_worktree_reference_limit = entry.worktree_reference and _batch_has_worktree_reference(current_files)
 
         exceeds_char_budget = current_chars + entry_chars > content_budget
-        if current_files and strategy.batching_enabled and (exceeds_char_budget or exceeds_worktree_reference_limit):
+        # Overflow always spills into a new batch — one extra AI call — never drops
+        # the file. On a tiny PR one generously-resolved file (expanded_hunks at ~11k
+        # chars) used to cost the next file its entire review; batch count is now
+        # emergent from the budget, so small PRs still produce a single batch.
+        if current_files and (exceeds_char_budget or exceeds_worktree_reference_limit):
             batches.append(
                 FocusContextBatch(
                     batch_id=f"batch_{batch_index}",
@@ -253,7 +254,6 @@ def build_review_context_package(
                     comment_context=comment_context,
                     checklist_applicable=checklist_applicable,
                     related_files=related_files,
-                    excluded_files=carry_excluded,
                     pr_manifest=manifest.pr,
                     approximate_chars=current_chars,
                     prompt_budget_target_chars=strategy.max_prompt_chars,
@@ -262,17 +262,6 @@ def build_review_context_package(
             batch_index += 1
             current_files = {}
             current_chars = _estimate_related_chars(related_files) + _estimate_comment_chars(comment_context)
-            carry_excluded = []
-
-        if not strategy.batching_enabled and current_files and current_chars + entry_chars > content_budget:
-            carry_excluded.append(
-                ExcludedFileEntry(
-                    path=file_plan.path,
-                    reason="budget_trimmed",
-                    detail="did not fit in direct context budget",
-                )
-            )
-            continue
 
         current_files[file_plan.path] = entry
         current_chars += entry_chars
@@ -285,7 +274,6 @@ def build_review_context_package(
                 comment_context=comment_context,
                 checklist_applicable=checklist_applicable,
                 related_files=related_files,
-                excluded_files=carry_excluded,
                 pr_manifest=manifest.pr,
                 approximate_chars=current_chars,
                 prompt_budget_target_chars=strategy.max_prompt_chars,
@@ -305,7 +293,11 @@ def _resolve_file_context(
 ) -> FileContextEntry:
     manager = diff_manager or DiffContextManager.from_diff(diff)
     desired_mode = file_plan.read_mode
-    hunk_headers = [hunk.header for hunk in manager.get_hunks(file_plan.path)[:5]]
+    # The model anchors comments inside the hunks it can see; a header it never saw
+    # is a region it cannot anchor to, so those comments end up on unpublishable
+    # lines and degrade to the general body. 30 covers any realistic file (a header
+    # is ~40 chars, so worst case ~1.2k chars) while still bounding pathological diffs.
+    hunk_headers = [hunk.header for hunk in manager.get_hunks(file_plan.path)[:30]]
     file_limits = _file_limits(strategy, file_plan.path)
     resolved_entry: FileContextEntry | None = None
 

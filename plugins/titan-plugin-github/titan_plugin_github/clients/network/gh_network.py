@@ -58,7 +58,7 @@ class GHNetwork:
             raise GitHubAuthenticationError(msg.GitHub.NOT_AUTHENTICATED)
 
     def run_command(
-        self, args: List[str], stdin_input: Optional[str] = None
+        self, args: List[str], stdin_input: Optional[str] = None, strip_output: bool = True
     ) -> str:
         """
         Run gh CLI command and return stdout.
@@ -66,6 +66,10 @@ class GHNetwork:
         Args:
             args: Command arguments (without 'gh' prefix)
             stdin_input: Optional input to pass via stdin (for multiline text)
+            strip_output: Strip surrounding whitespace from stdout (default: True).
+                Pass False for diff output: a diff whose last hunk ends in an empty
+                context line ends with a meaningful " \\n" that stripping destroys,
+                leaving the hunk one line short of what its @@ header declares.
 
         Returns:
             Command stdout as string
@@ -97,7 +101,7 @@ class GHNetwork:
                 action=action,
                 duration=round(time.time() - start, 3),
             )
-            return result.stdout.strip()
+            return result.stdout.strip() if strip_output else result.stdout
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.strip() if e.stderr else ""
             stdout = e.stdout.strip() if e.stdout else ""

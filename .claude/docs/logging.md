@@ -302,6 +302,19 @@ def get_branches(self):
 - `ai_call_ok` at DEBUG: `provider`, `operation`, `tokens`, `max_tokens`, `duration`
 - `ai_call_failed` at DEBUG: `provider`, `operation`, `max_tokens`, `duration`
 
+Contract enforcement (see [ai-agents.md](ai-agents.md)) adds, at INFO:
+- `ai_contract_parse_failed`: `provider`, `operation`, `attempt`, `error`, `response_chars` —
+  the answer missed its declared shape and a repair call is about to run
+- `ai_contract_degraded`: both attempts failed and the contract's defaults were used
+- `ai_contract_failed` at ERROR: both attempts failed with no defaults; raising
+
+Counting `ai_contract_parse_failed` per `operation` is how you find out whether a contract
+actually holds on a given provider.
+
+Generation through a local CLI (`titan_cli/ai/headless_generator.py`) adds:
+- `ai_agent_cli_ok` at INFO: `cli`, `duration`, `response_chars`, `schema_sent`
+- `ai_agent_cli_failed` at ERROR: `cli`, `exit_code`, `duration`
+
 **NEVER log:**
 - `request.context` — contains diffs, issue descriptions, PR content
 - `request.system_prompt` — contains project configuration

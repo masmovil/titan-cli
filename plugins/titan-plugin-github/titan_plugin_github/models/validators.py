@@ -28,47 +28,88 @@ class ReviewPlanValidator:
             _ALL_CHECKLIST_IDS if offered_checklist_ids is None else offered_checklist_ids
         )
 
-    def validate_semantically(self, plan: ReviewPlan) -> tuple[bool, list[str]]:
-        errors: list[str] = []
+    def sanitize(self, plan: ReviewPlan) -> tuple[ReviewPlan, list[str]]:
+        """Drop invalid entries from the plan, one warning per dropped entry.
+
+        Every plan list is advisory entry-by-entry: one hallucinated path in a
+        12-file plan should cost that entry, not the model's whole selection.
+        Discarding the full plan is the caller's decision, reserved for the one
+        genuinely fatal outcome — no valid focus file survives (see
+        ``validate_semantically``).
+        """
+        warnings: list[str] = []
         manifest_paths = {f.path for f in self.manifest.files}
 
-        if not plan.focus_files:
-            errors.append("Plan has no focus_files")
-
+        focus_files = []
         seen_focus: set[str] = set()
         for file_plan in plan.focus_files:
             if file_plan.path not in manifest_paths:
-                errors.append(f"Focus path not in PR: {file_plan.path}")
+                warnings.append(f"Focus path not in PR, dropped: {file_plan.path}")
+                continue
             if file_plan.path in seen_focus:
-                errors.append(f"Duplicate focus file: {file_plan.path}")
+                warnings.append(f"Duplicate focus file, dropped: {file_plan.path}")
+                continue
             seen_focus.add(file_plan.path)
-
-        if len(plan.extra_context_requests) > MAX_EXTRA_CONTEXT_REQUESTS:
-            errors.append(
-                f"Too many context requests: {len(plan.extra_context_requests)} > {MAX_EXTRA_CONTEXT_REQUESTS}"
-            )
+            focus_files.append(file_plan)
 
         allowed_context_types = {
             ContextRequestType.RELATED_TESTS,
             ContextRequestType.RELATED_CONTEXT,
         }
+        context_requests = []
         for req in plan.extra_context_requests:
             if req.type not in allowed_context_types:
-                errors.append(f"Invalid context type: {req.type}")
+                warnings.append(f"Invalid context type, request dropped: {req.type}")
+                continue
             if req.for_path not in manifest_paths:
-                errors.append(f"Context request path not in PR: {req.for_path}")
+                warnings.append(f"Context request path not in PR, dropped: {req.for_path}")
+                continue
+            context_requests.append(req)
+        if len(context_requests) > MAX_EXTRA_CONTEXT_REQUESTS:
+            warnings.append(
+                f"Too many context requests, keeping first {MAX_EXTRA_CONTEXT_REQUESTS} "
+                f"of {len(context_requests)}"
+            )
+            context_requests = context_requests[:MAX_EXTRA_CONTEXT_REQUESTS]
 
+        review_axes = []
         for item_id in plan.review_axes:
             if item_id not in self.offered_checklist_ids:
-                errors.append(f"Unknown checklist item: {item_id}")
+                warnings.append(f"Unknown checklist item, dropped: {item_id}")
+                continue
+            review_axes.append(item_id)
 
+        excluded_files = []
         for excluded in plan.excluded_files:
             if excluded.path not in manifest_paths:
-                errors.append(f"Excluded path not in PR: {excluded.path}")
+                warnings.append(f"Excluded path not in PR, dropped: {excluded.path}")
+                continue
             if excluded.path in seen_focus:
-                errors.append(f"Path cannot be both focused and excluded: {excluded.path}")
+                warnings.append(
+                    f"Path both focused and excluded, keeping focus: {excluded.path}"
+                )
+                continue
+            excluded_files.append(excluded)
 
-        return len(errors) == 0, errors
+        if not warnings:
+            return plan, []
+        return (
+            plan.model_copy(
+                update={
+                    "focus_files": focus_files,
+                    "extra_context_requests": context_requests,
+                    "review_axes": review_axes,
+                    "excluded_files": excluded_files,
+                }
+            ),
+            warnings,
+        )
+
+    def validate_semantically(self, plan: ReviewPlan) -> tuple[bool, list[str]]:
+        """Fatal-only check, meant to run on a sanitized plan."""
+        if not plan.focus_files:
+            return False, ["Plan has no valid focus_files"]
+        return True, []
 
 
 def is_duplicate(

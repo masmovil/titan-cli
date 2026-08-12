@@ -72,6 +72,9 @@ class _FakeTextual:
     def loading(self, _text):
         return self._Loading()
 
+    def ai_chip(self, _text):
+        pass
+
 
 def _make_pr(
     *, is_cross_repository: bool, author_name: str = "forkuser", head_repository_name: str = "some-repo"
@@ -171,6 +174,33 @@ def test_fetch_pr_review_bundle_falls_back_to_github_diff_when_git_diff_fails():
     assert isinstance(result, Success)
     assert result.metadata["review_diff"] == "diff --git a/foo b/foo"
     ctx.github.get_pr_diff.assert_called_once_with(223)
+
+
+def test_fetch_pr_review_bundle_uses_local_u3_diff_when_github_diff_unavailable():
+    """GitHub refuses diffs over 20k lines (406). The publishable-lines source then
+    comes from a local 3-context diff instead of degrading to added-lines-only."""
+    pr = _make_pr(is_cross_repository=False)
+    ctx = _make_context(pr)
+    from titan_cli.core.result import ClientError
+
+    u20_diff = "diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1,1 +1,2 @@\n line1\n+added\n"
+    u3_diff = "diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1,1 +1,2 @@\n line1\n+added\n"
+    ctx.git.fetch.return_value = ClientSuccess(data=None, message="ok")
+    ctx.git.get_branch_diff.side_effect = [
+        ClientSuccess(data=u20_diff, message="ok"),
+        ClientSuccess(data=u3_diff, message="ok"),
+    ]
+    ctx.github.get_pr_diff.return_value = ClientError(
+        error_message="HTTP 406: diff exceeded the maximum number of lines (20000)"
+    )
+
+    result = fetch_pr_review_bundle(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata["review_diff_manager"].has_github_diff is True
+    # Second get_branch_diff call is the publish-validation source, at 3 context lines.
+    validation_call = ctx.git.get_branch_diff.call_args_list[1]
+    assert validation_call.kwargs.get("context_lines") == 3
 
 
 def test_fetch_pr_review_bundle_exits_when_pr_has_no_files_and_no_diff():
@@ -534,7 +564,6 @@ def test_ai_review_findings_splits_oversized_batch_via_prompt_budget_manager(mon
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -583,7 +612,6 @@ def test_ai_review_findings_parses_markdown_fenced_response(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -637,7 +665,6 @@ def test_ai_review_findings_recovers_via_reformat_retry(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -667,7 +694,6 @@ def test_ai_review_findings_marks_batch_failed_when_reformat_retry_also_fails(mo
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -710,7 +736,6 @@ def test_ai_review_findings_partial_batch_failure_still_succeeds_with_flag(monke
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -762,7 +787,6 @@ def test_ai_review_findings_returns_error_when_all_batches_fail(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -819,7 +843,6 @@ def test_ai_review_findings_non_list_payload_goes_through_reformat_retry(monkeyp
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -850,7 +873,6 @@ def test_ai_review_findings_non_list_payload_marks_failed_when_retry_also_non_li
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -909,7 +931,6 @@ def test_ai_review_findings_uses_structured_output_when_supported(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -939,7 +960,6 @@ def test_ai_review_findings_structured_output_retry_also_requests_schema(monkeyp
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -972,7 +992,6 @@ def test_ai_review_findings_restricts_tools_when_supported(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -998,7 +1017,6 @@ def test_ai_review_findings_omits_disallowed_tools_when_unsupported(monkeypatch)
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1026,7 +1044,6 @@ def test_ai_review_findings_reformat_retry_also_restricts_tools(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1073,7 +1090,6 @@ def test_ai_review_findings_caps_effort_for_worktree_reference_batch(monkeypatch
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1099,7 +1115,6 @@ def test_ai_review_findings_omits_effort_when_no_worktree_reference(monkeypatch)
         max_focus_files=10,
         max_prompt_chars=6000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1285,6 +1300,46 @@ def test_submit_sha_recheck_failure_does_not_block_the_submission():
     assert drift.drifted is False
 
 
+def test_resolve_drift_changed_files_returns_pushed_paths():
+    """On drift, the push's touched files come from a local diff so only their
+    comments degrade — after a fetch, since the new head postdates the review's own."""
+    from titan_plugin_github.operations.review_action_operations import detect_head_sha_drift
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.git = Mock()
+    ctx.git.fetch.return_value = ClientSuccess(data=None, message="ok")
+    ctx.git.get_changed_files.return_value = ClientSuccess(
+        data=["src/touched.py"], message="ok"
+    )
+    drift = detect_head_sha_drift("a" * 40, "b" * 40)
+
+    paths = code_review_steps._resolve_drift_changed_files(ctx, drift)
+
+    assert paths == {"src/touched.py"}
+    ctx.git.fetch.assert_called_once()
+    ctx.git.get_changed_files.assert_called_once_with("a" * 40, "b" * 40)
+
+
+def test_resolve_drift_changed_files_unknowable_returns_none():
+    """git unavailable or failing → None, so the caller degrades everything
+    (never publishes stale anchors on a hunch)."""
+    from titan_plugin_github.operations.review_action_operations import detect_head_sha_drift
+
+    drift = detect_head_sha_drift("a" * 40, "b" * 40)
+
+    no_git_ctx = WorkflowContext(secrets=Mock())
+    no_git_ctx.git = None
+    assert code_review_steps._resolve_drift_changed_files(no_git_ctx, drift) is None
+
+    failing_ctx = WorkflowContext(secrets=Mock())
+    failing_ctx.git = Mock()
+    failing_ctx.git.fetch.return_value = ClientSuccess(data=None, message="ok")
+    failing_ctx.git.get_changed_files.return_value = ClientError(
+        error_message="bad object", error_code="DIFF_ERROR"
+    )
+    assert code_review_steps._resolve_drift_changed_files(failing_ctx, drift) is None
+
+
 def test_submit_sha_drift_ignores_surrounding_whitespace():
     ctx = _drift_ctx(ClientSuccess(data=f"  {'a' * 40}\n", message="ok"))
 
@@ -1326,9 +1381,10 @@ def _verify_ctx(findings: list, adapter_stdout: str | None = None) -> WorkflowCo
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
-    ctx.data["review_profile"] = ReviewProfile()
+    # The pass ships disabled by default (it has never refuted a real finding);
+    # these tests exercise the step itself, so they opt in explicitly.
+    ctx.data["review_profile"] = ReviewProfile(findings_verification_enabled=True)
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
     return ctx
@@ -1378,6 +1434,21 @@ def test_verify_findings_fails_open_on_unparseable_response(monkeypatch):
     assert ctx.data["deduped_findings"] == [finding]
 
 
+def test_verify_findings_disabled_by_default(monkeypatch):
+    """The pass ships OFF: across every observed real review it refuted nothing,
+    so by default it only adds latency. Projects opt in via profile.yaml."""
+    finding = _make_finding_model()
+    fake_adapter = _FakeStructuredOutputAdapter("should never be called")
+    monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
+
+    ctx = _verify_ctx([finding])
+    ctx.data["review_profile"] = ReviewProfile()
+    result = verify_findings(ctx)
+
+    assert isinstance(result, Skip)
+    assert fake_adapter.calls == []
+
+
 def test_verify_findings_skips_when_profile_disables_it(monkeypatch):
     finding = _make_finding_model()
     fake_adapter = _FakeStructuredOutputAdapter("should never be called")
@@ -1417,7 +1488,6 @@ def test_verify_findings_fails_open_when_prompt_over_budget(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=100,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     result = verify_findings(ctx)
 
@@ -1481,7 +1551,6 @@ def _concurrency_ctx(batch_count: int, concurrency: int) -> WorkflowContext:
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["cli_preference"] = "auto"
     ctx.data["project_root"] = "/tmp/project"
@@ -1572,7 +1641,6 @@ def _rescue_ctx(adapter_stdouts: list[str]) -> tuple[WorkflowContext, "_FakeSequ
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
         suspicious_empty_findings=True,
     )
     ctx.data["review_candidates"] = [
@@ -1655,7 +1723,6 @@ def test_ai_review_findings_no_rescue_when_not_suspicious(monkeypatch):
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
         suspicious_empty_findings=False,
     )
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
@@ -1711,7 +1778,6 @@ def _synthesis_ctx(
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
         suspicious_empty_findings=False,
     )
     ctx.data["review_diff"] = diff if diff is not None else _synthesis_diff()
@@ -1986,7 +2052,6 @@ def _timeout_ctx(adapter_script: list[tuple[int, str]], *, worktree_reference: b
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
     ctx.data["review_diff"] = (
         "diff --git a/border.py b/border.py\n"

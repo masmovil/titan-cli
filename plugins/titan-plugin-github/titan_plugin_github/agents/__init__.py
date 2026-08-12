@@ -2,6 +2,5 @@
 """AI agents for GitHub plugin."""
 
 from .pr_agent import PRAgent, PRAnalysis, PRStatus
-from .code_review_agent import CodeReviewAgent
 
-__all__ = ["PRAgent", "PRAnalysis", "PRStatus", "CodeReviewAgent"]
+__all__ = ["PRAgent", "PRAnalysis", "PRStatus"]

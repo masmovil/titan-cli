@@ -347,6 +347,27 @@ class TextualComponents:
         widget.styles.height = "auto"
         self.mount(widget)
 
+    def ai_chip(self, text: str) -> None:
+        """
+        Show which AI is serving this step, as a tinted chip.
+
+        Written to be passed straight to the façade as a sink:
+        `ctx.ai_router.generate_text(..., announce=ctx.textual.ai_chip)`. It exists because a
+        dim line naming the provider was indistinguishable from the progress text around it,
+        and noticing the wrong AI is what makes a user go and change it.
+
+        Args:
+            text: Provider summary, e.g. "claude · CLI, automatic"
+
+        Example:
+            ctx.textual.ai_chip("claude · CLI, automatic")
+        """
+        from titan_cli.ui.tui.icons import Icons
+        from titan_cli.ui.tui.widgets import Chip
+        widget = Chip(f"{Icons.AI} {text}")
+        widget.styles.height = "auto"
+        self.mount(widget)
+
     def primary_text(self, text: str) -> None:
         """
         Append primary colored text (uses theme system).
@@ -994,7 +1015,8 @@ class TextualComponents:
                 launcher = CLILauncher(
                     cli_name,
                     install_instructions=config.get("install_instructions"),
-                    prompt_flag=config.get("prompt_flag")
+                    prompt_flag=config.get("prompt_flag"),
+                    model_flag=config.get("model_flag")
                 )
                 exit_code = launcher.launch(prompt=prompt, cwd=cwd)
                 result_container["exit_code"] = exit_code

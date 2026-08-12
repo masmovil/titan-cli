@@ -11,6 +11,7 @@ from titan_cli.core.secrets import SecretManager
 from .context import WorkflowContext
 from titan_cli.ai.client import AIClient
 from titan_cli.ai.exceptions import AIConfigurationError
+from titan_cli.ai.router import AIExecutor
 
 
 class WorkflowContextBuilder:
@@ -33,6 +34,7 @@ class WorkflowContextBuilder:
         )
         ctx = WorkflowContextBuilder(plugin_registry, secrets, ai_config) \\
             .with_ai() \\
+            .with_ai_router() \\
             .build()
     """
 
@@ -56,6 +58,8 @@ class WorkflowContextBuilder:
 
         # Service clients
         self._ai = None
+        self._ai_router = None
+        self._titan_config = None
         self._git = None
         self._github = None
         self._jira = None
@@ -84,6 +88,37 @@ class WorkflowContextBuilder:
                     self._ai = None
             else:
                 self._ai = None
+        return self
+
+    def with_ai_router(self, ai_router: Optional[Any] = None) -> WorkflowContextBuilder:
+        """
+        Add the AI execution façade steps route their AI calls through.
+
+        Args:
+            ai_router: Optional AIExecutor instance (auto-created if None)
+
+        Note:
+            `ctx.ai` stays available and unchanged for steps that talk to a
+            remote connection directly; `ctx.ai_router` is what honors the
+            user's per-task provider preference.
+        """
+        if ai_router:
+            self._ai_router = ai_router
+        else:
+            self._ai_router = AIExecutor(self._ai_config, self._secrets)
+        return self
+
+    def with_titan_config(self, titan_config: Optional[Any] = None) -> WorkflowContextBuilder:
+        """
+        Add the TitanConfig instance, for steps that need to persist user
+        preferences (e.g. `upsert_task_ai_preference`).
+
+        Args:
+            titan_config: The TitanConfig instance in scope at the call site.
+                There is no auto-create path - TitanConfig requires a
+                PluginRegistry/project root already resolved elsewhere.
+        """
+        self._titan_config = titan_config
         return self
 
     def with_git(self, git_client: Optional[Any] = None) -> WorkflowContextBuilder:
@@ -232,7 +267,9 @@ class WorkflowContextBuilder:
         return WorkflowContext(
             secrets=self._secrets,
             plugin_manager=self._plugin_registry,
+            titan_config=self._titan_config,
             ai=self._ai,
+            ai_router=self._ai_router,
             git=self._git,
             github=self._github,
             github_managers=self._plugin_managers.get("github"),
