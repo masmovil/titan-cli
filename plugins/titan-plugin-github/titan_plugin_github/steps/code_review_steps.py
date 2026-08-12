@@ -1658,12 +1658,25 @@ def validate_review_plan(ctx: WorkflowContext) -> WorkflowResult:
 
     offered_ids = frozenset(item.id for item in checklist)
     validator = ReviewPlanValidator(manifest, offered_ids)
+
+    # Invalid entries are dropped one by one; the AI's remaining selection survives.
+    # Only a plan with no valid focus file left falls back to the deterministic plan.
+    plan, sanitize_warnings = validator.sanitize(plan)
+    if sanitize_warnings:
+        for warning in sanitize_warnings:
+            ctx.textual.warning_text(f"  ⚠ {warning}")
+        logger.warning(
+            "review_plan_entries_dropped",
+            dropped=len(sanitize_warnings),
+            warnings=sanitize_warnings,
+        )
+
     is_valid, errors = validator.validate_semantically(plan)
 
     if not is_valid:
-        # Log errors but don't halt — auto-correct by falling back to default plan
         for err in errors:
             ctx.textual.warning_text(f"  ⚠ {err}")
+        logger.warning("review_plan_validation_failed", errors=errors)
 
         candidates = ctx.get("review_candidates", [])
         excluded_files = ctx.get("excluded_review_files", [])
