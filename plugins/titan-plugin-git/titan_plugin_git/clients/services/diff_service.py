@@ -258,6 +258,34 @@ class DiffService:
             return ClientError(error_message=str(e), error_code="DIFF_ERROR")
 
     @log_client_operation()
+    def get_changed_files(self, base_ref: str, head_ref: str) -> ClientResult[List[str]]:
+        """
+        List the paths that differ between two refs (commits, branches or tags).
+
+        Uses --no-renames so a renamed file reports both its old and new path —
+        callers checking whether a specific path was touched see either side.
+
+        Args:
+            base_ref: Base ref, used verbatim (no remote prefixing)
+            head_ref: Head ref, used verbatim
+
+        Returns:
+            ClientResult[List[str]] with the changed paths
+        """
+        try:
+            output = self.git.run_command(
+                ["git", "diff", "--name-only", "--no-renames", base_ref, head_ref],
+                check=False,
+            )
+            paths = [line.strip() for line in output.splitlines() if line.strip()]
+            return ClientSuccess(
+                data=paths,
+                message=f"{len(paths)} file(s) differ between {base_ref} and {head_ref}",
+            )
+        except GitError as e:
+            return ClientError(error_message=str(e), error_code="DIFF_ERROR")
+
+    @log_client_operation()
     def get_diff_stat(self, base_ref: str, head_ref: str = "HEAD") -> ClientResult[str]:
         """
         Get diff stat summary between two references.

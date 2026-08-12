@@ -289,6 +289,43 @@ class TestDiffServiceGetBranchNumstat:
 
 
 @pytest.mark.unit
+class TestDiffServiceGetChangedFiles:
+    """Test DiffService.get_changed_files()"""
+
+    def test_parses_paths_and_uses_refs_verbatim(self, service, mock_git_network):
+        """Test one path per line, refs passed without remote prefixing"""
+        mock_git_network.run_command.return_value = "src/a.py\nsrc/b.py\n"
+
+        result = service.get_changed_files("22aa7462", "4a999bc6")
+
+        assert isinstance(result, ClientSuccess)
+        assert result.data == ["src/a.py", "src/b.py"]
+        args = mock_git_network.run_command.call_args.args[0]
+        assert "--name-only" in args
+        assert "--no-renames" in args
+        assert "22aa7462" in args and "4a999bc6" in args
+        assert not any(a.startswith("origin/22aa") for a in args)
+
+    def test_empty_diff_returns_empty_list(self, service, mock_git_network):
+        """Test identical refs produce an empty list, not an error"""
+        mock_git_network.run_command.return_value = ""
+
+        result = service.get_changed_files("abc", "abc")
+
+        assert isinstance(result, ClientSuccess)
+        assert result.data == []
+
+    def test_error_returns_client_error(self, service, mock_git_network):
+        """Test git error returns ClientError"""
+        mock_git_network.run_command.side_effect = GitCommandError("bad object")
+
+        result = service.get_changed_files("abc", "def")
+
+        assert isinstance(result, ClientError)
+        assert result.error_code == "DIFF_ERROR"
+
+
+@pytest.mark.unit
 class TestDiffServiceGetDiffStat:
     """Test DiffService.get_diff_stat()"""
 

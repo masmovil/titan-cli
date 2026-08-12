@@ -305,7 +305,11 @@ def _resolve_file_context(
 ) -> FileContextEntry:
     manager = diff_manager or DiffContextManager.from_diff(diff)
     desired_mode = file_plan.read_mode
-    hunk_headers = [hunk.header for hunk in manager.get_hunks(file_plan.path)[:5]]
+    # The model anchors comments inside the hunks it can see; a header it never saw
+    # is a region it cannot anchor to, so those comments end up on unpublishable
+    # lines and degrade to the general body. 30 covers any realistic file (a header
+    # is ~40 chars, so worst case ~1.2k chars) while still bounding pathological diffs.
+    hunk_headers = [hunk.header for hunk in manager.get_hunks(file_plan.path)[:30]]
     file_limits = _file_limits(strategy, file_plan.path)
     resolved_entry: FileContextEntry | None = None
 

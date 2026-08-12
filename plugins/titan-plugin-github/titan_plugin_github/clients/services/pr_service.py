@@ -650,32 +650,37 @@ class PRService:
     @log_client_operation()
     def get_pr_commit_sha(self, pr_number: int) -> ClientResult[str]:
         """
-        Get the latest commit SHA for a PR.
+        Get the head commit SHA for a PR.
+
+        Reads `headRefOid` rather than the last entry of the `commits` list: gh caps
+        that list at 100 entries, so on a PR with more commits the "last" one is the
+        100th, not the head. Inline comments anchored to it are rejected with
+        "Path could not be resolved" for files that did not exist yet, and the ones
+        GitHub accepts are published already outdated.
 
         Args:
             pr_number: PR number
 
         Returns:
-            ClientResult[str] with latest commit SHA
+            ClientResult[str] with the head commit SHA
         """
         try:
             args = [
                 "pr", "view", str(pr_number),
-                "--json", "commits",
+                "--json", "headRefOid",
             ] + self.gh.get_repo_arg()
 
             output = self.gh.run_command(args)
             data = json.loads(output)
-            commits = data.get("commits", [])
+            sha = (data.get("headRefOid") or "").strip()
 
-            if not commits:
+            if not sha:
                 return ClientError(
-                    error_message=f"No commits found for PR #{pr_number}",
+                    error_message=f"No head commit SHA found for PR #{pr_number}",
                     error_code="NO_COMMITS"
                 )
 
-            sha = commits[-1]["oid"]
-            return ClientSuccess(data=sha, message="Latest commit SHA retrieved")
+            return ClientSuccess(data=sha, message="Head commit SHA retrieved")
 
         except (json.JSONDecodeError, KeyError, IndexError) as e:
             return ClientError(

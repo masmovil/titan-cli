@@ -176,6 +176,33 @@ def test_fetch_pr_review_bundle_falls_back_to_github_diff_when_git_diff_fails():
     ctx.github.get_pr_diff.assert_called_once_with(223)
 
 
+def test_fetch_pr_review_bundle_uses_local_u3_diff_when_github_diff_unavailable():
+    """GitHub refuses diffs over 20k lines (406). The publishable-lines source then
+    comes from a local 3-context diff instead of degrading to added-lines-only."""
+    pr = _make_pr(is_cross_repository=False)
+    ctx = _make_context(pr)
+    from titan_cli.core.result import ClientError
+
+    u20_diff = "diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1,1 +1,2 @@\n line1\n+added\n"
+    u3_diff = "diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1,1 +1,2 @@\n line1\n+added\n"
+    ctx.git.fetch.return_value = ClientSuccess(data=None, message="ok")
+    ctx.git.get_branch_diff.side_effect = [
+        ClientSuccess(data=u20_diff, message="ok"),
+        ClientSuccess(data=u3_diff, message="ok"),
+    ]
+    ctx.github.get_pr_diff.return_value = ClientError(
+        error_message="HTTP 406: diff exceeded the maximum number of lines (20000)"
+    )
+
+    result = fetch_pr_review_bundle(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata["review_diff_manager"].has_github_diff is True
+    # Second get_branch_diff call is the publish-validation source, at 3 context lines.
+    validation_call = ctx.git.get_branch_diff.call_args_list[1]
+    assert validation_call.kwargs.get("context_lines") == 3
+
+
 def test_fetch_pr_review_bundle_exits_when_pr_has_no_files_and_no_diff():
     pr = _make_pr(is_cross_repository=True)
     ctx = WorkflowContext(secrets=Mock())
@@ -1286,6 +1313,46 @@ def test_submit_sha_recheck_failure_does_not_block_the_submission():
     drift = code_review_steps._detect_submit_time_sha_drift(ctx, 123, "a" * 40)
 
     assert drift.drifted is False
+
+
+def test_resolve_drift_changed_files_returns_pushed_paths():
+    """On drift, the push's touched files come from a local diff so only their
+    comments degrade — after a fetch, since the new head postdates the review's own."""
+    from titan_plugin_github.operations.review_action_operations import detect_head_sha_drift
+
+    ctx = WorkflowContext(secrets=Mock())
+    ctx.git = Mock()
+    ctx.git.fetch.return_value = ClientSuccess(data=None, message="ok")
+    ctx.git.get_changed_files.return_value = ClientSuccess(
+        data=["src/touched.py"], message="ok"
+    )
+    drift = detect_head_sha_drift("a" * 40, "b" * 40)
+
+    paths = code_review_steps._resolve_drift_changed_files(ctx, drift)
+
+    assert paths == {"src/touched.py"}
+    ctx.git.fetch.assert_called_once()
+    ctx.git.get_changed_files.assert_called_once_with("a" * 40, "b" * 40)
+
+
+def test_resolve_drift_changed_files_unknowable_returns_none():
+    """git unavailable or failing → None, so the caller degrades everything
+    (never publishes stale anchors on a hunch)."""
+    from titan_plugin_github.operations.review_action_operations import detect_head_sha_drift
+
+    drift = detect_head_sha_drift("a" * 40, "b" * 40)
+
+    no_git_ctx = WorkflowContext(secrets=Mock())
+    no_git_ctx.git = None
+    assert code_review_steps._resolve_drift_changed_files(no_git_ctx, drift) is None
+
+    failing_ctx = WorkflowContext(secrets=Mock())
+    failing_ctx.git = Mock()
+    failing_ctx.git.fetch.return_value = ClientSuccess(data=None, message="ok")
+    failing_ctx.git.get_changed_files.return_value = ClientError(
+        error_message="bad object", error_code="DIFF_ERROR"
+    )
+    assert code_review_steps._resolve_drift_changed_files(failing_ctx, drift) is None
 
 
 def test_submit_sha_drift_ignores_surrounding_whitespace():

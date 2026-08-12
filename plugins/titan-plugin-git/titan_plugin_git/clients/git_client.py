@@ -354,6 +354,19 @@ class GitClient:
         """
         return self.diff_service.get_branch_numstat(base_branch, head_branch, use_remote)
 
+    def get_changed_files(self, base_ref: str, head_ref: str) -> ClientResult[List[str]]:
+        """
+        List the paths that differ between two refs (commits, branches or tags).
+
+        Args:
+            base_ref: Base ref, used verbatim (no remote prefixing)
+            head_ref: Head ref, used verbatim
+
+        Returns:
+            ClientResult[List[str]] with the changed paths
+        """
+        return self.diff_service.get_changed_files(base_ref, head_ref)
+
     def get_diff_stat(self, base_ref: str, head_ref: str = "HEAD") -> ClientResult[str]:
         """Get diff stat summary."""
         return self.diff_service.get_diff_stat(base_ref, head_ref)

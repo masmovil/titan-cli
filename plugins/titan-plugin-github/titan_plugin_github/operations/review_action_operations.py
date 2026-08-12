@@ -112,15 +112,37 @@ def build_new_comment_actions(findings: List[Finding]) -> List[ReviewActionPropo
     return actions
 
 
+def _snap_to_nearest_publishable_line(
+    line: int, publishable_lines: set, max_distance: int = 3
+) -> Optional[int]:
+    """Return the publishable line closest to `line` within `max_distance`, or None.
+
+    Ties resolve to the earlier line: when a comment lands just past a hunk, the
+    hunk's last line (above) is the code the comment describes.
+    """
+    best: Optional[int] = None
+    best_distance = max_distance + 1
+    for candidate in publishable_lines:
+        distance = abs(candidate - line)
+        if distance < best_distance or (distance == best_distance and best is not None and candidate < best):
+            best = candidate
+            best_distance = distance
+    return best if best_distance <= max_distance else None
+
+
 def build_review_action_payload(
     actions: List[ReviewActionProposal],
     commit_sha: str,
     diff: str = "",
     diff_manager: Optional[DiffContextManager] = None,
     force_general_body: bool = False,
+    force_general_paths: Optional[set] = None,
 ) -> Dict:
     """
     Build the GitHub API payload from approved ReviewActionProposal objects.
+
+    Anchors that miss a publishable line by up to 3 lines are snapped to the
+    nearest one instead of degrading to the review body.
 
     Handles new_comment action type only. Actions with action_type='resolve_thread'
     or 'reply_to_thread' are excluded — they are handled separately via direct API
@@ -137,6 +159,10 @@ def build_review_action_payload(
         force_general_body: Send every comment to the review body instead of inline.
                             Used when the resolved lines are known to be stale, e.g.
                             the PR was pushed to after the anchors were resolved.
+        force_general_paths: Send only these paths' comments to the review body.
+                             Used on head-SHA drift when the files the push touched
+                             are known: anchors on untouched files stay valid, so
+                             only comments on the changed files degrade.
 
     Returns:
         Dict with keys: commit_id, comments (list), body (str, optional)
@@ -172,9 +198,33 @@ def build_review_action_payload(
 
         # new_comment — try inline first, fall back to general body
         resolved_line = action.resolved_line
+        path_forced_general = bool(force_general_paths and action.path in force_general_paths)
 
-        if action.path and resolved_line and not force_general_body:
+        if action.path and resolved_line and not force_general_body and not path_forced_general:
             file_valid_lines = valid_lines.get(action.path, set())
+            # Snap only against real hunks: under the added-lines-only fallback the
+            # publishable set is sparse and not hunk-shaped, so a nearby "valid" line
+            # is an unrelated added line, not the boundary of the commented block.
+            can_snap = bool(manager and manager.has_github_diff)
+            if resolved_line not in file_valid_lines and file_valid_lines and can_snap:
+                # An anchor 1-3 lines past a hunk boundary usually points at the body
+                # of the block whose header WAS changed (the model reads whole files
+                # and cannot see where hunks end). Snapping to the nearest publishable
+                # line keeps the comment inline next to the code it describes; beyond
+                # that window the general body is more honest than a shifted anchor.
+                snapped_line = _snap_to_nearest_publishable_line(
+                    resolved_line, file_valid_lines, max_distance=3
+                )
+                if snapped_line is not None:
+                    logger.debug(
+                        "inline_anchor_snapped_to_hunk",
+                        action_idx=idx,
+                        path=action.path,
+                        resolved_line=resolved_line,
+                        snapped_line=snapped_line,
+                        distance=abs(snapped_line - resolved_line),
+                    )
+                    resolved_line = snapped_line
             inline_safe = resolved_line in file_valid_lines
             logger.debug("validate_comment_action",
                 action_idx=idx, path=action.path, line=action.line, resolved_line=resolved_line,

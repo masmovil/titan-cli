@@ -509,6 +509,22 @@ client.get_branch_numstat(
 - `head_branch`: Required. Head branch.
 - `use_remote`: Optional. Treat both branches as remote refs.
 
+### List files changed between two refs
+
+Returns the paths that differ between two refs (commits, branches or tags),
+one entry per path. Renames report both the old and the new path.
+
+**Call:**
+
+```python
+client.get_changed_files(base_ref="22aa7462", head_ref="4a999bc6")
+```
+
+**Parameters:**
+
+- `base_ref`: Required. Base ref, used verbatim (no remote prefixing).
+- `head_ref`: Required. Head ref, used verbatim.
+
 ### Get a diff stat between refs
 
 Returns a summary of file-level changes between refs.
