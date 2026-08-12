@@ -284,6 +284,20 @@ class DiffContextManager:
         )
         return lines
 
+    def has_github_hunks_for(self, path: str) -> bool:
+        """True when this path's publishable lines come from GitHub-quality hunks.
+
+        ``get_publishable_lines`` decides its source per path: a path missing from
+        the attached GitHub diff (or failing its self-check) silently narrows to the
+        added-lines floor even though a GitHub diff is attached manager-wide. Callers
+        that need hunk-shaped publishable sets (e.g. anchor snapping) must gate per
+        path, not on the manager-wide attachment.
+        """
+        if self._github_parsed is None:
+            return False
+        file_diff = self._github_parsed.files.get(path)
+        return file_diff is not None and file_diff.hunks_consistent
+
     def get_all_publishable_lines(self) -> dict[str, frozenset]:
         """Return ``{path: frozenset[line]}`` of publishable lines for every file."""
         paths = set(self._parsed.files)

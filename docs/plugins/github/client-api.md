@@ -249,9 +249,11 @@ client.add_comment(123, "Please add test coverage for the empty state.")
 - `pr_number`: Required. Pull request number.
 - `body`: Required. Comment body.
 
-### Get the latest PR commit SHA
+### Get the PR head commit SHA
 
-Returns the latest commit SHA associated with the pull request.
+Returns the pull request's head commit SHA (`headRefOid`). Reliable regardless of
+how many commits the PR has — it does not depend on the commit list, which the
+`gh` CLI truncates at 100 entries.
 
 **Call:**
 

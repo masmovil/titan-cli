@@ -38,10 +38,12 @@ class ReviewProfile(BaseModel):
     candidate_exclusions: CandidateExclusions = Field(default_factory=CandidateExclusions)
     review_axes: dict[ChecklistCategory, ReviewAxisRule] = Field(default_factory=dict)
     findings_verification_enabled: bool = Field(
-        default=True,
+        default=False,
         description="Run the batched refute-or-confirm AI pass over findings before the "
-        "human gate. Disable in cost-sensitive projects: it adds one extra AI call per "
-        "review when findings exist.",
+        "human gate. Off by default: across every observed real review it has refuted "
+        "nothing (it cannot falsify claims whose rebuttal lies outside its per-finding "
+        "hunks), so today it only adds latency and one AI call. Re-enable per project "
+        "via profile.yaml, or globally once the verifier gets the context it lacks.",
     )
     findings_batch_concurrency: int = Field(
         default=2,

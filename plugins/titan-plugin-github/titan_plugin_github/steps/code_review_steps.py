@@ -255,7 +255,12 @@ def _show_review_plan_validation_summary(ctx: WorkflowContext, plan) -> None:
 
 
 def _filter_invalid_inline_comments(ctx: WorkflowContext, pr_number: int, payload: dict) -> tuple[dict, list[dict]]:
-    """Probe inline comments individually, keep only those GitHub accepts."""
+    """Probe inline comments individually, keep only those GitHub accepts.
+
+    Rejected comments are not dropped: their content moves into the review body
+    (same format as the pre-submit general-body fallback), so a reviewer-approved
+    finding is always published even when GitHub refuses its inline anchor.
+    """
     if not ctx.github or not payload.get("comments"):
         return payload, []
 
@@ -297,8 +302,16 @@ def _filter_invalid_inline_comments(ctx: WorkflowContext, pr_number: int, payloa
         "commit_id": payload["commit_id"],
         "comments": valid_comments,
     }
+    body_parts: list[str] = []
     if payload.get("body"):
-        filtered_payload["body"] = payload["body"]
+        body_parts.append(payload["body"])
+    for comment in rejected_comments:
+        location = f"**{comment.get('path')}**" if comment.get("path") else "General"
+        if comment.get("line"):
+            location += f" (line {comment.get('line')})"
+        body_parts.append(f"{location}:\n{comment.get('body', '')}")
+    if body_parts:
+        filtered_payload["body"] = "\n\n---\n\n".join(body_parts)
     return filtered_payload, rejected_comments
 
 
@@ -756,19 +769,42 @@ def fetch_pr_review_bundle(ctx: WorkflowContext) -> WorkflowResult:
     # comments; publish validation must use GitHub's hunks. When unavailable, the manager
     # falls back to added-lines-only, which GitHub always accepts.
     github_diff = diff if diff_is_github_source else None
+    publish_validation_source = "github_diff"
     if github_diff is None:
         github_diff_result = ctx.github.get_pr_diff(pr_number)
         match github_diff_result:
             case ClientSuccess(data=gh_diff) if gh_diff and gh_diff.strip():
                 github_diff = gh_diff
             case _:
-                logger.warning(
-                    "github_diff_unavailable_for_publish_validation",
-                    pr_number=pr_number,
-                    fallback="added_lines_only",
-                )
+                # GitHub refuses to serve diffs over 20k lines (HTTP 406). A local
+                # three-dot diff at 3 context lines produces near-identical hunks —
+                # GitHub renders PR diffs from the merge base with -U3 context — so
+                # it stands in as the publishable-lines source. Residual divergence
+                # (rename detection edge cases) is absorbed by the 422 recovery.
+                if ctx.git and not pr.is_cross_repository:
+                    local_u3_result = ctx.git.get_branch_diff(
+                        pr.base_ref, pr.head_ref, context_lines=3, use_remote=True
+                    )
+                    match local_u3_result:
+                        case ClientSuccess(data=local_diff) if local_diff and local_diff.strip():
+                            github_diff = local_diff
+                            publish_validation_source = "local_u3_diff"
+                        case _:
+                            pass
+                if github_diff is None:
+                    publish_validation_source = "added_lines_only"
+                    logger.warning(
+                        "github_diff_unavailable_for_publish_validation",
+                        pr_number=pr_number,
+                        fallback="added_lines_only",
+                    )
     if github_diff:
         diff_manager.attach_github_diff(github_diff)
+    logger.debug(
+        "publish_validation_diff_source",
+        pr_number=pr_number,
+        source=publish_validation_source,
+    )
 
     ctx.textual.show_diff_stat(formatted_files, formatted_summary, title="Files affected:")
 
@@ -962,6 +998,41 @@ def _announce_review_adapter(ctx: WorkflowContext, adapter: object) -> None:
 # ============================================================================
 
 
+def _fetch_local_churn_for_truncated_files(
+    ctx: WorkflowContext, pr: UIPullRequest, files: list
+) -> Optional[dict]:
+    """Fetch real per-file counters from local git when the API reports 0/0.
+
+    GitHub's files endpoint returns additions=0/deletions=0 for files whose diff
+    it cannot render (too large or binary). Left as-is, those files score as if
+    nothing changed. A local numstat has the exact counters — available for
+    same-repo PRs, where the fetch step already ran `git fetch --all`. Fork PRs
+    and sessions without the git plugin keep the API values.
+    """
+    has_truncated = any(
+        f.additions == 0 and f.deletions == 0 and f.status.value != "renamed" for f in files
+    )
+    if not has_truncated or not ctx.git or pr.is_cross_repository:
+        return None
+
+    numstat_result = ctx.git.get_branch_numstat(pr.base_ref, pr.head_ref, use_remote=True)
+    match numstat_result:
+        case ClientSuccess(data=churns):
+            churn_by_path = {c.path: (c.additions, c.deletions) for c in churns if not c.is_binary}
+            logger.debug(
+                "manifest_churn_fallback",
+                truncated_candidates=sum(
+                    1 for f in files if f.additions == 0 and f.deletions == 0
+                ),
+                numstat_files=len(churn_by_path),
+            )
+            return churn_by_path
+        case ClientError(error_message=err):
+            logger.warning("manifest_numstat_failed", error=err)
+            return None
+    return None
+
+
 def build_change_manifest(ctx: WorkflowContext) -> WorkflowResult:
     """
     Build a structured manifest of the PR changes (no AI involved).
@@ -992,8 +1063,12 @@ def build_change_manifest(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("error")
         return Error("No PR data in context (run fetch_pr_review_bundle first)")
 
+    churn_by_path = _fetch_local_churn_for_truncated_files(ctx, pr, files)
+
     try:
-        manifest = build_change_manifest_operation(pr, files)
+        manifest = build_change_manifest_operation(
+            pr, files, _get_review_profile(ctx), churn_by_path=churn_by_path
+        )
     except Exception as e:
         ctx.textual.error_text(f"Failed to build change manifest: {e}")
         ctx.textual.end_step("error")
@@ -1583,12 +1658,25 @@ def validate_review_plan(ctx: WorkflowContext) -> WorkflowResult:
 
     offered_ids = frozenset(item.id for item in checklist)
     validator = ReviewPlanValidator(manifest, offered_ids)
+
+    # Invalid entries are dropped one by one; the AI's remaining selection survives.
+    # Only a plan with no valid focus file left falls back to the deterministic plan.
+    plan, sanitize_warnings = validator.sanitize(plan)
+    if sanitize_warnings:
+        for warning in sanitize_warnings:
+            ctx.textual.warning_text(f"  ⚠ {warning}")
+        logger.warning(
+            "review_plan_entries_dropped",
+            dropped=len(sanitize_warnings),
+            warnings=sanitize_warnings,
+        )
+
     is_valid, errors = validator.validate_semantically(plan)
 
     if not is_valid:
-        # Log errors but don't halt — auto-correct by falling back to default plan
         for err in errors:
             ctx.textual.warning_text(f"  ⚠ {err}")
+        logger.warning("review_plan_validation_failed", errors=errors)
 
         candidates = ctx.get("review_candidates", [])
         excluded_files = ctx.get("excluded_review_files", [])
@@ -1976,21 +2064,9 @@ def resolve_review_context(ctx: WorkflowContext) -> WorkflowResult:
         f"✓ Context: {files_count} focus file(s) in {batch_count} batch(es)"
         + (f" · {related_count} related file(s)" if related_count else "")
     )
-    # Coverage honesty: name the files that will NOT be reviewed instead of hiding
-    # them behind a count — silent coverage loss is indistinguishable from a full
-    # review otherwise.
-    trimmed_paths = sorted(
-        {entry.path for batch in package.batches for entry in batch.excluded_files}
-    )
-    if trimmed_paths:
-        ctx.textual.warning_text(
-            f"⚠ {len(trimmed_paths)} file(s) will NOT be reviewed (context budget exceeded): "
-            + ", ".join(trimmed_paths)
-        )
     logger.debug(
         "review_context_summary",
         comments_in_context=sum(len(batch.comment_context) for batch in package.batches),
-        trimmed_paths=trimmed_paths,
     )
     _show_review_context_batches(ctx, package.batches)
     ctx.textual.end_step("success")
@@ -2225,7 +2301,10 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
         prompt_parts = build_findings_prompt_parts(batch)
         prompt = prompt_parts["prompt"]
         fitted_batches, changed = get_prompt_budget_manager().fit_batch_to_budget(
-            batch, prompt_parts, strategy.max_prompt_chars
+            batch,
+            prompt_parts,
+            strategy.max_prompt_chars,
+            allow_file_reads=ctx.data.get("review_file_reads_allowed", True),
         )
         if changed:
             logger.debug(
@@ -2750,7 +2829,7 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
     passes through. Fail-open: any CLI/parse/budget problem keeps all findings.
 
     Generalizes the retired `_looks_like_contradicted_api_claim` heuristic.
-    Gated by ReviewProfile.findings_verification_enabled (default True).
+    Gated by ReviewProfile.findings_verification_enabled (default False).
 
     Routes under the same `code_review_findings` task preference as
     `ai_review_findings`: it is the same pass, so one setting governs both.
@@ -3164,6 +3243,36 @@ def _detect_submit_time_sha_drift(ctx: WorkflowContext, pr_number: int, reviewed
     return drift
 
 
+def _resolve_drift_changed_files(ctx: WorkflowContext, drift) -> Optional[set]:
+    """Return the paths the drift's push touched, or None when unknowable.
+
+    The new head only exists locally after a fetch — the push happened after the
+    review's own fetch. Any failure returns None so the caller falls back to
+    degrading every comment, never to publishing stale anchors.
+    """
+    if not ctx.git or not drift.reviewed_sha or not drift.current_sha:
+        return None
+    match ctx.git.fetch(all=True):
+        case ClientError(error_message=err):
+            # The new head may already be present from an earlier fetch, so let
+            # get_changed_files decide — it returns an error (→ None) if not.
+            logger.warning("drift_fetch_failed", error=err)
+        case _:
+            pass
+    match ctx.git.get_changed_files(drift.reviewed_sha, drift.current_sha):
+        case ClientSuccess(data=paths):
+            return set(paths)
+        case ClientError(error_message=err):
+            logger.warning(
+                "drift_changed_files_unavailable",
+                reviewed_sha=drift.reviewed_sha,
+                current_sha=drift.current_sha,
+                error=err,
+            )
+            return None
+    return None
+
+
 def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
     """
     Submit approved ReviewActionProposal objects to GitHub.
@@ -3246,9 +3355,11 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                 return Error(f"Missing commit SHA for inline review: {err}")
 
     # The anchors were resolved against commit_sha's diff. If the PR has been pushed to
-    # since, every inline line describes code that moved — degrade them to the review body
-    # rather than publish comments on the wrong lines.
+    # since, inline lines on the files that push touched describe code that moved —
+    # degrade those to the review body rather than publish comments on the wrong lines.
+    # Anchors on files the push did NOT touch are still exact, so they stay inline.
     force_general_body = False
+    force_general_paths: set = set()
     if comment_actions:
         drift = _detect_submit_time_sha_drift(ctx, pr_number, commit_sha)
         if drift.drifted:
@@ -3256,15 +3367,43 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
             ctx.textual.dim_text(
                 f"reviewed: {drift.reviewed_sha[:8]} · current: {drift.current_sha[:8]}"
             )
-            ctx.textual.text(
-                f"The {len(comment_actions)} comment(s) will go in the review body instead "
-                "of inline, since their line numbers no longer match the PR's diff."
-            )
-            if not ctx.textual.ask_confirm("Publish the review anyway?", default=True):
+            pushed_paths = _resolve_drift_changed_files(ctx, drift)
+            comment_paths = {a.path for a in comment_actions if a.path}
+            if pushed_paths is not None:
+                force_general_paths = comment_paths & pushed_paths
+                # Untouched files have identical anchors under the new head, so the
+                # review can anchor everything to it instead of the stale SHA.
+                commit_sha = drift.current_sha
+                logger.debug(
+                    "sha_drift_scoped_to_files",
+                    pr_number=pr_number,
+                    pushed_files=len(pushed_paths),
+                    comments_degraded=len(force_general_paths),
+                    comments_kept_inline=len(comment_paths - force_general_paths),
+                )
+            if pushed_paths is None:
+                ctx.textual.text(
+                    f"The {len(comment_actions)} comment(s) will go in the review body instead "
+                    "of inline, since their line numbers no longer match the PR's diff."
+                )
+                force_general_body = True
+            elif force_general_paths:
+                ctx.textual.text(
+                    f"The push touched {len(force_general_paths)} of the commented file(s): "
+                    "their comment(s) will go in the review body; the rest stay inline."
+                )
+                for path in sorted(force_general_paths):
+                    ctx.textual.dim_text(f"  {path}")
+            else:
+                ctx.textual.dim_text(
+                    "The push did not touch any commented file — all comments stay inline."
+                )
+            if (force_general_body or force_general_paths) and not ctx.textual.ask_confirm(
+                "Publish the review anyway?", default=True
+            ):
                 ctx.textual.warning_text("Review cancelled")
                 ctx.textual.end_step("skip")
                 return Skip("User cancelled after head SHA drift")
-            force_general_body = True
 
     # Show AI's opinion and prepare action options
     ctx.textual.text("")
@@ -3314,6 +3453,7 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
         diff,
         diff_manager=diff_manager,
         force_general_body=force_general_body,
+        force_general_paths=force_general_paths,
     )
 
     if review_body and review_body.strip():
@@ -3374,7 +3514,7 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
                         rejection_breakdown[kind] = rejection_breakdown.get(kind, 0) + 1
                     ctx.textual.warning_text(
                         f"⚠ {len(rejected_comments)} comment(s) can't be placed inline and will be "
-                        "left out:"
+                        "added to the review body instead:"
                     )
                     for comment in rejected_comments:
                         ctx.textual.dim_text(

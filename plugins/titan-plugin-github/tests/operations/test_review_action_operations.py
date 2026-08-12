@@ -247,6 +247,103 @@ def test_payload_rejects_wide_context_only_line_with_github_diff_attached():
     assert "line 10" in payload["body"]
 
 
+def test_anchor_resolution_snaps_near_miss_to_nearest_hunk_line():
+    """An anchor 1-3 lines outside a hunk snaps to the nearest publishable line —
+    during anchor RESOLUTION, before the approval gate, so the reviewer approves
+    the exact line that publishes. The payload then uses it verbatim."""
+    from titan_plugin_github.managers.diff_context_manager import DiffContextManager
+
+    manager = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+    manager.attach_github_diff(GITHUB_U3_DIFF)
+
+    actions = resolve_action_anchors(
+        [_make_action(15)],  # hunk starts at 17 → distance 2
+        diff=WIDE_CONTEXT_DIFF,
+        diff_manager=manager,
+    )
+
+    assert actions[0].resolved_line == 17
+    assert actions[0].is_inline_safe_for_github is True
+    assert "snapped" in actions[0].why_inline_allowed
+
+    payload = build_review_action_payload(
+        actions, commit_sha="abc123", diff=WIDE_CONTEXT_DIFF, diff_manager=manager
+    )
+    assert [c["line"] for c in payload["comments"]] == [17]
+    assert "body" not in payload
+
+
+def test_anchor_resolution_does_not_snap_under_added_lines_fallback():
+    """Without GitHub-quality hunks the publishable set is sparse added lines —
+    snapping onto them would relocate the comment to unrelated code."""
+    from titan_plugin_github.managers.diff_context_manager import DiffContextManager
+
+    manager = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+
+    actions = resolve_action_anchors(
+        [_make_action(18)],  # added line 20 is within 3, but source is added-only
+        diff=WIDE_CONTEXT_DIFF,
+        diff_manager=manager,
+    )
+
+    assert actions[0].resolved_line == 18
+    assert actions[0].is_inline_safe_for_github is False
+
+
+def test_anchor_resolution_snap_gate_is_per_path_not_manager_wide():
+    """A path missing from the attached GitHub diff falls back to sparse added
+    lines even though a GitHub diff exists manager-wide — snapping must stay off
+    for THAT path while other paths keep it."""
+    from titan_plugin_github.managers.diff_context_manager import DiffContextManager
+
+    other_file_diff = WIDE_CONTEXT_DIFF.replace("src/foo.py", "src/other.py")
+    manager = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF + other_file_diff)
+    # GitHub diff only covers src/foo.py — src/other.py is missing from it.
+    manager.attach_github_diff(GITHUB_U3_DIFF)
+
+    other_action = _make_action(18)
+    other_action = other_action.model_copy(update={"path": "src/other.py"})
+    actions = resolve_action_anchors(
+        [_make_action(15), other_action],
+        diff=WIDE_CONTEXT_DIFF + other_file_diff,
+        diff_manager=manager,
+    )
+
+    by_path = {a.path: a for a in actions}
+    # Covered path: snapped onto GitHub's hunk.
+    assert by_path["src/foo.py"].resolved_line == 17
+    assert by_path["src/foo.py"].is_inline_safe_for_github is True
+    # Uncovered path: added-lines floor, no snap (18 → 20 would be unrelated code).
+    assert by_path["src/other.py"].resolved_line == 18
+    assert by_path["src/other.py"].is_inline_safe_for_github is False
+
+
+def test_payload_force_general_paths_degrades_only_named_files():
+    from titan_plugin_github.managers.diff_context_manager import DiffContextManager
+
+    manager = DiffContextManager.from_diff(WIDE_CONTEXT_DIFF)
+    manager.attach_github_diff(GITHUB_U3_DIFF)
+
+    inline_payload = build_review_action_payload(
+        [_make_action(20)],
+        commit_sha="abc123",
+        diff=WIDE_CONTEXT_DIFF,
+        diff_manager=manager,
+        force_general_paths={"src/other.py"},
+    )
+    degraded_payload = build_review_action_payload(
+        [_make_action(20)],
+        commit_sha="abc123",
+        diff=WIDE_CONTEXT_DIFF,
+        diff_manager=manager,
+        force_general_paths={"src/foo.py"},
+    )
+
+    assert [c["line"] for c in inline_payload["comments"]] == [20]
+    assert degraded_payload["comments"] == []
+    assert "line 20" in degraded_payload["body"]
+
+
 def test_payload_without_github_diff_falls_back_to_added_lines_only():
     from titan_plugin_github.managers.diff_context_manager import DiffContextManager
 

@@ -1492,7 +1492,9 @@ How to read these contracts:
     each non-nit finding against the code it targets; findings refuted with evidence
     are dropped before the human gate. Fail-open: any CLI, parse, or budget problem
     keeps all findings. Gated by `findings_verification_enabled` in the project
-    review profile (`.titan/review/profile.yaml`, default `true`).
+    review profile (`.titan/review/profile.yaml`, default `false` — opt in per
+    project; disabled by default because in observed real reviews the pass has
+    not refuted findings and only added latency).
 
     **Workflow usage**
 
