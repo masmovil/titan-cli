@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from titan_cli.core.security import SecretBroker, SecretRef, redaction
+from titan_cli.core.security import SecretBroker, SecretLeakError, SecretRef, redaction
 from titan_cli.core.security._vault import SecretManager
 
 
@@ -98,6 +98,66 @@ def test_prompt_and_store_cancelled_returns_none(vault, mock_keyring):
     broker = SecretBroker(vault, "titan.core", prompter=lambda prompt: None)
     assert broker.prompt_and_store("token", "Enter") is None
     mock_keyring[1].assert_not_called()
+
+
+def test_create_client_passes_value_into_builder_only(vault, mock_keyring):
+    """The secret crosses into the constructor; the caller gets the object."""
+    mock_keyring[0].side_effect = lambda ns, k: (
+        "tok_value" if (ns, k) == ("titan.plugins.demo", "token") else None
+    )
+    broker = SecretBroker(vault, "titan.plugins.demo")
+
+    class Client:
+        def __init__(self, token):
+            self.authorization = f"Bearer {token}"
+
+    client = broker.create_client("token", Client)
+
+    assert isinstance(client, Client)
+    assert client.authorization == "Bearer tok_value"
+    # The dereference registered the value for redaction.
+    assert redaction.redact("x tok_value y") == f"x {redaction.REDACTED} y"
+
+
+def test_create_client_identity_builder_is_rejected(vault, mock_keyring):
+    """A builder that hands the value back out raises instead of leaking."""
+    mock_keyring[0].return_value = "tok_value"
+    broker = SecretBroker(vault, "titan.plugins.demo")
+
+    with pytest.raises(SecretLeakError):
+        broker.create_client("token", lambda v: v)
+
+
+def test_create_client_string_embedding_value_is_rejected(vault, mock_keyring):
+    """Formatted strings carrying the secret are a leak, not a client."""
+    mock_keyring[0].return_value = "tok_value"
+    broker = SecretBroker(vault, "titan.plugins.demo")
+
+    with pytest.raises(SecretLeakError):
+        broker.create_client("token", lambda v: f"Bearer {v}")
+
+    with pytest.raises(SecretLeakError):
+        broker.create_client("token", lambda v: f"auth: {v}".encode())
+
+
+def test_create_client_missing_key_raises(vault, mock_keyring):
+    mock_keyring[0].return_value = None
+    broker = SecretBroker(vault, "titan.plugins.demo")
+
+    with pytest.raises(KeyError, match="titan.plugins.demo:token"):
+        broker.create_client("token", lambda v: v)
+
+
+def test_create_client_optional_missing_builds_with_none(vault, mock_keyring):
+    mock_keyring[0].return_value = None
+    broker = SecretBroker(vault, "titan.plugins.demo")
+
+    sentinel = object()
+    result = broker.create_client(
+        "token", lambda v: sentinel if v is None else None, required=False
+    )
+
+    assert result is sentinel
 
 
 def test_store_writes_value_and_returns_ref(vault, mock_keyring):

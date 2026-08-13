@@ -33,6 +33,10 @@ T = TypeVar("T")
 Prompter = Callable[[str], Optional[str]]
 
 
+class SecretLeakError(RuntimeError):
+    """A use-primitive detected the secret value on its way back out."""
+
+
 def derive_namespace(plugin_name: Optional[str]) -> str:
     """
     Keyring namespace for a registered plugin/step identity.
@@ -143,6 +147,58 @@ class SecretBroker:
     def delete(self, key: str) -> None:
         """Delete `key` from the user keyring in this namespace."""
         self._vault.delete(key, namespace=self._namespace, scope="user")
+
+    def create_client(
+        self,
+        key: str,
+        builder: Callable[[Optional[str]], T],
+        required: bool = True,
+    ) -> T:
+        """
+        Build an authenticated client by passing the secret behind `key` to
+        `builder`, and return the constructed object — never the value.
+
+        This is how a consumer whose SDK demands the credential at
+        construction time (a Slack `WebClient`, a Jira client) gets an
+        authenticated instance: the string crosses into the constructor
+        inside this call and is registered for redaction on the way. Honest
+        limit, same as the session factories: the constructed client retains
+        the credential in its own memory.
+
+        The builder's result is checked on the way out: returning the value
+        itself, or a str/bytes embedding it, raises instead of leaking. That
+        is a guard against sloppy builders (and the trivial identity
+        smuggle), not a sandbox — a builder can still hide the value inside
+        a container on purpose.
+
+        Args:
+            key: The secret to dereference, in this broker's namespace.
+            builder: Constructor/callable receiving the value.
+            required: When False and the key is unresolvable, `builder`
+                is called with None instead of raising.
+
+        Raises:
+            KeyError: If `required` and the key does not resolve.
+            SecretLeakError: If the builder's result is the value itself or
+                a str/bytes containing it.
+        """
+        value = self._vault.get(key, namespace=self._namespace)
+        if value is None and required:
+            raise KeyError(f"No secret stored for {self._namespace}:{key}")
+        result = builder(value)
+        if value is not None:
+            leaked = (
+                result is value
+                or (isinstance(result, str) and value in result)
+                or (isinstance(result, bytes) and value.encode() in result)
+            )
+            if leaked:
+                raise SecretLeakError(
+                    f"create_client builder for {self._namespace}:{key} returned "
+                    "the secret value (or a string containing it) instead of a "
+                    "constructed client."
+                )
+        return result
 
     # --- Use-primitives: the value crosses into an effect, never back to the
     # --- caller. Output comes back redacted.

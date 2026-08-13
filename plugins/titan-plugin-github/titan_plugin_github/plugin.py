@@ -4,7 +4,7 @@ from typing import Optional
 
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker
 from titan_cli.core.plugins.models import GitHubPluginConfig
 from .clients.github_client import GitHubClient
 from .exceptions import GitHubError
@@ -28,7 +28,7 @@ class GitHubPlugin(TitanPlugin):
     def dependencies(self) -> list[str]:
         return ["git"]
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         """
         Initializes the GitHubClient.
         """

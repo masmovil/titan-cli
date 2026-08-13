@@ -312,7 +312,8 @@ class PluginManagementScreen(BaseScreen):
             return False
 
         token_key = f"{project_name}_slack_user_token"
-        return not bool(self.config.secrets.get(token_key))
+        broker = self.config.broker_factory.for_plugin("slack")
+        return not broker.exists(token_key)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle plugin selection (Enter key)."""

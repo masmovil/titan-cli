@@ -10,7 +10,7 @@ from .models import AIConfig, AIPreferences, TitanConfigModel
 from .migrations import MigrationManager
 from .plugins.plugin_registry import PluginRegistry
 from .workflows import WorkflowRegistry, ProjectStepSource, UserStepSource
-from .secrets import SecretManager
+from .security import create_broker_factory
 from .errors import ConfigParseError, ConfigWriteError
 from .utils import find_project_root
 from .logging import get_logger
@@ -35,7 +35,7 @@ class TitanConfig:
         self.registry = registry or PluginRegistry()
 
         # These are initialized in load() after config is read
-        self.secrets = None  # Set by load()
+        self.broker_factory = None  # Set by load()
         self._project_root = None  # Set by load()
         self._active_project_path = None  # Set by load()
         self._workflow_registry = None  # Set by load()
@@ -89,9 +89,12 @@ class TitanConfig:
         merged = self._merge_configs(self.global_config, self.project_config)
         self.config = TitanConfigModel(**merged)
 
-        # Re-initialize dependencies that depend on the final config
-        # Use project root for secrets
-        self.secrets = SecretManager(project_path=project_root if project_root.is_dir() else None)
+        # Re-initialize dependencies that depend on the final config.
+        # Config never holds the vault itself: it holds the factory of
+        # namespace-scoped brokers, which is all screens and plugins get.
+        self.broker_factory = create_broker_factory(
+            project_path=project_root if project_root.is_dir() else None
+        )
 
         # Reset and re-initialize plugins (unless skipped during setup)
         if not skip_plugin_init:
@@ -126,7 +129,7 @@ class TitanConfig:
             return
 
         self.registry.reset()
-        self.registry.initialize_plugins(config=self, secrets=self.secrets)
+        self.registry.initialize_plugins(config=self, broker_factory=self.broker_factory)
         self._plugin_warnings = self.registry.list_failed()
         self._plugin_sync_events = self.registry.list_sync_events()
         self._plugin_fingerprint = fingerprint

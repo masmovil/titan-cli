@@ -13,6 +13,7 @@ The boundary is enforced by an architecture test
 from .broker import (
     SecretBroker,
     SecretBrokerFactory,
+    SecretLeakError,
     SecretRef,
     create_broker_factory,
     derive_namespace,
@@ -25,6 +26,7 @@ __all__ = [
     "AuthScheme",
     "SecretBroker",
     "SecretBrokerFactory",
+    "SecretLeakError",
     "SecretRef",
     "SecureCommandResult",
     "create_ai_provider",

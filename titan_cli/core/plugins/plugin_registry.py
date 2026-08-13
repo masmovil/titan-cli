@@ -111,13 +111,14 @@ class PluginRegistry:
 
         logger.info("plugin_discovery_completed", loaded=len(self._plugins), failed=len(self._failed_plugins), failed_plugins=list(self._failed_plugins.keys()))
 
-    def initialize_plugins(self, config: Any, secrets: Any) -> None:
+    def initialize_plugins(self, config: Any, broker_factory: Any) -> None:
         """
         Initializes all discovered plugins in dependency order.
 
         Args:
             config: TitanConfig instance
-            secrets: SecretManager instance
+            broker_factory: SecretBrokerFactory; each plugin receives a broker
+                already scoped to its own namespace, never the factory itself.
         """
         self._apply_source_overrides(config)
 
@@ -170,7 +171,7 @@ class PluginRegistry:
                 # Initialize the plugin if dependencies are met
                 try:
                     logger.info("plugin_initializing", name=name)
-                    plugin.initialize(config, secrets)
+                    plugin.initialize(config, broker_factory.for_plugin(name))
                     initialized.add(name)
                     logger.info("plugin_initialized", name=name)
                 except Exception as e:

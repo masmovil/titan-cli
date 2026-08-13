@@ -7,7 +7,7 @@ from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.plugins.community_sources import PluginChannel
 from titan_cli.core.plugins.runtime import PluginRuntimePaths, PluginRuntimeResult
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker, SecretBrokerFactory
 
 
 # A proper mock class to represent a loaded plugin
@@ -18,7 +18,7 @@ class MockPlugin(TitanPlugin):
     def __init__(self):
         self._initialized = False
         self.received_config = None
-        self.received_secrets = None
+        self.received_broker = None
 
     @property
     def name(self) -> str:
@@ -32,10 +32,10 @@ class MockPlugin(TitanPlugin):
     def dependencies(self) -> list[str]:
         return self._dependencies
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         self._initialized = True
         self.received_config = config
-        self.received_secrets = secrets
+        self.received_broker = broker
 
     def is_available(self) -> bool:
         return True
@@ -146,9 +146,9 @@ def test_plugin_registry_dependency_resolution(mocker):
     registry.discover()
     
     mock_config = MagicMock(spec=TitanConfig)
-    mock_secrets = MagicMock(spec=SecretManager)
+    mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_secrets)
+    registry.initialize_plugins(mock_config, mock_broker_factory)
 
     plugin_one = registry.get_plugin("plugin_one")
     plugin_two = registry.get_plugin("plugin_two")
@@ -175,9 +175,9 @@ def test_plugin_registry_unresolved_dependency(mocker):
     registry.discover()
     
     mock_config = MagicMock(spec=TitanConfig)
-    mock_secrets = MagicMock(spec=SecretManager)
+    mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_secrets)
+    registry.initialize_plugins(mock_config, mock_broker_factory)
 
     failed_plugins = registry.list_failed()
     assert "plugin_dependent" in failed_plugins
@@ -186,7 +186,7 @@ def test_plugin_registry_unresolved_dependency(mocker):
 
 def test_plugin_registry_plugin_initialization_context(mocker):
     """
-    Test that config and secrets are passed correctly to plugin initialize method.
+    Test that config and a plugin-scoped broker are passed to plugin initialize.
     """
     mock_ep = MagicMock()
     mock_ep.name = "test_plugin"
@@ -202,13 +202,14 @@ def test_plugin_registry_plugin_initialization_context(mocker):
     registry.discover()
     
     mock_config = MagicMock(spec=TitanConfig)
-    mock_secrets = MagicMock(spec=SecretManager)
+    mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_secrets)
+    registry.initialize_plugins(mock_config, mock_broker_factory)
 
     plugin_instance = registry.get_plugin("test_plugin")
     assert plugin_instance.received_config is mock_config
-    assert plugin_instance.received_secrets is mock_secrets
+    assert plugin_instance.received_broker is mock_broker_factory.for_plugin.return_value
+    mock_broker_factory.for_plugin.assert_called_once_with("test_plugin")
 
 
 def test_apply_source_overrides_loads_dev_local_plugin(tmp_path, mocker):

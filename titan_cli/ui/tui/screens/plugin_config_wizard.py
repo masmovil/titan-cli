@@ -305,7 +305,8 @@ class PluginConfigWizardScreen(BaseScreen):
             project_name = self.config.get_project_name()
             secret_key = f"{self.plugin_name}_{field_name}"
             keychain_key = f"{project_name}_{secret_key}" if project_name else secret_key
-            existing_secret = self.config.secrets.get(keychain_key) or self.config.secrets.get(secret_key)
+            broker = self.config.broker_factory.for_plugin(self.plugin_name)
+            existing_secret = broker.exists(keychain_key) or broker.exists(secret_key)
 
             if existing_secret:
                 info = DimText("\n\nAlready configured. Leave blank to keep existing value.")
@@ -441,7 +442,8 @@ class PluginConfigWizardScreen(BaseScreen):
                 project_name = self.config.get_project_name()
                 secret_key = f"{self.plugin_name}_{field_name}"
                 keychain_key = f"{project_name}_{secret_key}" if project_name else secret_key
-                existing_secret = self.config.secrets.get(keychain_key) or self.config.secrets.get(secret_key)
+                broker = self.config.broker_factory.for_plugin(self.plugin_name)
+                existing_secret = broker.exists(keychain_key) or broker.exists(secret_key)
 
                 if not value and existing_secret:
                     # Keep existing
@@ -536,14 +538,11 @@ class PluginConfigWizardScreen(BaseScreen):
                 if isinstance(value, dict) and value.get("_is_secret"):
                     secret_key = f"{self.plugin_name}_{field_name}"
                     if value.get("_existing"):
-                        # Keep existing secret
-                        project_name = self.config.get_project_name()
-                        keychain_key = f"{project_name}_{secret_key}" if project_name else secret_key
-                        existing = self.config.secrets.get(keychain_key) or self.config.secrets.get(secret_key)
-                        if existing:
-                            secrets_to_save[secret_key] = existing
-                    else:
-                        secrets_to_save[secret_key] = value["_value"]
+                        # Keep existing secret: it is already stored under one
+                        # of the keys the plugin's read cascade checks, so
+                        # there is nothing to rewrite.
+                        continue
+                    secrets_to_save[secret_key] = value["_value"]
                 else:
                     # Route to global or project based on field scope
                     scope = field_scopes.get(field_name, "project")
@@ -566,6 +565,7 @@ class PluginConfigWizardScreen(BaseScreen):
 
             # Save secrets
             project_name = self.config.get_project_name()
+            broker = self.config.broker_factory.for_plugin(self.plugin_name)
             for secret_key, secret_value in secrets_to_save.items():
                 # Clean up old secrets for this key to avoid conflicts
                 # This prevents accumulation of stale tokens from previous configurations
@@ -578,13 +578,13 @@ class PluginConfigWizardScreen(BaseScreen):
                     for old_key in old_keys:
                         if old_key:
                             try:
-                                self.config.secrets.delete(old_key, scope="user")
+                                broker.delete(old_key)
                             except Exception:
                                 pass  # Ignore errors if key doesn't exist
 
                 # Save the new secret
                 keychain_key = f"{project_name}_{secret_key}" if project_name else secret_key
-                self.config.secrets.set(keychain_key, secret_value, scope="user")
+                broker.store(keychain_key, secret_value)
 
             self.app.notify(f"Plugin '{self.plugin_name}' configured successfully!", severity="information")
             self.dismiss(result=True)

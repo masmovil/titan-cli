@@ -5,7 +5,7 @@ from pathlib import Path
 from titan_cli.core.plugins.models import GitPluginConfig
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig # Needed for type hinting
-from titan_cli.core.secrets import SecretManager # Needed for type hinting
+from titan_cli.core.security import SecretBroker # Needed for type hinting
 from .clients.git_client import GitClient
 from .exceptions import GitClientError
 from .messages import msg
@@ -32,7 +32,7 @@ class GitPlugin(TitanPlugin):
     def dependencies(self) -> list[str]:
         return []
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         """
         Initialize with configuration.
         

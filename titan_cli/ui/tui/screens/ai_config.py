@@ -344,15 +344,21 @@ class SelectGatewayModelModal(ModalScreen[str | None]):
     def __init__(
         self,
         connection_name: str,
-        base_url: str,
-        api_key: str | None,
+        gateway_client,
         current_model: str,
         **kwargs,
     ):
+        """
+        Args:
+            connection_name: Display name of the gateway connection.
+            gateway_client: An already-authenticated LiteLLMClient; built by
+                the caller through the secret broker so the key never reaches
+                this screen.
+            current_model: The connection's current default model.
+        """
         super().__init__(**kwargs)
         self.connection_name = connection_name
-        self.base_url = base_url
-        self.api_key = api_key
+        self.gateway_client = gateway_client
         self.current_model = current_model
 
     def compose(self) -> ComposeResult:
@@ -375,16 +381,10 @@ class SelectGatewayModelModal(ModalScreen[str | None]):
     async def _load_models(self) -> None:
         import asyncio
 
-        from titan_cli.ai.litellm_client import LiteLLMClient
-
         content = self.query_one("#select-model-content", Container)
 
         try:
-            client = LiteLLMClient(
-                base_url=self.base_url,
-                api_key=self.api_key,
-            )
-            models = await asyncio.to_thread(client.list_models)
+            models = await asyncio.to_thread(self.gateway_client.list_models)
 
             content.remove_children()
 
@@ -910,8 +910,8 @@ class AIConfigScreen(BaseScreen):
 
     def handle_change_model(self, connection_id: str) -> None:
         """Change the default model for an AI connection."""
-        from titan_cli.core.secrets import SecretManager
-        from titan_cli.core.security import derive_namespace
+        from titan_cli.ai.litellm_client import LiteLLMClient
+        from titan_cli.core.security import create_broker_factory
 
         self.config.load()
 
@@ -932,12 +932,17 @@ class AIConfigScreen(BaseScreen):
             return
 
         current_model = connection_cfg.default_model or ""
-        # Raw read pending its conversion to an authenticated session
-        # factory; reads under the core scope so it sees the same entry the
-        # provider factory does (legacy entries migrate lazily).
-        secrets = SecretManager()
-        api_key = secrets.get(
-            f"{connection_id}_api_key", namespace=derive_namespace("core")
+        # The gateway key crosses into the client constructor inside the
+        # broker call; the modal receives the authenticated client. A gateway
+        # may legitimately have no key (e.g. a local proxy).
+        broker = create_broker_factory(self.config.project_root).for_plugin("core")
+        gateway_client = broker.create_client(
+            f"{connection_id}_api_key",
+            lambda api_key: LiteLLMClient(
+                base_url=connection_cfg.base_url,
+                api_key=api_key,
+            ),
+            required=False,
         )
 
         def on_change_model(result: str | None) -> None:
@@ -961,8 +966,7 @@ class AIConfigScreen(BaseScreen):
         self.app.push_screen(
             SelectGatewayModelModal(
                 connection_cfg.name,
-                connection_cfg.base_url,
-                api_key,
+                gateway_client,
                 current_model,
             ),
             on_change_model,
