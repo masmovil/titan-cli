@@ -95,10 +95,7 @@ def test_execute_command_step_with_venv(mock_context, mock_get_poetry_venv_env, 
     mock_context.textual.dim_text.assert_any_call("Activating poetry virtual environment for step...")
     mock_context.textual.text.assert_any_call("venv_activated\n")
     mock_popen.assert_called_once()
-    # Only the venv's PATH is taken - the rest of the env stays minimal
-    passed_env = mock_popen.call_args[1]['env']
-    assert passed_env["PATH"] == mock_get_poetry_venv_env.return_value["PATH"]
-    assert "MOCK_VENV" not in passed_env
+    assert mock_popen.call_args[1]['env'] == mock_get_poetry_venv_env.return_value # Check env is passed
 
 def test_execute_command_step_venv_not_found(mock_context, mock_get_poetry_venv_env, mock_popen):
     """Tests command execution when use_venv is true but venv is not found."""
@@ -148,54 +145,27 @@ def test_execute_command_step_cwd_from_context(mock_context, mock_popen):
     assert mock_popen.call_args[1]['cwd'] == "/custom/path"
 
 
-# --- Environment sanitization ---
+# --- Environment inheritance ---
 
-def test_env_does_not_inherit_sensitive_variables(mock_context, mock_popen):
-    """The subprocess env is minimal: parent-env secrets never reach it."""
-    with patch.dict(os.environ, {"MY_SECRET_TOKEN": "tok_value", "PATH": "/usr/bin", "HOME": "/home/u"}):
+def test_env_inherits_console_environment_but_never_project_secrets(mock_context, mock_popen, tmp_path):
+    """
+    A command step inherits the user's console environment. What must NEVER
+    ride along are Titan-managed project secrets: the vault keeps them in
+    memory, out of os.environ.
+    """
+    from titan_cli.core.security._vault import SecretManager
+
+    (tmp_path / ".titan").mkdir()
+    (tmp_path / ".titan" / "secrets.env").write_text("PROJECT_TOKEN='tok_project'\n")
+    SecretManager(project_path=tmp_path)  # loading project secrets touches nothing global
+
+    with patch.dict(os.environ, {"MY_SHELL_VAR": "shell_value"}):
         step_model = WorkflowStepModel(command="env", id="t", name="Env")
         execute_command_step(step_model, mock_context)
 
     passed_env = mock_popen.call_args[1]['env']
-    assert "MY_SECRET_TOKEN" not in passed_env
-    assert passed_env["PATH"] == "/usr/bin"
-    assert passed_env["HOME"] == "/home/u"
-
-
-def test_env_step_allowlist_passes_variables_through(mock_context, mock_popen):
-    with patch.dict(os.environ, {"MY_SECRET_TOKEN": "tok_value", "OTHER_SECRET": "x"}):
-        step_model = WorkflowStepModel(
-            command="env", id="t", name="Env",
-            params={"env_allowlist": ["MY_SECRET_TOKEN"]},
-        )
-        execute_command_step(step_model, mock_context)
-
-    passed_env = mock_popen.call_args[1]['env']
-    assert passed_env["MY_SECRET_TOKEN"] == "tok_value"
-    assert "OTHER_SECRET" not in passed_env
-
-
-def test_env_project_allowlist_passes_variables_through(mock_context, mock_popen):
-    mock_context.titan_config.project_config = {
-        "security": {"command_env_allowlist": ["PROJECT_ALLOWED"]}
-    }
-    with patch.dict(os.environ, {"PROJECT_ALLOWED": "yes", "NOT_ALLOWED": "no"}):
-        step_model = WorkflowStepModel(command="env", id="t", name="Env")
-        execute_command_step(step_model, mock_context)
-
-    passed_env = mock_popen.call_args[1]['env']
-    assert passed_env["PROJECT_ALLOWED"] == "yes"
-    assert "NOT_ALLOWED" not in passed_env
-
-
-def test_env_locale_and_xdg_prefixes_pass_through(mock_context, mock_popen):
-    with patch.dict(os.environ, {"LC_ALL": "en_US.UTF-8", "XDG_CONFIG_HOME": "/home/u/.config"}):
-        step_model = WorkflowStepModel(command="env", id="t", name="Env")
-        execute_command_step(step_model, mock_context)
-
-    passed_env = mock_popen.call_args[1]['env']
-    assert passed_env["LC_ALL"] == "en_US.UTF-8"
-    assert passed_env["XDG_CONFIG_HOME"] == "/home/u/.config"
+    assert passed_env["MY_SHELL_VAR"] == "shell_value"
+    assert "PROJECT_TOKEN" not in passed_env
 
 
 # --- Redaction of the resolved command echo ---
