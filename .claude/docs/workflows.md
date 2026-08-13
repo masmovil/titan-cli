@@ -75,6 +75,28 @@ Runs a shell command directly.
 
 Add `use_shell: true` if the command requires shell features (pipes, redirects). Avoid for untrusted input.
 
+**Environment**: command steps do NOT inherit the full parent environment. The subprocess
+gets a minimal env (`PATH`, `HOME`, `USER`, `SHELL`, `TERM`, `TMPDIR`, locale `LC_*`/`LANG`,
+`XDG_*`, `SSH_AUTH_SOCK`, proxy variables) so shell-exported credentials can't leak into
+workflow commands by inheritance. To pass extra variables through:
+
+```yaml
+# Per step:
+- id: deploy
+  command: "deploy.sh"
+  params:
+    env_allowlist: ["JAVA_HOME", "ANDROID_HOME"]
+```
+
+```toml
+# Per project (.titan/config.toml):
+[security]
+command_env_allowlist = ["JAVA_HOME", "ANDROID_HOME"]
+```
+
+The resolved command echoed to the UI (and the command output display) pass through the
+secret-redaction filter.
+
 ### 3. Nested Workflow
 
 Calls another workflow as a step. The sub-workflow's result is returned to the parent.

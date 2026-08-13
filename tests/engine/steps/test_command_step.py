@@ -95,7 +95,10 @@ def test_execute_command_step_with_venv(mock_context, mock_get_poetry_venv_env, 
     mock_context.textual.dim_text.assert_any_call("Activating poetry virtual environment for step...")
     mock_context.textual.text.assert_any_call("venv_activated\n")
     mock_popen.assert_called_once()
-    assert mock_popen.call_args[1]['env'] == mock_get_poetry_venv_env.return_value # Check env is passed
+    # Only the venv's PATH is taken - the rest of the env stays minimal
+    passed_env = mock_popen.call_args[1]['env']
+    assert passed_env["PATH"] == mock_get_poetry_venv_env.return_value["PATH"]
+    assert "MOCK_VENV" not in passed_env
 
 def test_execute_command_step_venv_not_found(mock_context, mock_get_poetry_venv_env, mock_popen):
     """Tests command execution when use_venv is true but venv is not found."""
@@ -143,3 +146,92 @@ def test_execute_command_step_cwd_from_context(mock_context, mock_popen):
     assert "pwd" in result.message
     mock_popen.assert_called_once()
     assert mock_popen.call_args[1]['cwd'] == "/custom/path"
+
+
+# --- Environment sanitization ---
+
+def test_env_does_not_inherit_sensitive_variables(mock_context, mock_popen):
+    """The subprocess env is minimal: parent-env secrets never reach it."""
+    with patch.dict(os.environ, {"MY_SECRET_TOKEN": "tok_value", "PATH": "/usr/bin", "HOME": "/home/u"}):
+        step_model = WorkflowStepModel(command="env", id="t", name="Env")
+        execute_command_step(step_model, mock_context)
+
+    passed_env = mock_popen.call_args[1]['env']
+    assert "MY_SECRET_TOKEN" not in passed_env
+    assert passed_env["PATH"] == "/usr/bin"
+    assert passed_env["HOME"] == "/home/u"
+
+
+def test_env_step_allowlist_passes_variables_through(mock_context, mock_popen):
+    with patch.dict(os.environ, {"MY_SECRET_TOKEN": "tok_value", "OTHER_SECRET": "x"}):
+        step_model = WorkflowStepModel(
+            command="env", id="t", name="Env",
+            params={"env_allowlist": ["MY_SECRET_TOKEN"]},
+        )
+        execute_command_step(step_model, mock_context)
+
+    passed_env = mock_popen.call_args[1]['env']
+    assert passed_env["MY_SECRET_TOKEN"] == "tok_value"
+    assert "OTHER_SECRET" not in passed_env
+
+
+def test_env_project_allowlist_passes_variables_through(mock_context, mock_popen):
+    mock_context.titan_config.project_config = {
+        "security": {"command_env_allowlist": ["PROJECT_ALLOWED"]}
+    }
+    with patch.dict(os.environ, {"PROJECT_ALLOWED": "yes", "NOT_ALLOWED": "no"}):
+        step_model = WorkflowStepModel(command="env", id="t", name="Env")
+        execute_command_step(step_model, mock_context)
+
+    passed_env = mock_popen.call_args[1]['env']
+    assert passed_env["PROJECT_ALLOWED"] == "yes"
+    assert "NOT_ALLOWED" not in passed_env
+
+
+def test_env_locale_and_xdg_prefixes_pass_through(mock_context, mock_popen):
+    with patch.dict(os.environ, {"LC_ALL": "en_US.UTF-8", "XDG_CONFIG_HOME": "/home/u/.config"}):
+        step_model = WorkflowStepModel(command="env", id="t", name="Env")
+        execute_command_step(step_model, mock_context)
+
+    passed_env = mock_popen.call_args[1]['env']
+    assert passed_env["LC_ALL"] == "en_US.UTF-8"
+    assert passed_env["XDG_CONFIG_HOME"] == "/home/u/.config"
+
+
+# --- Redaction of the resolved command echo ---
+
+def test_command_echo_is_redacted(mock_context, mock_popen):
+    """A secret interpolated from ctx.data is masked in the UI echo."""
+    from titan_cli.core.security import redaction
+    redaction.clear_registry()
+    try:
+        redaction.register_secret("tok_secret_value")
+        mock_context.data = {"api_token": "tok_secret_value"}
+        step_model = WorkflowStepModel(command="curl -H 'Auth: ${api_token}'", id="t", name="Curl")
+        result = execute_command_step(step_model, mock_context)
+
+        mock_context.textual.text.assert_any_call(
+            f"Executing command: curl -H 'Auth: {redaction.REDACTED}'"
+        )
+        # The subprocess still receives the real value.
+        assert any("tok_secret_value" in arg for arg in mock_popen.call_args[1]['args'])
+        # And the Success message is masked too.
+        assert "tok_secret_value" not in result.message
+    finally:
+        redaction.clear_registry()
+
+
+def test_command_stdout_echo_is_redacted(mock_context, mock_popen):
+    from titan_cli.core.security import redaction
+    redaction.clear_registry()
+    try:
+        redaction.register_secret("tok_secret_value")
+        mock_process = mock_popen.return_value
+        mock_process.communicate.return_value = ("token=tok_secret_value\n", "")
+        mock_process.returncode = 0
+        step_model = WorkflowStepModel(command="echo token", id="t", name="Echo")
+        execute_command_step(step_model, mock_context)
+
+        mock_context.textual.text.assert_any_call(f"token={redaction.REDACTED}\n")
+    finally:
+        redaction.clear_registry()
