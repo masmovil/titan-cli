@@ -3,7 +3,6 @@ import pytest
 from unittest.mock import MagicMock
 from pathlib import Path
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
 from titan_cli.engine.workflow_executor import WorkflowExecutor
 from titan_cli.engine import WorkflowContextBuilder, Success
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
@@ -139,7 +138,6 @@ def test_create_pr_workflow_e2e(mock_titan_config, create_pr_workflow_yaml):
     # Build execution context
     ctx = WorkflowContextBuilder(
         plugin_registry=mock_titan_config.registry,
-        secrets=MagicMock(spec=SecretManager),
         ai_config=None
     ).build()
 

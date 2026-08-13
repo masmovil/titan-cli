@@ -2,10 +2,9 @@
 WorkflowContext - Dependency injection container for workflows.
 """
 
+import warnings
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
-
-from titan_cli.core.secrets import SecretManager
 
 
 @dataclass
@@ -17,7 +16,7 @@ class WorkflowContext:
     - Dependency injection (clients, services)
     - Shared data storage between steps
     - Textual TUI components
-    - Access to secrets
+    - Namespace-scoped secret management (`secret_broker`)
 
     UI Architecture:
         ctx.textual.text     # Textual TUI components
@@ -26,8 +25,10 @@ class WorkflowContext:
         ctx.textual.prompts
     """
 
-    # Core dependencies
-    secrets: SecretManager
+    # Namespace-scoped secrets API for the current step, assigned per step by
+    # the executor. A step can store/check/delete secrets in its own
+    # namespace; there is deliberately no way to read a value back.
+    secret_broker: Optional[Any] = None
 
     # Textual TUI components (for TUI mode)
     textual: Optional[Any] = None
@@ -58,6 +59,28 @@ class WorkflowContext:
 
     # Internal state for workflow execution
     _workflow_stack: List[str] = field(default_factory=list)
+
+    # Backing store for the deprecated `secrets` property below. Populated by
+    # the builder; both go away once external workflow repos stop reading it.
+    _legacy_secrets: Optional[Any] = None
+
+    @property
+    def secrets(self) -> Optional[Any]:
+        """
+        Deprecated: the full SecretManager is being removed from the workflow
+        API. Use `ctx.secret_broker` (store/check/delete) instead; code that
+        needs a secret's value must go through a use-primitive or session
+        factory so the value never crosses into step code. This property
+        exists only while external workflow repos migrate, and is deleted
+        before the next release — no published version ships it.
+        """
+        warnings.warn(
+            "ctx.secrets is deprecated and will be removed: use "
+            "ctx.secret_broker (or a session factory) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._legacy_secrets
 
     def set(self, key: str, value: Any) -> None:
         """Set shared data."""

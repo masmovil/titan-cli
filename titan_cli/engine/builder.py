@@ -20,7 +20,6 @@ class WorkflowContextBuilder:
 
     Example:
         plugin_registry = PluginRegistry()
-        secrets = SecretManager()
         ai_config = AIConfig(
             default_connection="default",
             connections={
@@ -32,7 +31,7 @@ class WorkflowContextBuilder:
                 }
             },
         )
-        ctx = WorkflowContextBuilder(plugin_registry, secrets, ai_config) \\
+        ctx = WorkflowContextBuilder(plugin_registry, ai_config=ai_config) \\
             .with_ai() \\
             .with_ai_router() \\
             .build()
@@ -41,7 +40,6 @@ class WorkflowContextBuilder:
     def __init__(
         self,
         plugin_registry: PluginRegistry,
-        secrets: SecretManager,
         ai_config: Optional[AIConfig] = None
     ):
         """
@@ -49,11 +47,13 @@ class WorkflowContextBuilder:
 
         Args:
             plugin_registry: The PluginRegistry instance.
-            secrets: The SecretManager instance.
             ai_config: Optional AI configuration.
         """
         self._plugin_registry = plugin_registry
-        self._secrets = secrets
+        # Internal only: AIClient/AIExecutor still take a SecretManager until
+        # their migration to the session factories lands. It is never exposed
+        # on the context beyond the deprecated ctx.secrets property.
+        self._secrets = SecretManager()
         self._ai_config = ai_config
 
         # Service clients
@@ -237,7 +237,7 @@ class WorkflowContextBuilder:
     def build(self) -> WorkflowContext:
         """Build the WorkflowContext."""
         return WorkflowContext(
-            secrets=self._secrets,
+            _legacy_secrets=self._secrets,
             plugin_manager=self._plugin_registry,
             titan_config=self._titan_config,
             ai=self._ai,

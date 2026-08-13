@@ -14,6 +14,7 @@ from titan_cli.core.workflows import ParsedWorkflow
 from titan_cli.core.workflows.workflow_exceptions import WorkflowExecutionError
 from titan_cli.core.workflows.workflow_registry import WorkflowRegistry
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
+from titan_cli.core.security import create_broker_factory
 from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import WorkflowResult, Success, Error, is_error, is_skip, is_exit
@@ -124,6 +125,10 @@ class TextualWorkflowExecutor:
         self._plugin_registry = plugin_registry
         self._workflow_registry = workflow_registry
         self._message_target = message_target
+        # Mints the namespace-scoped broker each step receives as
+        # ctx.secret_broker. The vault stays inside the factory; neither the
+        # executor nor the context ever holds it.
+        self._broker_factory = create_broker_factory()
 
     def _post_message(self, message: Message) -> None:
         """Post a message to the target if available."""
@@ -255,6 +260,15 @@ class TextualWorkflowExecutor:
                         step_name=step_name
                     )
                 )
+
+                # Each plugin step gets a broker scoped to its own namespace,
+                # derived from the plugin declared in the workflow definition.
+                # Command and nested-workflow steps get none (nested workflows
+                # re-derive per step inside their own execution).
+                if step_config.plugin and step_config.step:
+                    ctx.secret_broker = self._broker_factory.for_plugin(step_config.plugin)
+                else:
+                    ctx.secret_broker = None
 
                 try:
                     if step_config.workflow:

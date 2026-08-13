@@ -33,7 +33,7 @@ def make_git_client(main_branch="main"):
 
 
 def make_context(git_client, **data):
-    ctx = WorkflowContext(secrets=Mock(), textual=MockTextual(), git=git_client)
+    ctx = WorkflowContext(textual=MockTextual(), git=git_client)
     ctx.data.update(data)
     return ctx
 

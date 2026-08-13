@@ -33,7 +33,7 @@ class MockTextual:
 
 
 def make_context(mock_jira=None, **data):
-    ctx = WorkflowContext(secrets=Mock(), textual=MockTextual(), jira=mock_jira)
+    ctx = WorkflowContext(textual=MockTextual(), jira=mock_jira)
     ctx.data.update(data)
     return ctx
 

@@ -20,7 +20,6 @@ from titan_cli.core.interrupt import (
     clear_abort_check,
     set_abort_check,
 )
-from titan_cli.core.secrets import SecretManager
 from titan_cli.core.workflows import ParsedWorkflow
 from titan_cli.engine.builder import WorkflowContextBuilder
 from titan_cli.core.workflows.workflow_exceptions import (
@@ -176,15 +175,12 @@ class WorkflowExecutionScreen(BaseScreen):
         try:
             # We're already in the project directory (current working directory)
             # No need to change directory
-
-            # Create secret manager for current project
             from pathlib import Path
-            secrets = SecretManager(project_path=Path.cwd())
+            project_root = Path.cwd()
 
             # Build workflow context (without UI - executor handles messaging)
             ctx_builder = WorkflowContextBuilder(
                 plugin_registry=self.config.registry,
-                secrets=secrets,
                 ai_config=self.config.config.ai,
             )
 
@@ -209,7 +205,7 @@ class WorkflowExecutionScreen(BaseScreen):
                         pass
 
                 try:
-                    managers = plugin.get_workflow_managers(project_root=secrets.project_path)
+                    managers = plugin.get_workflow_managers(project_root=project_root)
                     if managers is not None:
                         ctx_builder.with_plugin_managers(plugin_name, managers)
                 except Exception:
@@ -217,8 +213,7 @@ class WorkflowExecutionScreen(BaseScreen):
 
             # Build context and create executor
             execution_context = ctx_builder.build()
-            if secrets.project_path:
-                execution_context.data["project_root"] = str(secrets.project_path)
+            execution_context.data["project_root"] = str(project_root)
             executor = TextualWorkflowExecutor(
                 plugin_registry=self.config.registry,
                 workflow_registry=self.config.workflows,
