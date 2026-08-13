@@ -9,13 +9,23 @@ only ever leaves the boundary as an *effect* (an authenticated session, a
 subprocess stdin, a scoped tempfile — see sessions.py and the use-primitives).
 """
 
+import os
+import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional, TypeVar
 
+from .execution import (
+    CANCELLED_RESULT,
+    SecureCommandResult,
+    build_minimal_env,
+    run_redacted,
+)
 from .redaction import register_secret
 
 if TYPE_CHECKING:
     from ._vault import SecretManager
+
+T = TypeVar("T")
 
 # Asks the user for a secret (the argument is the prompt to display) and
 # returns what they typed, or None if they cancelled. Wired by core to the
@@ -124,6 +134,105 @@ class SecretBroker:
         """Delete `key` from the user keyring in this namespace."""
         self._vault.delete(key, namespace=self._namespace, scope="user")
 
+    # --- Use-primitives: the value crosses into an effect, never back to the
+    # --- caller. Output comes back redacted.
+
+    def run_with_secret_stdin(
+        self,
+        key: str,
+        prompt: str,
+        command: list[str],
+        retry_on_failure: bool = True,
+    ) -> SecureCommandResult:
+        """
+        Run `command` with the secret fed on stdin (e.g. gpg --passphrase-fd 0).
+
+        If the secret is missing, the user is prompted and the value stored.
+        If a STORED secret makes the command fail, it is assumed stale: the
+        key is deleted, the user re-prompted, and the command retried once
+        (`retry_on_failure`).
+        """
+        stored_value = self._vault.get(key, namespace=self._namespace)
+        value = stored_value if stored_value is not None else self._prompt_and_save(key, prompt)
+        if value is None:
+            return CANCELLED_RESULT
+
+        result = run_redacted(command, stdin_value=value)
+
+        if not result.succeeded and stored_value is not None and retry_on_failure:
+            self.delete(key)
+            fresh = self._prompt_and_save(key, prompt)
+            if fresh is None:
+                return result
+            result = run_redacted(command, stdin_value=fresh)
+
+        return result
+
+    def run_with_secret_env(
+        self,
+        key: str,
+        env_var: str,
+        command: list[str],
+        env_allowlist: Optional[list[str]] = None,
+        prompt: Optional[str] = None,
+    ) -> SecureCommandResult:
+        """
+        Run `command` with the secret injected as `env_var` in a MINIMAL
+        environment (base allowlist + `env_allowlist`), so the injected
+        variable is the only sensitive thing the subprocess can see or dump.
+        """
+        value = self._resolve(key, prompt)
+        if value is None:
+            return CANCELLED_RESULT
+
+        env = build_minimal_env(env_allowlist)
+        env[env_var] = value
+        return run_redacted(command, env=env)
+
+    def with_secret_tempfile(
+        self,
+        key: str,
+        callback: Callable[[Path], T],
+        prompt: Optional[str] = None,
+    ) -> Optional[T]:
+        """
+        Write the secret to a 0600 tempfile, call `callback(path)`, and
+        delete the file no matter what. For tools that only take key files
+        (e.g. gcloud service accounts). Returns the callback's result, or
+        None if no secret could be resolved.
+        """
+        value = self._resolve(key, prompt)
+        if value is None:
+            return None
+
+        fd, raw_path = tempfile.mkstemp(prefix="titan-secret-")  # mkstemp is 0600
+        path = Path(raw_path)
+        try:
+            with os.fdopen(fd, "w") as handle:
+                handle.write(value)
+            return callback(path)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def _resolve(self, key: str, prompt: Optional[str]) -> Optional[str]:
+        """Stored value, or prompt-and-store when a prompt was given."""
+        value = self._vault.get(key, namespace=self._namespace)
+        if value is not None:
+            return value
+        if prompt is None:
+            return None
+        return self._prompt_and_save(key, prompt)
+
+    def _prompt_and_save(self, key: str, prompt: str) -> Optional[str]:
+        if self._prompter is None:
+            return None
+        value = self._prompter(prompt)
+        if not value:
+            return None
+        self._vault.set(key, value, namespace=self._namespace, scope="user")
+        register_secret(value)
+        return value
+
 
 class SecretBrokerFactory:
     """
@@ -136,6 +245,14 @@ class SecretBrokerFactory:
 
     def __init__(self, vault: "SecretManager", prompter: Optional[Prompter] = None):
         self._vault = vault
+        self._prompter = prompter
+
+    def set_prompter(self, prompter: Optional[Prompter]) -> None:
+        """
+        Wire the UI prompt late. The executor creates this factory before the
+        TUI components exist, and gives it the real ask-password once a
+        workflow run has a screen to ask on.
+        """
         self._prompter = prompter
 
     def for_plugin(self, plugin_name: Optional[str]) -> SecretBroker:

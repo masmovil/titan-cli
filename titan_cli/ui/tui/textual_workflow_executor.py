@@ -183,6 +183,11 @@ class TextualWorkflowExecutor:
                 # If we can't get the components, steps will fall back to ctx.ui
                 pass
 
+        # Brokers minted from here on can ask the user for a missing secret
+        # through the real TUI password prompt.
+        if ctx.textual is not None:
+            self._broker_factory.set_prompter(ctx.textual.ask_password)
+
         # Merge workflow params into ctx.data with optional overrides
         effective_params = {**workflow.params}
         if params_override:

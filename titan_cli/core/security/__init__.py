@@ -17,12 +17,18 @@ from .broker import (
     create_broker_factory,
     derive_namespace,
 )
+from .execution import SecureCommandResult
 from .redaction import redact, register_secret
+from .sessions import AuthScheme, create_ai_provider, create_authenticated_session
 
 __all__ = [
+    "AuthScheme",
     "SecretBroker",
     "SecretBrokerFactory",
     "SecretRef",
+    "SecureCommandResult",
+    "create_ai_provider",
+    "create_authenticated_session",
     "create_broker_factory",
     "derive_namespace",
     "redact",
