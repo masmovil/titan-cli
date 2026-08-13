@@ -9,6 +9,7 @@ where a secret legitimately flows (e.g. a subprocess that echoes its input).
 """
 
 import threading
+from typing import Optional
 
 REDACTED = "[REDACTED]"
 
@@ -39,6 +40,46 @@ def redact(text: str) -> str:
         if value in text:
             text = text.replace(value, REDACTED)
     return text
+
+
+def contains_secret(text: str) -> bool:
+    """Whether `text` embeds any registered secret value."""
+    if not text:
+        return False
+    with _lock:
+        known = tuple(_secrets)
+    return any(value in text for value in known)
+
+
+def find_secret_in(obj, _path: str = "") -> Optional[str]:
+    """
+    Walk a plain-data structure (dicts/lists/tuples/sets/strings) and return
+    the path of the first value embedding a registered secret, or None.
+
+    Opaque containers (`SensitiveValue`, `SecretRef`) are fine wherever they
+    appear — they are how sensitive material is *supposed* to travel — so
+    anything that isn't plain data is skipped, not inspected.
+    """
+    if isinstance(obj, str):
+        return _path or "<value>" if contains_secret(obj) else None
+    if isinstance(obj, bytes):
+        try:
+            return _path or "<value>" if contains_secret(obj.decode("utf-8")) else None
+        except UnicodeDecodeError:
+            return None
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            found = find_secret_in(value, f"{_path}.{key}" if _path else str(key))
+            if found:
+                return found
+        return None
+    if isinstance(obj, (list, tuple, set)):
+        for i, value in enumerate(obj):
+            found = find_secret_in(value, f"{_path}[{i}]")
+            if found:
+                return found
+        return None
+    return None
 
 
 def clear_registry() -> None:

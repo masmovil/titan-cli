@@ -19,7 +19,8 @@ from .broker import (
     derive_namespace,
 )
 from .execution import SecureCommandResult
-from .redaction import redact, register_secret
+from .redaction import find_secret_in, redact, register_secret
+from .sensitive import SensitiveValue
 from .sessions import AuthScheme, create_ai_provider, create_authenticated_session
 
 __all__ = [
@@ -29,10 +30,12 @@ __all__ = [
     "SecretLeakError",
     "SecretRef",
     "SecureCommandResult",
+    "SensitiveValue",
     "create_ai_provider",
     "create_authenticated_session",
     "create_broker_factory",
     "derive_namespace",
+    "find_secret_in",
     "redact",
     "register_secret",
 ]

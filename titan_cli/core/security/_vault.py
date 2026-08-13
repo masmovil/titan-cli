@@ -14,9 +14,12 @@ ScopeType = Literal["project", "user"]
 
 # Service names that predate the scoped namespaces (titan.core /
 # titan.plugins.<name>). A keyring read that misses under a scoped namespace
-# falls back here and, on a hit, migrates the entry to its new home
-# (write-new -> delete-old), so existing users are never re-prompted and the
-# fallback can eventually be removed once no legacy hits remain.
+# falls back here and, on a hit, copies the entry to its new home, so existing
+# users are never re-prompted. The legacy copy is deliberately left in place:
+# an installed pre-broker Titan on the same machine reads only these service
+# names, and deleting its copy breaks it key by key. `delete()` still sweeps
+# them, so a deleted key cannot be resurrected. Remove the leftover copies
+# (and this fallback) once no pre-broker version remains in use.
 LEGACY_NAMESPACES = ("titan", "ragnarok")
 
 
@@ -85,7 +88,7 @@ class SecretManager:
         return None
 
     def _get_legacy_and_migrate(self, key: str, namespace: str) -> Optional[str]:
-        """Look `key` up under the legacy service names; migrate on a hit."""
+        """Look `key` up under the legacy service names; copy to `namespace` on a hit."""
         for legacy in LEGACY_NAMESPACES:
             try:
                 value = keyring.get_password(legacy, key)
@@ -97,7 +100,6 @@ class SecretManager:
                 # refuses the write (e.g. a read-only backend).
                 try:
                     keyring.set_password(namespace, key, value)
-                    keyring.delete_password(legacy, key)
                 except Exception:
                     pass
                 return value

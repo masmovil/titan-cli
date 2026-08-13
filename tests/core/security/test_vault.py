@@ -234,14 +234,18 @@ def keyring_store(mock_env):
         yield store
 
 
-def test_scoped_miss_falls_back_to_legacy_and_migrates(keyring_store, tmp_path):
+def test_scoped_miss_falls_back_to_legacy_and_copies(keyring_store, tmp_path):
     keyring_store[("titan", "work_api_key")] = "sk-legacy"
 
     sm = SecretManager(project_path=tmp_path)
     assert sm.get("work_api_key", namespace="titan.core") == "sk-legacy"
 
-    # Migrated: write-new, delete-old.
-    assert keyring_store == {("titan.core", "work_api_key"): "sk-legacy"}
+    # Copied to the scoped namespace; the legacy copy stays so an installed
+    # pre-broker Titan on the same machine keeps working.
+    assert keyring_store == {
+        ("titan.core", "work_api_key"): "sk-legacy",
+        ("titan", "work_api_key"): "sk-legacy",
+    }
 
 
 def test_scoped_hit_wins_over_legacy_copy(keyring_store, tmp_path):

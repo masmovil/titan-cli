@@ -6,21 +6,47 @@ from typing import Any, Optional, Union
 from dataclasses import dataclass
 
 
+def _reject_secret_metadata(result_type: str, metadata: Optional[dict]) -> None:
+    """
+    Result metadata is auto-merged into ctx.data and may end up in logs, so a
+    raw secret string in it is a leak the moment the step returns. Raising at
+    construction points the traceback at the offending step. Opaque carriers
+    (SensitiveValue, SecretRef) are allowed — they are the sanctioned way for
+    sensitive material to travel.
+    """
+    if not metadata:
+        return
+    # Imported here: engine must stay importable without dragging the whole
+    # security package (and its keyring backend) in at module-import time.
+    from titan_cli.core.security import SecretLeakError, find_secret_in
+
+    found = find_secret_in(metadata)
+    if found:
+        raise SecretLeakError(
+            f"{result_type} metadata carries a secret value at '{found}'. "
+            "Metadata is merged into ctx.data and may be logged; wrap derived "
+            "sensitive material in SensitiveValue or keep it out of the result."
+        )
+
+
 @dataclass(frozen=True)
 class Success:
     """
     Step completed successfully.
-    
+
     Attributes:
         message: Success message (optional)
         metadata: Metadata to auto-merge into ctx.data
-    
+
     Examples:
         >>> return Success("User validated")
         >>> return Success("PR created", metadata={"pr_number": 123})
     """
     message: str = ""
     metadata: Optional[dict[str, Any]] = None
+
+    def __post_init__(self):
+        _reject_secret_metadata("Success", self.metadata)
 
 @dataclass(frozen=True)
 class Error:
@@ -67,6 +93,9 @@ class Skip:
     message: str
     metadata: Optional[dict[str, Any]] = None
 
+    def __post_init__(self):
+        _reject_secret_metadata("Skip", self.metadata)
+
 
 @dataclass(frozen=True)
 class Exit:
@@ -91,6 +120,9 @@ class Exit:
     """
     message: str
     metadata: Optional[dict[str, Any]] = None
+
+    def __post_init__(self):
+        _reject_secret_metadata("Exit", self.metadata)
 
 
 # Type alias for workflow results
