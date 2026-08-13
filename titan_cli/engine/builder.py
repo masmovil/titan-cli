@@ -7,7 +7,6 @@ from typing import Optional, Any
 
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.models import AIConfig
-from titan_cli.core.secrets import SecretManager
 from titan_cli.core.security import create_ai_provider, create_broker_factory
 from .context import WorkflowContext
 from titan_cli.ai.client import AIClient
@@ -51,10 +50,6 @@ class WorkflowContextBuilder:
             ai_config: Optional AI configuration.
         """
         self._plugin_registry = plugin_registry
-        # Kept only to back the deprecated ctx.secrets property until the
-        # external Ragnarok workflows migrate; nothing inside titan-cli
-        # reads it anymore.
-        self._secrets = SecretManager()
         self._ai_config = ai_config
 
         # Service clients
@@ -242,7 +237,6 @@ class WorkflowContextBuilder:
     def build(self) -> WorkflowContext:
         """Build the WorkflowContext."""
         return WorkflowContext(
-            _legacy_secrets=self._secrets,
             plugin_manager=self._plugin_registry,
             titan_config=self._titan_config,
             ai=self._ai,

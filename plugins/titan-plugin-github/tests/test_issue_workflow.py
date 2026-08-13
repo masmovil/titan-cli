@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.core.secrets import SecretManager
 from titan_plugin_github.steps.github_prompt_steps import (
     prompt_for_issue_body_step,
     prompt_for_labels_step,
@@ -16,7 +15,7 @@ from titan_plugin_github.models.view import UIIssue
 
 @pytest.fixture
 def mock_secret_manager():
-    return MagicMock(spec=SecretManager)
+    return MagicMock()
 
 def test_prompt_for_issue_body_step(mock_secret_manager):
     # Arrange

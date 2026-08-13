@@ -1,17 +1,12 @@
 """
-Architecture test for the secrets trust boundary (harness: secrets_hardening,
-sec-004).
+Architecture test for the secrets trust boundary.
 
-Only `titan_cli/core/security/` may touch raw secret strings. Concretely:
-
-- `keyring` and the private vault (`titan_cli.core.security._vault`) may not
-  be imported anywhere else, from day one. The transitional
-  `titan_cli/core/secrets.py` shim is the single sanctioned `_vault` importer.
-- The legacy `SecretManager` (via `titan_cli.core.secrets`) is governed by a
-  SHRINK-ONLY allowlist: this test fails if a NEW module starts importing it,
-  AND it fails if an allowlisted module no longer does (so the list can only
-  get shorter). When the list empties, delete the allowlist, the shim, and
-  keep the outright ban.
+Only `titan_cli/core/security/` may touch raw secret strings: `keyring`, the
+private vault (`titan_cli.core.security._vault`), and the retired
+`titan_cli.core.secrets` location are banned outright everywhere else. The
+migration ratchet that used to live here has fully tightened — the shim and
+its shrink-only allowlist are gone; these tests keep anyone from quietly
+bringing either back.
 
 Production code only — tests may construct SecretManager freely.
 """
@@ -24,22 +19,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SECURITY_PACKAGE = "titan_cli/core/security"
 VAULT_MODULE = "titan_cli.core.security._vault"
 LEGACY_MODULE = "titan_cli.core.secrets"
-
-# The one module allowed to import the private vault: the transitional
-# re-export shim. Deleted together with the allowlist below.
-VAULT_IMPORT_EXCEPTIONS = {
-    "titan_cli/core/secrets.py",
-}
-
-# Legacy SecretManager importers, pinned 2026-08-13. SHRINK ONLY: never add
-# an entry; each migration deletes its own lines. The single remaining
-# importer, builder.py, only backs the deprecated ctx.secrets property until
-# the external workflows that still use it migrate — then this allowlist
-# disappears and the shim with it.
-LEGACY_IMPORTER_ALLOWLIST = {
-    "titan_cli/engine/builder.py",
-}
-
 
 def _production_files():
     """Every production .py file: titan_cli/ plus each plugin's package dir."""
@@ -121,32 +100,20 @@ def test_keyring_only_imported_inside_security_boundary():
 def test_vault_only_imported_inside_security_boundary():
     offenders = {
         f for f in _importers_of({VAULT_MODULE})
-        if not f.startswith(SECURITY_PACKAGE) and f not in VAULT_IMPORT_EXCEPTIONS
+        if not f.startswith(SECURITY_PACKAGE)
     }
     assert offenders == set(), (
         f"The private vault ({VAULT_MODULE}) may only be imported inside "
-        f"{SECURITY_PACKAGE}/ plus the transitional shim. "
-        f"Offenders: {sorted(offenders)}."
+        f"{SECURITY_PACKAGE}/. Offenders: {sorted(offenders)}."
     )
 
 
-def test_legacy_secret_manager_importers_ratchet():
-    importers = {
-        f for f in _importers_of({LEGACY_MODULE})
-        if not f.startswith(SECURITY_PACKAGE)
-    }
-
-    new_importers = importers - LEGACY_IMPORTER_ALLOWLIST
-    assert new_importers == set(), (
-        f"New importer(s) of the legacy SecretManager: {sorted(new_importers)}. "
-        f"The allowlist only shrinks — new code must use SecretBroker or a "
-        f"session factory from titan_cli.core.security."
-    )
-
-    cleaned = LEGACY_IMPORTER_ALLOWLIST - importers
-    assert cleaned == set(), (
-        f"These modules no longer import the legacy SecretManager — remove "
-        f"them from LEGACY_IMPORTER_ALLOWLIST so the ratchet tightens: "
-        f"{sorted(cleaned)}. If the list is now empty, delete the allowlist "
-        f"and the titan_cli/core/secrets.py shim entirely."
+def test_retired_secrets_module_is_never_imported():
+    """titan_cli.core.secrets was the pre-boundary home of SecretManager; the
+    module is deleted and must not come back as an import target."""
+    importers = _importers_of({LEGACY_MODULE})
+    assert importers == set(), (
+        f"titan_cli.core.secrets no longer exists — these files import it: "
+        f"{sorted(importers)}. Use SecretBroker or a session factory from "
+        f"titan_cli.core.security instead."
     )

@@ -25,14 +25,8 @@ def test_context_accepts_secret_broker():
     assert ctx.secret_broker is broker
 
 
-def test_legacy_secrets_property_warns_and_returns_backing_manager():
-    legacy = MagicMock()
-    ctx = WorkflowContext(_legacy_secrets=legacy)
-    with pytest.warns(DeprecationWarning, match="ctx.secrets is deprecated"):
-        assert ctx.secrets is legacy
-
-
-def test_legacy_secrets_property_defaults_to_none():
+def test_secrets_attribute_is_gone():
+    """The deprecated ctx.secrets property is deleted, not just discouraged."""
     ctx = WorkflowContext()
-    with pytest.warns(DeprecationWarning):
-        assert ctx.secrets is None
+    with pytest.raises(AttributeError):
+        _ = ctx.secrets

@@ -1,7 +1,6 @@
 # Private vault: the only module in Titan allowed to touch raw secret strings
-# or the OS keyring. Nothing outside titan_cli/core/security/ may import it
-# (the transitional titan_cli/core/secrets.py shim is the single sanctioned
-# exception until the legacy importers finish migrating).
+# or the OS keyring. Nothing outside titan_cli/core/security/ may import it —
+# enforced by tests/core/security/test_architecture.py.
 import os
 from pathlib import Path
 from typing import Literal, Optional
