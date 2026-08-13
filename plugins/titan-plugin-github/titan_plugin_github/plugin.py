@@ -71,7 +71,6 @@ class GitHubPlugin(TitanPlugin):
         # Initialize client with validated configuration and git_client
         self._client = GitHubClient(
             config=validated_config,
-            secrets=secrets,
             git_client=git_client,
             repo_owner=repo_owner, # Pass detected/configured owner
             repo_name=repo_name, # Pass detected/configured name

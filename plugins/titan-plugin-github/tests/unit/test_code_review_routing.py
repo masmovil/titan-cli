@@ -63,7 +63,7 @@ def _executor(
         connections={default_connection: connection} if default_connection else {},
         preferences=AIPreferences(tasks=task_preferences or {}),
     )
-    executor = AIExecutor(ai_config=config, secrets=None)
+    executor = AIExecutor(ai_config=config)
     executor.availability._cache["headless"] = [
         AIProviderAvailability(provider=AIProviderType.CLI_HEADLESS, identifier=cli)
         for cli in installed

@@ -220,3 +220,66 @@ def test_delete_project_scope_secret_not_found(tmp_project_path):
     sm.delete("non_existent", scope="project")
 
     assert "OTHER_KEY='other_value'" in secrets_file.read_text()
+
+
+# --- Lazy namespace migration: reads that miss under a scoped service name
+# --- fall back to the legacy ones and move the entry to its new home.
+
+@pytest.fixture
+def keyring_store(mock_env):
+    store = {}
+    with patch('keyring.get_password', side_effect=lambda ns, k: store.get((ns, k))), \
+         patch('keyring.set_password', side_effect=lambda ns, k, v: store.__setitem__((ns, k), v)), \
+         patch('keyring.delete_password', side_effect=lambda ns, k: store.pop((ns, k), None)):
+        yield store
+
+
+def test_scoped_miss_falls_back_to_legacy_and_migrates(keyring_store, tmp_path):
+    keyring_store[("titan", "work_api_key")] = "sk-legacy"
+
+    sm = SecretManager(project_path=tmp_path)
+    assert sm.get("work_api_key", namespace="titan.core") == "sk-legacy"
+
+    # Migrated: write-new, delete-old.
+    assert keyring_store == {("titan.core", "work_api_key"): "sk-legacy"}
+
+
+def test_scoped_hit_wins_over_legacy_copy(keyring_store, tmp_path):
+    keyring_store[("titan.core", "k")] = "scoped"
+    keyring_store[("titan", "k")] = "stale"
+
+    sm = SecretManager(project_path=tmp_path)
+    assert sm.get("k", namespace="titan.core") == "scoped"
+    # No migration ran; the stale copy is untouched (delete sweeps it).
+    assert keyring_store[("titan", "k")] == "stale"
+
+
+def test_legacy_namespace_read_does_not_fall_back(keyring_store, tmp_path):
+    keyring_store[("ragnarok", "k")] = "value"
+
+    sm = SecretManager(project_path=tmp_path)
+    assert sm.get("k", namespace="titan") is None
+
+
+def test_migration_write_failure_still_returns_value(mock_env, tmp_path):
+    def get_password(ns, k):
+        return "sk-legacy" if ns == "titan" else None
+
+    with patch('keyring.get_password', side_effect=get_password), \
+         patch('keyring.set_password', side_effect=RuntimeError("read-only backend")), \
+         patch('keyring.delete_password') as mock_delete:
+        sm = SecretManager(project_path=tmp_path)
+        assert sm.get("k", namespace="titan.core") == "sk-legacy"
+        # The failed write must not delete the only copy.
+        mock_delete.assert_not_called()
+
+
+def test_scoped_delete_sweeps_legacy_namespaces(keyring_store, tmp_path):
+    keyring_store[("titan.core", "k")] = "v1"
+    keyring_store[("titan", "k")] = "v2"
+    keyring_store[("ragnarok", "k")] = "v3"
+
+    sm = SecretManager(project_path=tmp_path)
+    sm.delete("k", namespace="titan.core", scope="user")
+
+    assert keyring_store == {}

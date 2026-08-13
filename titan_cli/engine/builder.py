@@ -8,6 +8,7 @@ from typing import Optional, Any
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.models import AIConfig
 from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import create_ai_provider, create_broker_factory
 from .context import WorkflowContext
 from titan_cli.ai.client import AIClient
 from titan_cli.ai.exceptions import AIConfigurationError
@@ -50,9 +51,9 @@ class WorkflowContextBuilder:
             ai_config: Optional AI configuration.
         """
         self._plugin_registry = plugin_registry
-        # Internal only: AIClient/AIExecutor still take a SecretManager until
-        # their migration to the session factories lands. It is never exposed
-        # on the context beyond the deprecated ctx.secrets property.
+        # Kept only to back the deprecated ctx.secrets property until the
+        # external Ragnarok workflows migrate; nothing inside titan-cli
+        # reads it anymore.
         self._secrets = SecretManager()
         self._ai_config = ai_config
 
@@ -82,7 +83,7 @@ class WorkflowContextBuilder:
             # Convenience - auto-create from ai_config
             if self._ai_config:
                 try:
-                    self._ai = AIClient(self._ai_config, self._secrets)
+                    self._ai = AIClient(self._ai_config, create_ai_provider)
                 except AIConfigurationError:
                     self._ai = None
             else:
@@ -104,7 +105,11 @@ class WorkflowContextBuilder:
         if ai_router:
             self._ai_router = ai_router
         else:
-            self._ai_router = AIExecutor(self._ai_config, self._secrets)
+            self._ai_router = AIExecutor(
+                self._ai_config,
+                provider_factory=create_ai_provider,
+                secret_broker=create_broker_factory().for_plugin("core"),
+            )
         return self
 
     def with_titan_config(self, titan_config: Optional[Any] = None) -> WorkflowContextBuilder:

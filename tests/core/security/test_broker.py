@@ -100,13 +100,28 @@ def test_prompt_and_store_cancelled_returns_none(vault, mock_keyring):
     mock_keyring[1].assert_not_called()
 
 
+def test_store_writes_value_and_returns_ref(vault, mock_keyring):
+    """A value the caller already holds flows in; only an opaque ref comes back."""
+    broker = SecretBroker(vault, "titan.core")
+    ref = broker.store("api_key", "typed_into_a_form")
+
+    mock_keyring[1].assert_called_once_with("titan.core", "api_key", "typed_into_a_form")
+    assert ref == SecretRef("titan.core", "api_key")
+    assert redaction.redact("x typed_into_a_form y") == f"x {redaction.REDACTED} y"
+
+
 def test_prompt_and_store_without_prompter_raises(vault):
     broker = SecretBroker(vault, "titan.core")
     with pytest.raises(RuntimeError, match="no prompter"):
         broker.prompt_and_store("token", "Enter")
 
 
-def test_delete_uses_broker_namespace(vault, mock_keyring):
+def test_delete_uses_broker_namespace_and_sweeps_legacy(vault, mock_keyring):
+    """Delete must also clear the legacy service names: a copy left there
+    would be resurrected by the lazy-migration fallback on the next read."""
     broker = SecretBroker(vault, "titan.plugins.demo")
     broker.delete("token")
-    mock_keyring[2].assert_called_once_with("titan.plugins.demo", "token")
+    deleted = [call.args for call in mock_keyring[2].call_args_list]
+    assert deleted[0] == ("titan.plugins.demo", "token")
+    assert ("titan", "token") in deleted
+    assert ("ragnarok", "token") in deleted

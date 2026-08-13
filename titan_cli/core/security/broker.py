@@ -130,6 +130,16 @@ class SecretBroker:
         register_secret(value)
         return SecretRef(self._namespace, key)
 
+    def store(self, key: str, value: str) -> SecretRef:
+        """
+        Store a value the caller already holds (e.g. typed into a form) and
+        return an opaque ref. This is the safe direction — the value flows
+        into the boundary; there is still no way to read it back out.
+        """
+        self._vault.set(key, value, namespace=self._namespace, scope="user")
+        register_secret(value)
+        return SecretRef(self._namespace, key)
+
     def delete(self, key: str) -> None:
         """Delete `key` from the user keyring in this namespace."""
         self._vault.delete(key, namespace=self._namespace, scope="user")

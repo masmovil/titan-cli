@@ -16,7 +16,12 @@ from typing import Optional
 import requests
 
 from ._vault import SecretManager
-from .broker import SecretRef
+from .broker import SecretRef, derive_namespace
+
+# The AI subsystem is app-level, not a plugin: its keys live under the core
+# scope. Reads that miss here fall back to the legacy service names inside
+# the vault and migrate lazily.
+_AI_NAMESPACE = derive_namespace("core")
 
 
 def create_ai_provider(
@@ -59,7 +64,7 @@ def create_ai_provider(
         raise AIConfigurationError(f"Unknown AI source type: {source_name}")
 
     vault = SecretManager(project_path=project_path)
-    api_key = vault.get(f"{connection_id}_api_key")
+    api_key = vault.get(f"{connection_id}_api_key", namespace=_AI_NAMESPACE)
 
     if not api_key and connection_cfg.connection_type != AIConnectionType.GATEWAY:
         raise AIConfigurationError(

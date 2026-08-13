@@ -73,7 +73,7 @@ class FakeAdapter:
 
 def _executor(resolution, *, headless=("claude",)):
     """An executor whose resolution is pinned, so tests exercise execution only."""
-    executor = AIExecutor(ai_config=None, secrets=None)
+    executor = AIExecutor(ai_config=None)
     executor.resolver.resolve = lambda **kwargs: resolution  # type: ignore[method-assign]
     executor.availability.available_headless_clis = lambda: [  # type: ignore[method-assign]
         type("Candidate", (), {"identifier": cli, "provider": AIProviderType.CLI_HEADLESS})()
@@ -86,7 +86,7 @@ def _executor(resolution, *, headless=("claude",)):
 
 
 def test_policy_read_from_decorated_callable():
-    executor = AIExecutor(ai_config=None, secrets=None)
+    executor = AIExecutor(ai_config=None)
     seen = {}
     executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
         reason="stub"
@@ -99,7 +99,7 @@ def test_policy_read_from_decorated_callable():
 
 
 def test_policy_object_passed_directly():
-    executor = AIExecutor(ai_config=None, secrets=None)
+    executor = AIExecutor(ai_config=None)
     seen = {}
     executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
         reason="stub"
@@ -113,7 +113,7 @@ def test_policy_object_passed_directly():
 
 
 def test_policy_synthesized_when_none_given():
-    executor = AIExecutor(ai_config=None, secrets=None)
+    executor = AIExecutor(ai_config=None)
     seen = {}
     executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
         reason="stub"
@@ -126,7 +126,7 @@ def test_policy_synthesized_when_none_given():
 
 
 def test_explicit_task_overrides_declared_task_but_keeps_preferred():
-    executor = AIExecutor(ai_config=None, secrets=None)
+    executor = AIExecutor(ai_config=None)
     seen = {}
     executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
         reason="stub"
@@ -142,7 +142,7 @@ def test_undecorated_callable_falls_back_to_default_preferred():
     def plain_step():
         return None
 
-    executor = AIExecutor(ai_config=None, secrets=None)
+    executor = AIExecutor(ai_config=None)
     seen = {}
     executor.resolver.resolve = lambda **kwargs: seen.update(kwargs) or AIRouteNeedsInput(  # type: ignore[method-assign]
         reason="stub"
@@ -157,7 +157,7 @@ def test_undecorated_callable_without_task_is_refused():
     def plain_step():
         return None
 
-    executor = AIExecutor(ai_config=None, secrets=None)
+    executor = AIExecutor(ai_config=None)
 
     with pytest.raises(ValueError, match="declare_ai_usage"):
         executor.resolve(policy=plain_step)
@@ -604,12 +604,12 @@ def test_remote_client_caches_per_connection(monkeypatch):
     built = []
 
     class RecordingClient:
-        def __init__(self, ai_config, secrets, connection_id=None):
+        def __init__(self, ai_config, provider_factory, connection_id=None):
             built.append(connection_id)
             self.connection_id = connection_id
 
     monkeypatch.setattr("titan_cli.ai.router.executor.AIClient", RecordingClient)
-    executor = AIExecutor(ai_config=AIConfig(), secrets=object())
+    executor = AIExecutor(ai_config=AIConfig(), provider_factory=object())
 
     first = executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="a"))
     second = executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE, connection_id="a"))
@@ -621,7 +621,7 @@ def test_remote_client_caches_per_connection(monkeypatch):
 
 
 def test_remote_client_without_config_returns_none():
-    executor = AIExecutor(ai_config=None, secrets=None)
+    executor = AIExecutor(ai_config=None)
 
     assert executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE)) is None
 
@@ -630,11 +630,11 @@ def test_remote_client_returns_none_when_connection_misconfigured(monkeypatch):
     from titan_cli.ai.exceptions import AIConfigurationError
     from titan_cli.core.models import AIConfig
 
-    def raise_config_error(ai_config, secrets, connection_id=None):
+    def raise_config_error(ai_config, provider_factory, connection_id=None):
         raise AIConfigurationError("no such connection")
 
     monkeypatch.setattr("titan_cli.ai.router.executor.AIClient", raise_config_error)
-    executor = AIExecutor(ai_config=AIConfig(), secrets=object())
+    executor = AIExecutor(ai_config=AIConfig(), provider_factory=object())
 
     assert executor.remote_client(AIRouteDecision(provider=AIProviderType.REMOTE)) is None
 

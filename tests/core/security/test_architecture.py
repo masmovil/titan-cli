@@ -32,24 +32,21 @@ VAULT_IMPORT_EXCEPTIONS = {
 }
 
 # Legacy SecretManager importers, pinned 2026-08-13. SHRINK ONLY: never add
-# an entry. Each migration feature deletes its own lines —
-# sec-006: ai/client.py, ai/router/*, github_client.py, engine/builder.py
-#          (the builder only keeps it to feed the AI chain until then)
-# sec-007: core/config.py, ui/tui/*, every plugin.py
+# an entry; each migration deletes its own lines. What keeps each one here:
+# config.py owns the app-wide manager, ui/tui/__init__.py rebuilds it on
+# config reload, ai_config.py keeps one raw read (the gateway model-listing
+# key), each plugin.py receives the manager through initialize(), and
+# builder.py only backs the deprecated ctx.secrets property until the
+# external workflows that still use it migrate.
 LEGACY_IMPORTER_ALLOWLIST = {
     "plugins/titan-plugin-git/titan_plugin_git/plugin.py",
-    "plugins/titan-plugin-github/titan_plugin_github/clients/github_client.py",
     "plugins/titan-plugin-github/titan_plugin_github/plugin.py",
     "plugins/titan-plugin-jira/titan_plugin_jira/plugin.py",
     "plugins/titan-plugin-slack/titan_plugin_slack/plugin.py",
-    "titan_cli/ai/client.py",
-    "titan_cli/ai/router/availability.py",
-    "titan_cli/ai/router/executor.py",
     "titan_cli/core/config.py",
     "titan_cli/engine/builder.py",
     "titan_cli/ui/tui/__init__.py",
     "titan_cli/ui/tui/screens/ai_config.py",
-    "titan_cli/ui/tui/screens/ai_config_wizard.py",
 }
 
 

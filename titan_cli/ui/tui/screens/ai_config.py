@@ -145,7 +145,6 @@ class TestConnectionModal(ModalScreen):
         """Run the test asynchronously."""
         import asyncio
         import importlib
-        from titan_cli.core.secrets import SecretManager
         from titan_cli.ai.client import AIClient
         from titan_cli.ai.models import AIMessage
         from titan_cli.ai.dependencies import (
@@ -154,9 +153,9 @@ class TestConnectionModal(ModalScreen):
             get_install_command,
             install_missing_dependencies,
         )
+        from titan_cli.core.security import create_ai_provider
 
         content = self.query_one("#test-modal-content", Container)
-        secrets = SecretManager()
 
         try:
             source_name = str(
@@ -206,7 +205,7 @@ class TestConnectionModal(ModalScreen):
 
             ai_client = AIClient(
                 self.config.config.ai,
-                secrets,
+                create_ai_provider,
                 connection_id=self.connection_id,
             )
 
@@ -702,8 +701,11 @@ class AIConfigScreen(BaseScreen):
         Deliberately rebuilt per repaint rather than kept on the screen: it caches its
         probes, so a long-lived one would keep reporting a CLI you just installed as absent.
         """
+        from titan_cli.core.security import create_broker_factory
+
         ai_config = self.config.config.ai if self.config.config else None
-        return AIAvailabilityChecker(ai_config, self.config.secrets)
+        broker = create_broker_factory(self.config.project_root).for_plugin("core")
+        return AIAvailabilityChecker(ai_config, broker)
 
     def load_cli_defaults(self) -> None:
         """Display the installed CLIs and which one Titan will run."""
@@ -909,6 +911,7 @@ class AIConfigScreen(BaseScreen):
     def handle_change_model(self, connection_id: str) -> None:
         """Change the default model for an AI connection."""
         from titan_cli.core.secrets import SecretManager
+        from titan_cli.core.security import derive_namespace
 
         self.config.load()
 
@@ -929,8 +932,13 @@ class AIConfigScreen(BaseScreen):
             return
 
         current_model = connection_cfg.default_model or ""
+        # Raw read pending its conversion to an authenticated session
+        # factory; reads under the core scope so it sees the same entry the
+        # provider factory does (legacy entries migrate lazily).
         secrets = SecretManager()
-        api_key = secrets.get(f"{connection_id}_api_key")
+        api_key = secrets.get(
+            f"{connection_id}_api_key", namespace=derive_namespace("core")
+        )
 
         def on_change_model(result: str | None) -> None:
             if not result:
@@ -962,7 +970,7 @@ class AIConfigScreen(BaseScreen):
 
     def handle_delete(self, connection_id: str) -> None:
         """Delete an AI connection."""
-        from titan_cli.core.secrets import SecretManager
+        from titan_cli.core.security import create_broker_factory
 
         try:
             self.config.load()
@@ -974,9 +982,9 @@ class AIConfigScreen(BaseScreen):
             connection_name = self.config.config.ai.connections[connection_id].name
             self.config.delete_ai_connection(connection_id)
 
-            secrets = SecretManager()
+            broker = create_broker_factory(self.config.project_root).for_plugin("core")
             try:
-                secrets.delete(f"{connection_id}_api_key", scope="user")
+                broker.delete(f"{connection_id}_api_key")
             except Exception:
                 pass
 

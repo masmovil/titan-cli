@@ -13,6 +13,13 @@ from .redaction import register_secret
 
 ScopeType = Literal["project", "user"]
 
+# Service names that predate the scoped namespaces (titan.core /
+# titan.plugins.<name>). A keyring read that misses under a scoped namespace
+# falls back here and, on a hit, migrates the entry to its new home
+# (write-new -> delete-old), so existing users are never re-prompted and the
+# fallback can eventually be removed once no legacy hits remain.
+LEGACY_NAMESPACES = ("titan", "ragnarok")
+
 
 class SecretManager:
     """
@@ -73,6 +80,28 @@ class SecretManager:
             register_secret(value)
             return value
 
+        if namespace not in LEGACY_NAMESPACES:
+            return self._get_legacy_and_migrate(key, namespace)
+
+        return None
+
+    def _get_legacy_and_migrate(self, key: str, namespace: str) -> Optional[str]:
+        """Look `key` up under the legacy service names; migrate on a hit."""
+        for legacy in LEGACY_NAMESPACES:
+            try:
+                value = keyring.get_password(legacy, key)
+            except Exception:
+                return None
+            if value:
+                register_secret(value)
+                # Best-effort: the read must succeed even if the keyring
+                # refuses the write (e.g. a read-only backend).
+                try:
+                    keyring.set_password(namespace, key, value)
+                    keyring.delete_password(legacy, key)
+                except Exception:
+                    pass
+                return value
         return None
 
     def set(
@@ -133,10 +162,14 @@ class SecretManager:
     def delete(self, key: str, namespace: str = "titan", scope: ScopeType = "user"):
         """Delete secret from specified scope"""
         if scope == "user":
-            try:
-                keyring.delete_password(namespace, key)
-            except Exception:
-                pass  # Keyring might not be available
+            # Sweep the legacy service names too: a copy left there would be
+            # resurrected by the lazy-migration fallback on the next read.
+            targets = (namespace, *LEGACY_NAMESPACES) if namespace not in LEGACY_NAMESPACES else (namespace,)
+            for target in targets:
+                try:
+                    keyring.delete_password(target, key)
+                except Exception:
+                    pass  # Keyring might not be available / entry absent
 
         elif scope == "project":
             self._project_secrets.pop(key.upper(), None)
