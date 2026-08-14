@@ -69,12 +69,17 @@ class TrustFinding:
 
     file: str  # path relative to the scanned source dir
     line: int
-    code: str  # "keyring-import" | "vault-import" | "secret-manager"
+    code: str  # "keyring-import" | "vault-import" | "secret-manager" | "unparseable"
     detail: str
 
 
-# Directory names whose contents are not plugin runtime code.
-_SKIPPED_DIRS = {"tests", "test", ".git", "__pycache__", ".venv", "venv"}
+# Non-code directories, skipped at any depth.
+_SKIPPED_DIRS = {".git", "__pycache__", ".venv", "venv"}
+
+# Test directories are only skipped as TOP-LEVEL siblings of the package:
+# skipping `tests` at any depth would let a plugin hide importable runtime
+# code in `<pkg>/tests/` and never have it scanned.
+_SKIPPED_TOP_LEVEL_DIRS = {"tests", "test"}
 
 _VAULT_MODULE = "titan_cli.core.security._vault"
 
@@ -108,6 +113,8 @@ def scan_plugin_source(source_dir: Path) -> list[TrustFinding]:
         rel_parts = path.relative_to(source_dir).parts
         if any(part in _SKIPPED_DIRS for part in rel_parts):
             continue
+        if rel_parts[0] in _SKIPPED_TOP_LEVEL_DIRS:
+            continue
         rel = "/".join(rel_parts)
 
         try:
@@ -129,6 +136,12 @@ def scan_plugin_source(source_dir: Path) -> list[TrustFinding]:
                             findings.append(TrustFinding(
                                 rel, node.lineno, "secret-manager",
                                 f"imports SecretManager from '{node.module}'"))
+                        # `from titan_cli.core.security import _vault` carries
+                        # the vault module in `names`, not in `module`.
+                        elif alias.name == "_vault":
+                            findings.append(TrustFinding(
+                                rel, node.lineno, "vault-import",
+                                f"imports '_vault' from '{node.module}' (Titan's private vault)"))
             elif isinstance(node, ast.Name) and node.id == "SecretManager":
                 findings.append(TrustFinding(
                     rel, node.lineno, "secret-manager",

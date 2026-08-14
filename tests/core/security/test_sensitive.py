@@ -69,3 +69,29 @@ def test_long_container_leaves_registered_short_ones_not():
 def test_nested_container_leaves_registered():
     SensitiveValue({"outer": {"token": "nested-secret-token-value"}})
     assert redact("x nested-secret-token-value y") == "x [REDACTED] y"
+
+
+# --- Fixes from the PR #261 review round ---
+
+def test_short_bytes_container_leaf_not_registered():
+    SensitiveValue({"type": b"sa"})
+    assert redact("type sa ok") == "type sa ok"
+
+
+def test_long_bytes_container_leaf_registered():
+    SensitiveValue({"key": b"-----BEGIN PRIVATE KEY-----data"})
+    assert "BEGIN PRIVATE" not in redact("x -----BEGIN PRIVATE KEY-----data y")
+
+
+def test_self_referencing_structure_does_not_recurse_forever():
+    d = {"token": "long-enough-secret-value"}
+    d["self"] = d
+    sv = SensitiveValue(d)  # must not raise RecursionError
+    assert sv.reveal() is d
+
+
+def test_delattr_is_blocked():
+    sv = SensitiveValue("s3cret-value")
+    with pytest.raises(AttributeError):
+        del sv._value
+    assert sv.reveal() == "s3cret-value"

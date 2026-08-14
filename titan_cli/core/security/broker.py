@@ -139,7 +139,14 @@ class SecretBroker:
         Store a value the caller already holds (e.g. typed into a form) and
         return an opaque ref. This is the safe direction — the value flows
         into the boundary; there is still no way to read it back out.
+
+        Raises:
+            ValueError: If `value` is empty or whitespace — the vault treats
+                a falsy stored value as absent, so accepting it here would
+                return a "success" ref that `exists()` then contradicts.
         """
+        if not value or not value.strip():
+            raise ValueError(f"Refusing to store an empty secret for {self._namespace}:{key}")
         self._vault.set(key, value, namespace=self._namespace, scope="user")
         register_secret(value)
         return SecretRef(self._namespace, key)
@@ -216,7 +223,9 @@ class SecretBroker:
         If the secret is missing, the user is prompted and the value stored.
         If a STORED secret makes the command fail, it is assumed stale: the
         key is deleted, the user re-prompted, and the command retried once
-        (`retry_on_failure`).
+        (`retry_on_failure`). Exit codes 126/127 mean the command itself
+        could not run (not found / not executable) — that failure says
+        nothing about the credential, so the stored value is kept.
         """
         stored_value = self._vault.get(key, namespace=self._namespace)
         value = stored_value if stored_value is not None else self._prompt_and_save(key, prompt)
@@ -224,6 +233,9 @@ class SecretBroker:
             return CANCELLED_RESULT
 
         result = run_redacted(command, stdin_value=value)
+
+        if result.exit_code in (126, 127):
+            return result
 
         if not result.succeeded and stored_value is not None and retry_on_failure:
             self.delete(key)

@@ -141,7 +141,7 @@ def test_set_project_scope_new_secret(tmp_project_path):
 
     secrets_file = tmp_project_path / ".titan" / "secrets.env"
     assert secrets_file.exists()
-    assert "MY_PROJECT_SECRET='project_value'" in secrets_file.read_text()
+    assert 'MY_PROJECT_SECRET="project_value"' in secrets_file.read_text()
 
 
 def test_set_project_scope_update_secret(tmp_project_path):
@@ -152,7 +152,7 @@ def test_set_project_scope_update_secret(tmp_project_path):
     sm.set("existing_secret", "new_value", scope="project")
 
     content = secrets_file.read_text()
-    assert "EXISTING_SECRET='new_value'" in content
+    assert 'EXISTING_SECRET="new_value"' in content
     assert "OTHER_KEY='other_value'" in content
     assert "EXISTING_SECRET='old_value'" not in content
 
@@ -287,3 +287,54 @@ def test_scoped_delete_sweeps_legacy_namespaces(keyring_store, tmp_path):
     sm.delete("k", namespace="titan.core", scope="user")
 
     assert keyring_store == {}
+
+
+# --- Fixes from the PR #261 review round ---
+
+def test_legacy_fallback_continues_past_a_failing_namespace(mock_env, tmp_path):
+    """One legacy namespace raising must not hide a key stored in the next."""
+    def get_password(ns, k):
+        if ns == "titan.core":
+            return None
+        if ns == "titan":
+            raise RuntimeError("backend hiccup")
+        return "sk-from-ragnarok" if ns == "ragnarok" else None
+
+    with patch('keyring.get_password', side_effect=get_password), \
+         patch('keyring.set_password'), \
+         patch('keyring.delete_password'):
+        sm = SecretManager(project_path=tmp_path)
+        assert sm.get("k", namespace="titan.core") == "sk-from-ragnarok"
+
+
+def test_project_secrets_file_is_owner_only(tmp_project_path, mock_env, mock_keyring):
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("api_token", "tok_value", scope="project")
+
+    mode = (tmp_project_path / ".titan" / "secrets.env").stat().st_mode & 0o777
+    assert mode == 0o600
+
+
+def test_project_secret_round_trip_with_special_characters(tmp_project_path, mock_env, mock_keyring):
+    """Quotes, backslashes and newlines must survive set() -> file -> get()."""
+    nasty = "it's a \"secret\" with \\slashes\\ and\na newline"
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("nasty_token", nasty, scope="project")
+
+    # A fresh manager re-parses the file from disk (the real read path).
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("nasty_token") == nasty
+
+
+def test_project_secret_update_keeps_single_line_entry(tmp_project_path, mock_env, mock_keyring):
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("token", "first", scope="project")
+    sm.set("token", "second", scope="project")
+    sm.set("other", "x-value", scope="project")
+
+    lines = (tmp_project_path / ".titan" / "secrets.env").read_text().splitlines()
+    assert sum(1 for line in lines if line.startswith("TOKEN=")) == 1
+
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("token") == "second"
+    assert fresh.get("other") == "x-value"

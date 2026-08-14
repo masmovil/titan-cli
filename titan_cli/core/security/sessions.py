@@ -116,6 +116,13 @@ def create_authenticated_session(
     Raises:
         KeyError: If the ref does not resolve to a stored secret.
     """
+    # AuthScheme is a str enum, so a raw string comparison would silently
+    # fall through to "token" for any unrecognized spelling ("Bearer",
+    # "BEARER") and send the credential under the wrong scheme. Normalize
+    # case, then let an unknown value raise.
+    if not isinstance(scheme, AuthScheme):
+        scheme = AuthScheme(scheme.lower())
+
     vault = SecretManager(project_path=project_path)
     value = vault.get(ref.key, namespace=ref.namespace)
     if value is None:

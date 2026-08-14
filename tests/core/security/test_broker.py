@@ -185,3 +185,25 @@ def test_delete_uses_broker_namespace_and_sweeps_legacy(vault, mock_keyring):
     assert deleted[0] == ("titan.plugins.demo", "token")
     assert ("titan", "token") in deleted
     assert ("ragnarok", "token") in deleted
+
+
+# --- Fixes from the PR #261 review round ---
+
+def test_store_rejects_empty_value(vault):
+    broker = SecretBroker(vault, "titan.plugins.demo")
+    with pytest.raises(ValueError):
+        broker.store("token", "")
+    with pytest.raises(ValueError):
+        broker.store("token", "   ")
+
+
+def test_stdin_primitive_keeps_stored_secret_on_exec_failure(vault):
+    """Exit 127 (command not found) says nothing about the credential."""
+    with patch('keyring.get_password', return_value="stored-pass"), \
+         patch('keyring.delete_password') as mock_delete:
+        broker = SecretBroker(vault, "titan.plugins.demo")
+        result = broker.run_with_secret_stdin(
+            "passphrase", "Passphrase:", ["definitely-not-a-command-xyz"]
+        )
+    assert result.exit_code in (126, 127)
+    mock_delete.assert_not_called()

@@ -69,7 +69,15 @@ def find_secret_in(obj, _path: str = "") -> Optional[str]:
             return None
     if isinstance(obj, dict):
         for key, value in obj.items():
-            found = find_secret_in(value, f"{_path}.{key}" if _path else str(key))
+            # Keys are values too: metadata keyed by a token would otherwise
+            # pass the leak check silently. The reported path deliberately
+            # omits the key text — the key IS the secret here, and the path
+            # ends up in an exception message.
+            if isinstance(key, (str, bytes)):
+                if find_secret_in(key, "k"):
+                    return f"{_path}.<dict key>" if _path else "<dict key>"
+            key_path = f"{_path}.{key}" if _path else str(key)
+            found = find_secret_in(value, key_path)
             if found:
                 return found
         return None

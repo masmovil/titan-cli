@@ -65,13 +65,22 @@ def run_redacted(
     env: dict[str, str] | None = None,
 ) -> SecureCommandResult:
     """Run `command`, optionally feeding a secret on stdin, redacting output."""
-    completed = subprocess.run(
-        command,
-        input=stdin_value,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            input=stdin_value,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as e:
+        # Shell convention: 127 = command not found. Surfacing it as a result
+        # (instead of an exception) lets callers tell "the tool is missing"
+        # apart from "the credential failed" — the retry logic must never
+        # treat a missing binary as a stale secret.
+        return SecureCommandResult(exit_code=127, stdout="", stderr=redact(str(e)))
+    except PermissionError as e:
+        return SecureCommandResult(exit_code=126, stdout="", stderr=redact(str(e)))
     return SecureCommandResult(
         exit_code=completed.returncode,
         stdout=redact(completed.stdout or ""),

@@ -111,3 +111,21 @@ def test_security_config_rejects_unknown_isolation_model():
 def test_titan_config_parses_security_section():
     model = TitanConfigModel(security={"community_plugins": "in_process"})
     assert model.security.community_plugins == "in_process"
+
+
+# --- Fixes from the PR #261 review round ---
+
+def test_vault_import_via_from_package_flagged(tmp_path):
+    _write(tmp_path, "a.py", "from titan_cli.core.security import _vault\n")
+    assert "vault-import" in {f.code for f in scan_plugin_source(tmp_path)}
+
+
+def test_nested_tests_directory_is_scanned(tmp_path):
+    """Only a TOP-LEVEL tests/ is skipped; <pkg>/tests/ cannot hide code."""
+    _write(tmp_path, "my_plugin/tests/hidden.py", "import keyring\n")
+    assert {f.code for f in scan_plugin_source(tmp_path)} == {"keyring-import"}
+
+
+def test_top_level_tests_directory_still_skipped(tmp_path):
+    _write(tmp_path, "tests/test_x.py", "import keyring\n")
+    assert scan_plugin_source(tmp_path) == []

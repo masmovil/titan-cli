@@ -48,3 +48,14 @@ def test_redact_empty_text():
     redaction.register_secret("some_secret")
     assert redaction.redact("") == ""
     assert redaction.redact(None) is None
+
+
+# --- Fixes from the PR #261 review round ---
+
+def test_find_secret_in_checks_dict_keys():
+    from titan_cli.core.security.redaction import find_secret_in, register_secret
+    register_secret("sk-secret-as-a-key")
+    found = find_secret_in({"outer": {"sk-secret-as-a-key": "value"}})
+    assert found is not None
+    # The reported path must not echo the secret itself.
+    assert "sk-secret-as-a-key" not in found

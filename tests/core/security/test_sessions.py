@@ -127,3 +127,23 @@ def test_session_unresolvable_ref_raises(keyring_store, tmp_path):
     ref = SecretRef("titan.core", "missing")
     with pytest.raises(KeyError, match="titan.core:missing"):
         create_authenticated_session(ref, project_path=tmp_path)
+
+
+# --- Fixes from the PR #261 review round ---
+
+def test_auth_scheme_accepts_case_insensitive_string(monkeypatch):
+    from titan_cli.core.security.sessions import create_authenticated_session
+    from titan_cli.core.security.broker import SecretRef
+    from unittest.mock import patch
+
+    with patch('keyring.get_password', return_value="tok-value"):
+        session = create_authenticated_session(SecretRef("titan.core", "t"), scheme="Bearer")
+    assert session.headers["Authorization"] == "Bearer tok-value"
+
+
+def test_auth_scheme_rejects_unknown_value():
+    from titan_cli.core.security.sessions import create_authenticated_session
+    from titan_cli.core.security.broker import SecretRef
+
+    with pytest.raises(ValueError):
+        create_authenticated_session(SecretRef("titan.core", "t"), scheme="basic")

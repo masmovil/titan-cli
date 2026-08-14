@@ -20,7 +20,7 @@ long string leaves are registered for redaction (registering short generic
 fragments like ``"service_account"`` would shred unrelated log output).
 """
 
-from typing import Any
+from typing import Any, Optional
 
 from .redaction import register_secret
 
@@ -30,28 +30,51 @@ from .redaction import register_secret
 _CONTAINER_LEAF_MIN_LENGTH = 16
 
 
-def _register_payload(value: Any) -> None:
+def _register_payload(value: Any, _seen: Optional[set] = None) -> None:
     if isinstance(value, str):
         register_secret(value)
     elif isinstance(value, bytes):
-        try:
-            register_secret(value.decode("utf-8"))
-        except UnicodeDecodeError:
-            pass
+        text = _decode(value)
+        if text is not None:
+            register_secret(text)
     elif isinstance(value, dict):
+        if _seen is None:
+            _seen = set()
+        if id(value) in _seen:
+            return
+        _seen.add(id(value))
         for leaf in value.values():
-            _register_container_leaf(leaf)
+            _register_container_leaf(leaf, _seen)
     elif isinstance(value, (list, tuple, set)):
+        if _seen is None:
+            _seen = set()
+        if id(value) in _seen:
+            return
+        _seen.add(id(value))
         for leaf in value:
-            _register_container_leaf(leaf)
+            _register_container_leaf(leaf, _seen)
 
 
-def _register_container_leaf(leaf: Any) -> None:
+def _register_container_leaf(leaf: Any, _seen: set) -> None:
+    # The length threshold applies to every container leaf, str or bytes
+    # alike — a short generic value must not enter the redaction registry
+    # just because it arrived as bytes.
     if isinstance(leaf, str):
         if len(leaf) >= _CONTAINER_LEAF_MIN_LENGTH:
             register_secret(leaf)
+    elif isinstance(leaf, bytes):
+        text = _decode(leaf)
+        if text is not None and len(text) >= _CONTAINER_LEAF_MIN_LENGTH:
+            register_secret(text)
     else:
-        _register_payload(leaf)
+        _register_payload(leaf, _seen)
+
+
+def _decode(value: bytes) -> Optional[str]:
+    try:
+        return value.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 class SensitiveValue:
@@ -74,6 +97,9 @@ class SensitiveValue:
         return self._value
 
     def __setattr__(self, name, attr_value):
+        raise AttributeError("SensitiveValue is immutable")
+
+    def __delattr__(self, name):
         raise AttributeError("SensitiveValue is immutable")
 
     def __repr__(self) -> str:

@@ -23,6 +23,22 @@ ScopeType = Literal["project", "user"]
 LEGACY_NAMESPACES = ("titan", "ragnarok")
 
 
+def _quote_env_value(value: str) -> str:
+    """
+    Serialize a value for a dotenv line so it round-trips through
+    `dotenv_values` unchanged. Double quotes with backslash escapes: a
+    single-quoted form cannot carry the quote character itself, and an
+    unescaped newline would split the entry into two lines.
+    """
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+    )
+    return f'"{escaped}"'
+
+
 class SecretManager:
     """
     Manages secrets with a 3-level cascade:
@@ -93,7 +109,9 @@ class SecretManager:
             try:
                 value = keyring.get_password(legacy, key)
             except Exception:
-                return None
+                # One namespace failing must not abort the whole fallback:
+                # the next legacy service may still hold the key.
+                continue
             if value:
                 register_secret(value)
                 # Best-effort: the read must succeed even if the keyring
@@ -139,18 +157,23 @@ class SecretManager:
                     existing_lines = f.readlines()
 
             key_upper = key.upper()
+            entry = f"{key_upper}={_quote_env_value(value)}\n"
             updated = False
             for i, line in enumerate(existing_lines):
                 if line.startswith(f"{key_upper}="):
-                    existing_lines[i] = f"{key_upper}='{value}'\n"
+                    existing_lines[i] = entry
                     updated = True
                     break
 
             if not updated:
-                existing_lines.append(f"{key_upper}='{value}'\n")
+                existing_lines.append(entry)
 
             with open(secrets_file, "w") as f:
                 f.writelines(existing_lines)
+            # Plaintext credentials must not be world-readable: the plain
+            # open() above creates the file with the process umask (0644
+            # on most systems), so tighten it explicitly every write.
+            os.chmod(secrets_file, 0o600)
 
             self._project_secrets[key_upper] = value
 
