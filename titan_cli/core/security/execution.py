@@ -58,20 +58,39 @@ def build_minimal_env(extra_allowlist: list[str] | None = None) -> dict[str, str
     }
 
 
+# Generous ceiling for use-primitive subprocesses (GPG decrypt, token
+# exchanges): long enough for slow crypto or a captive network, short enough
+# that a tool waiting on input cannot hang the workflow thread forever.
+DEFAULT_COMMAND_TIMEOUT = 300.0
+
+
 def run_redacted(
     command: list[str],
     *,
     stdin_value: str | None = None,
     env: dict[str, str] | None = None,
+    timeout: float | None = DEFAULT_COMMAND_TIMEOUT,
 ) -> SecureCommandResult:
     """Run `command`, optionally feeding a secret on stdin, redacting output."""
     try:
         completed = subprocess.run(
             command,
             input=stdin_value,
+            # Without an explicit stdin the child would inherit the parent's,
+            # letting an input-waiting tool block the workflow thread.
+            stdin=subprocess.DEVNULL if stdin_value is None else None,
             env=env,
             capture_output=True,
             text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        stdout = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
+        return SecureCommandResult(
+            exit_code=124,  # shell convention for a timeout
+            stdout=redact(stdout),
+            stderr=redact(stderr or f"Command timed out after {timeout}s"),
         )
     except FileNotFoundError as e:
         # Shell convention: 127 = command not found. Surfacing it as a result

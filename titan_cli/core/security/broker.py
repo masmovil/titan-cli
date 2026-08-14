@@ -97,6 +97,13 @@ class SecretBroker:
     Created by core with the namespace already derived from the plugin/step
     identity. There is deliberately no `get()`/`list()` — consumers that need
     the value use a session factory or a use-primitive instead.
+
+    Honest scope of the namespacing: only the KEYRING level is scoped. The
+    env-var and `.titan/secrets.env` levels of the vault's cascade are global
+    by design (CI/CD and team-shared credentials), so any broker can resolve
+    a key that happens to be exported in the environment — namespaces isolate
+    plugins' stored credentials from each other, they are not a sandbox over
+    the process environment.
     """
 
     def __init__(
@@ -116,6 +123,15 @@ class SecretBroker:
     def exists(self, key: str) -> bool:
         """Whether a value for `key` is resolvable in this namespace."""
         return self._vault.get(key, namespace=self._namespace) is not None
+
+    def source(self, key: str) -> Optional[str]:
+        """
+        Which cascade level would satisfy `key`: "env", "project", "keyring",
+        or None. Metadata only — never the value. Lets callers report where a
+        credential comes from without a second, divergent resolution path.
+        """
+        _, origin = self._vault.resolve(key, namespace=self._namespace)
+        return origin
 
     def prompt_and_store(self, key: str, prompt: str) -> Optional[SecretRef]:
         """
@@ -151,9 +167,17 @@ class SecretBroker:
         register_secret(value)
         return SecretRef(self._namespace, key)
 
-    def delete(self, key: str) -> None:
-        """Delete `key` from the user keyring in this namespace."""
+    def delete(self, key: str) -> bool:
+        """
+        Delete `key` from the user keyring in this namespace.
+
+        Returns True when the key no longer resolves. False means a copy at a
+        level `delete` cannot touch (an env var, `.titan/secrets.env`) still
+        satisfies it — without this signal, "deleted" and "shadowed by a
+        higher-priority source" are indistinguishable to the caller.
+        """
         self._vault.delete(key, namespace=self._namespace, scope="user")
+        return not self.exists(key)
 
     def create_client(
         self,
@@ -221,13 +245,17 @@ class SecretBroker:
         Run `command` with the secret fed on stdin (e.g. gpg --passphrase-fd 0).
 
         If the secret is missing, the user is prompted and the value stored.
-        If a STORED secret makes the command fail, it is assumed stale: the
-        key is deleted, the user re-prompted, and the command retried once
-        (`retry_on_failure`). Exit codes 126/127 mean the command itself
-        could not run (not found / not executable) — that failure says
-        nothing about the credential, so the stored value is kept.
+        If a KEYRING-stored secret makes the command fail, it is assumed
+        stale: the key is deleted, the user re-prompted, and the command
+        retried once (`retry_on_failure`). Two failures explicitly do NOT
+        trigger that path: exit codes 126/127 (the command itself could not
+        run — says nothing about the credential), and values resolved from
+        the environment or `.titan/secrets.env` (deleting the keyring entry
+        would not touch the real source, and the freshly prompted value
+        would be stored at a lower-priority level the stale one keeps
+        shadowing — a permanent re-prompt loop).
         """
-        stored_value = self._vault.get(key, namespace=self._namespace)
+        stored_value, origin = self._vault.resolve(key, namespace=self._namespace)
         value = stored_value if stored_value is not None else self._prompt_and_save(key, prompt)
         if value is None:
             return CANCELLED_RESULT
@@ -237,7 +265,7 @@ class SecretBroker:
         if result.exit_code in (126, 127):
             return result
 
-        if not result.succeeded and stored_value is not None and retry_on_failure:
+        if not result.succeeded and origin == "keyring" and retry_on_failure:
             self.delete(key)
             fresh = self._prompt_and_save(key, prompt)
             if fresh is None:
@@ -347,7 +375,17 @@ def create_broker_factory(
 
     This is the only way code outside `core/security/` obtains secret
     capabilities: it receives the factory, never the vault.
+
+    When `project_path` is omitted it resolves to the project root (git
+    root, cwd fallback) — NOT bare cwd. Several call sites build the factory
+    with no path (workflow executor, engine builder) while config passes the
+    resolved root; without this, running from a monorepo subdirectory made
+    `.titan/secrets.env` resolvable on config screens but invisible to
+    workflow steps.
     """
+    from titan_cli.core.utils import find_project_root
+
     from ._vault import SecretManager
 
-    return SecretBrokerFactory(SecretManager(project_path=project_path), prompter)
+    resolved = project_path if project_path is not None else find_project_root()
+    return SecretBrokerFactory(SecretManager(project_path=resolved), prompter)

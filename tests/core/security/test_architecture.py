@@ -108,6 +108,28 @@ def test_vault_only_imported_inside_security_boundary():
     )
 
 
+def test_vault_attribute_never_reached_outside_boundary():
+    """
+    Import bans don't stop `broker._vault.get(...)` — the broker instance
+    carries a live vault reference. Reaching for a `_vault` attribute outside
+    the boundary is the textual signature of that escape hatch, so ban it.
+    """
+    offenders = set()
+    for path in _production_files():
+        rel = _rel(path)
+        if rel.startswith(SECURITY_PACKAGE):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "_vault":
+                offenders.add(f"{rel}:{node.lineno}")
+    assert offenders == set(), (
+        f"`._vault` attribute access outside {SECURITY_PACKAGE}/ reads raw "
+        f"secrets through the broker's private reference. Offenders: "
+        f"{sorted(offenders)}."
+    )
+
+
 def test_retired_secrets_module_is_never_imported():
     """titan_cli.core.secrets was the pre-boundary home of SecretManager; the
     module is deleted and must not come back as an import target."""

@@ -147,3 +147,12 @@ def test_auth_scheme_rejects_unknown_value():
 
     with pytest.raises(ValueError):
         create_authenticated_session(SecretRef("titan.core", "t"), scheme="basic")
+
+
+def test_empty_stored_value_is_rejected(monkeypatch):
+    """An empty env value must not build a bare 'Bearer ' header."""
+    from titan_cli.core.security.sessions import create_authenticated_session
+    from titan_cli.core.security.broker import SecretRef
+    monkeypatch.setenv("EMPTY_TOKEN", "   ")
+    with pytest.raises(KeyError):
+        create_authenticated_session(SecretRef("titan.core", "empty_token"))

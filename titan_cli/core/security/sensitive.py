@@ -31,6 +31,12 @@ _CONTAINER_LEAF_MIN_LENGTH = 16
 
 
 def _register_payload(value: Any, _seen: Optional[set] = None) -> None:
+    # A direct str/bytes payload is registered WITHOUT the container length
+    # threshold, deliberately: wrapping a bare value in SensitiveValue is an
+    # explicit declaration that this exact string is sensitive (a PIN, a
+    # short token), so global masking is the requested behavior. The
+    # threshold exists for containers, whose leaves are mixed data the
+    # caller never individually vouched for.
     if isinstance(value, str):
         register_secret(value)
     elif isinstance(value, bytes):

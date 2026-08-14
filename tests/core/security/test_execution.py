@@ -185,3 +185,20 @@ def test_tempfile_missing_secret_returns_none_without_calling_back(vault, keyrin
 
     assert result is None
     assert called == []
+
+
+# --- Fixes from the PR #261 second review round ---
+
+def test_run_redacted_times_out_instead_of_hanging():
+    from titan_cli.core.security.execution import run_redacted
+    result = run_redacted(["sleep", "5"], timeout=0.2)
+    assert result.exit_code == 124
+    assert not result.succeeded
+
+
+def test_run_redacted_devnull_stdin_when_no_input():
+    """A tool reading stdin must see EOF, not wait on the parent's terminal."""
+    from titan_cli.core.security.execution import run_redacted
+    result = run_redacted(["cat"], timeout=5)
+    assert result.exit_code == 0
+    assert result.stdout == ""

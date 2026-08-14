@@ -117,11 +117,23 @@ def scan_plugin_source(source_dir: Path) -> list[TrustFinding]:
             continue
         rel = "/".join(rel_parts)
 
+        # A file the scan cannot inspect must become a finding, never an
+        # exception: one unreadable or unparseable file aborting the scan
+        # would hide every other file from it. (SyntaxError covers null
+        # bytes on Python >= 3.12; ValueError covers older versions.)
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-        except SyntaxError as e:
-            findings.append(TrustFinding(rel, e.lineno or 0, "unparseable",
-                                         f"could not parse file: {e.msg}"))
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            findings.append(TrustFinding(rel, 0, "unparseable",
+                                         f"could not read file: {e}"))
+            continue
+        try:
+            tree = ast.parse(source)
+        except (SyntaxError, ValueError) as e:
+            lineno = getattr(e, "lineno", 0) or 0
+            msg = getattr(e, "msg", None) or str(e)
+            findings.append(TrustFinding(rel, lineno, "unparseable",
+                                         f"could not parse file: {msg}"))
             continue
 
         for node in ast.walk(tree):
@@ -129,6 +141,12 @@ def scan_plugin_source(source_dir: Path) -> list[TrustFinding]:
                 for alias in node.names:
                     findings.extend(_findings_for_module(alias.name, node, rel))
             elif isinstance(node, ast.ImportFrom):
+                # Relative imports (level > 0) resolve inside the plugin's own
+                # package — `from .keyring import X` is the plugin's module,
+                # not the OS keyring — so absolute-name matching only applies
+                # to level-0 imports.
+                if node.level != 0:
+                    continue
                 findings.extend(_findings_for_module(node.module, node, rel))
                 if node.module and node.module.startswith("titan_cli"):
                     for alias in node.names:

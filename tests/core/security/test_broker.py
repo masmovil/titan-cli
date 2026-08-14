@@ -207,3 +207,126 @@ def test_stdin_primitive_keeps_stored_secret_on_exec_failure(vault):
         )
     assert result.exit_code in (126, 127)
     mock_delete.assert_not_called()
+
+
+# --- Fixes from the PR #261 second review round ---
+
+@pytest.fixture
+def env_isolated():
+    import os
+    from unittest.mock import patch as _patch
+    with _patch.dict(os.environ, clear=True):
+        yield
+
+
+@pytest.fixture
+def keyring_store(env_isolated):
+    store = {}
+    with patch('keyring.get_password', side_effect=lambda ns, k: store.get((ns, k))), \
+         patch('keyring.set_password', side_effect=lambda ns, k, v: store.__setitem__((ns, k), v)), \
+         patch('keyring.delete_password', side_effect=lambda ns, k: store.pop((ns, k), None)):
+        yield store
+
+
+def test_delete_returns_true_when_gone(keyring_store, tmp_path):
+    keyring_store[("titan.plugins.demo", "token")] = "v"
+    broker = SecretBroker(SecretManager(project_path=tmp_path), "titan.plugins.demo")
+    assert broker.delete("token") is True
+    assert broker.exists("token") is False
+
+
+def test_delete_returns_false_when_env_shadows(keyring_store, tmp_path):
+    import os
+    os.environ["TOKEN"] = "from-env"
+    keyring_store[("titan.plugins.demo", "token")] = "v"
+    broker = SecretBroker(SecretManager(project_path=tmp_path), "titan.plugins.demo")
+    assert broker.delete("token") is False
+    assert broker.exists("token") is True  # env copy survives — visibly
+
+
+def test_delete_sweeps_legacy_so_nothing_resurrects(keyring_store, tmp_path):
+    """Behavioral pin: after delete, the lazy fallback cannot resurrect it."""
+    keyring_store[("titan.plugins.demo", "token")] = "scoped"
+    keyring_store[("titan", "token")] = "legacy"
+    broker = SecretBroker(SecretManager(project_path=tmp_path), "titan.plugins.demo")
+    assert broker.delete("token") is True
+    assert broker.exists("token") is False
+    assert keyring_store == {}
+
+
+def test_source_reports_cascade_level(keyring_store, tmp_path):
+    import os
+    keyring_store[("titan.plugins.demo", "kr_key")] = "v"
+    os.environ["ENV_KEY"] = "v"
+    broker = SecretBroker(SecretManager(project_path=tmp_path), "titan.plugins.demo")
+    assert broker.source("kr_key") == "keyring"
+    assert broker.source("env_key") == "env"
+    assert broker.source("missing") is None
+
+
+def test_stdin_retry_does_not_delete_when_value_came_from_env(keyring_store, tmp_path):
+    """A failing command must not nuke keyring state for an env-sourced value."""
+    import os
+    os.environ["PASSPHRASE"] = "from-env"
+    keyring_store[("titan.plugins.demo", "passphrase")] = "unrelated-keyring-copy"
+    prompts = []
+    broker = SecretBroker(
+        SecretManager(project_path=tmp_path), "titan.plugins.demo",
+        prompter=lambda p: prompts.append(p) or "typed",
+    )
+    result = broker.run_with_secret_stdin("passphrase", "Pass:", ["false"])
+    assert result.exit_code != 0
+    assert prompts == []  # no re-prompt loop
+    assert keyring_store[("titan.plugins.demo", "passphrase")] == "unrelated-keyring-copy"
+
+
+def test_stdin_retry_still_replaces_stale_keyring_value(keyring_store, tmp_path):
+    keyring_store[("titan.plugins.demo", "passphrase")] = "stale"
+    broker = SecretBroker(
+        SecretManager(project_path=tmp_path), "titan.plugins.demo",
+        prompter=lambda p: "fresh",
+    )
+    result = broker.run_with_secret_stdin("passphrase", "Pass:", ["false"])
+    assert result.exit_code != 0  # command still fails, but the retry ran
+    assert keyring_store[("titan.plugins.demo", "passphrase")] == "fresh"
+
+
+# --- derive_namespace / for_plugin coverage ---
+
+def test_derive_namespace_mapping():
+    from titan_cli.core.security.broker import derive_namespace
+    assert derive_namespace("slack") == "titan.plugins.slack"
+    assert derive_namespace(None) == "titan.core"
+    assert derive_namespace("core") == "titan.core"
+    assert derive_namespace("project") == "titan.project"
+    assert derive_namespace("user") == "titan.user"
+
+
+def test_for_plugin_scopes_broker(tmp_path):
+    from titan_cli.core.security.broker import SecretBrokerFactory
+    factory = SecretBrokerFactory(SecretManager(project_path=tmp_path))
+    assert factory.for_plugin("slack").namespace == "titan.plugins.slack"
+    assert factory.for_plugin("core").namespace == "titan.core"
+
+
+def test_reserved_plugin_names_rejected_at_registration():
+    from titan_cli.core.plugins.plugin_registry import _reject_reserved_plugin_name
+    for name in ("core", "project", "user"):
+        with pytest.raises(ValueError, match="reserved"):
+            _reject_reserved_plugin_name(name)
+    _reject_reserved_plugin_name("slack")  # normal names pass
+
+
+# --- public API allowlist (replaces enumeration-based read checks) ---
+
+def test_broker_public_api_is_exactly_the_allowlist():
+    allowed = {
+        "exists", "source", "store", "prompt_and_store", "delete",
+        "create_client", "run_with_secret_stdin", "run_with_secret_env",
+        "with_secret_tempfile", "namespace",
+    }
+    public = {n for n in dir(SecretBroker) if not n.startswith("_")}
+    assert public == allowed, (
+        "SecretBroker's public surface changed. Adding a method here is a "
+        "deliberate act: anything value-returning breaks the no-read guarantee."
+    )

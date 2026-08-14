@@ -59,3 +59,23 @@ def test_find_secret_in_checks_dict_keys():
     assert found is not None
     # The reported path must not echo the secret itself.
     assert "sk-secret-as-a-key" not in found
+
+
+def test_short_secret_still_detected_even_if_not_substituted():
+    """Detection must not lose short secrets to the display heuristic."""
+    from titan_cli.core.security.redaction import contains_secret, find_secret_in, register_secret, redact
+    register_secret("ab1")
+    assert contains_secret("prefix ab1 suffix") is True
+    assert find_secret_in({"x": "ab1"}) is not None
+    # Substitution keeps the length floor: no shredding of unrelated text.
+    assert redact("ab1 and absolute") == "ab1 and absolute"
+
+
+def test_find_secret_in_survives_self_referencing_structure():
+    from titan_cli.core.security.redaction import find_secret_in, register_secret
+    register_secret("cyclic-secret-value")
+    d = {"ok": "clean"}
+    d["self"] = d
+    assert find_secret_in(d) is None  # terminates, no RecursionError
+    d["leak"] = "cyclic-secret-value"
+    assert find_secret_in(d) is not None

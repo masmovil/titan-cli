@@ -18,6 +18,13 @@ import requests
 from ._vault import SecretManager
 from .broker import SecretRef, derive_namespace
 
+
+def _vault_for(project_path: Optional[Path]) -> SecretManager:
+    """Vault anchored at the project root when no explicit path is given."""
+    from titan_cli.core.utils import find_project_root
+
+    return SecretManager(project_path=project_path or find_project_root())
+
 # The AI subsystem is app-level, not a plugin: its keys live under the core
 # scope. Reads that miss here fall back to the legacy service names inside
 # the vault and migrate lazily.
@@ -63,7 +70,7 @@ def create_ai_provider(
     if not provider_class:
         raise AIConfigurationError(f"Unknown AI source type: {source_name}")
 
-    vault = SecretManager(project_path=project_path)
+    vault = _vault_for(project_path)
     api_key = vault.get(f"{connection_id}_api_key", namespace=_AI_NAMESPACE)
 
     if not api_key and connection_cfg.connection_type != AIConnectionType.GATEWAY:
@@ -114,18 +121,27 @@ def create_authenticated_session(
     The caller holds the session, never the token.
 
     Raises:
-        KeyError: If the ref does not resolve to a stored secret.
+        KeyError: If the ref does not resolve to a usable secret (missing,
+            empty, or whitespace-only).
+        ValueError: If `scheme` is not a recognized auth scheme.
     """
     # AuthScheme is a str enum, so a raw string comparison would silently
     # fall through to "token" for any unrecognized spelling ("Bearer",
     # "BEARER") and send the credential under the wrong scheme. Normalize
-    # case, then let an unknown value raise.
+    # case, then reject anything unrecognized explicitly.
     if not isinstance(scheme, AuthScheme):
-        scheme = AuthScheme(scheme.lower())
+        try:
+            scheme = AuthScheme(str(scheme).lower())
+        except ValueError as exc:
+            raise ValueError(f"Unknown auth scheme: {scheme!r}") from exc
 
-    vault = SecretManager(project_path=project_path)
+    vault = _vault_for(project_path)
     value = vault.get(ref.key, namespace=ref.namespace)
-    if value is None:
+    if value is None or not value.strip():
+        # An empty value would build a session with a bare "Authorization:
+        # Bearer " header that looks authenticated and fails as an opaque
+        # 401 much later. Only the keyring level filters falsy values; an
+        # env var or project-file entry can legitimately be "".
         raise KeyError(f"No secret stored for {ref}")
 
     prefix = "Bearer" if scheme == AuthScheme.BEARER else "token"

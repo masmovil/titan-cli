@@ -20,6 +20,7 @@ def _load_local_plugin(
     extra_sys_paths: Optional[list[Path]] = None,
 ) -> TitanPlugin:
     """Load a Titan plugin directly from a local repository path."""
+    _reject_reserved_plugin_name(plugin_name)
     pyproject_path = repo_path / "pyproject.toml"
     if not pyproject_path.is_file():
         raise FileNotFoundError(f"No pyproject.toml found in {repo_path}")
@@ -66,6 +67,23 @@ def _load_dev_local_plugin(repo_path: Path, plugin_name: str) -> TitanPlugin:
     return _load_local_plugin(repo_path, plugin_name)
 
 
+# `derive_namespace` maps these names onto Titan's own scopes (`titan.core`,
+# `titan.project`, `titan.user`) — the namespace where app-level credentials
+# such as AI keys live. A plugin registering under one of them would receive
+# a broker over that scope, so the names are rejected at registration; the
+# namespace derivation itself must keep accepting "core" (the engine builder
+# legitimately uses `for_plugin("core")` for app-level consumers).
+_RESERVED_PLUGIN_NAMES = frozenset({"core", "project", "user"})
+
+
+def _reject_reserved_plugin_name(plugin_name: str) -> None:
+    if plugin_name in _RESERVED_PLUGIN_NAMES:
+        raise ValueError(
+            f"'{plugin_name}' is a reserved name and cannot be used by a plugin: "
+            "it maps onto Titan's own secret namespace."
+        )
+
+
 class PluginRegistry:
     """Discovers and manages installed plugins."""
 
@@ -101,6 +119,7 @@ class PluginRegistry:
         for ep in unique_eps:
             try:
                 logger.debug("plugin_loading", name=ep.name)
+                _reject_reserved_plugin_name(ep.name)
                 plugin_class = ep.load()
                 if not issubclass(plugin_class, TitanPlugin):
                     raise TypeError("Plugin class must inherit from TitanPlugin")

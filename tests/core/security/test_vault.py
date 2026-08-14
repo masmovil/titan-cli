@@ -338,3 +338,80 @@ def test_project_secret_update_keeps_single_line_entry(tmp_project_path, mock_en
     fresh = SecretManager(project_path=tmp_project_path)
     assert fresh.get("token") == "second"
     assert fresh.get("other") == "x-value"
+
+
+# --- Fixes from the PR #261 second review round ---
+
+def test_dollar_sequences_survive_round_trip(tmp_project_path, mock_env, mock_keyring):
+    """`${...}` inside a secret is part of the secret, not env interpolation."""
+    secret = "p$$w${HOME}x-${UNDEFINED}-end"
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("dollar_token", secret, scope="project")
+
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("dollar_token") == secret
+
+
+def test_export_style_entry_can_be_deleted(tmp_project_path, mock_env, mock_keyring):
+    """Entries dotenv accepts (export prefix, lowercase) must be deletable."""
+    mock_keyring[0].return_value = None
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("export github_token='abc-value'\n")
+
+    sm = SecretManager(project_path=tmp_project_path)
+    assert sm.get("github_token") == "abc-value"
+
+    sm.delete("github_token", scope="project")
+    assert "github_token" not in secrets_file.read_text()
+
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("github_token") is None
+
+
+def test_export_style_entry_updates_in_place(tmp_project_path, mock_env, mock_keyring):
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("export api_token='old'\n")
+
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("api_token", "new-value", scope="project")
+
+    lines = [
+        line for line in secrets_file.read_text().splitlines() if "API_TOKEN" in line.upper()
+    ]
+    assert len(lines) == 1
+
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("api_token") == "new-value"
+
+
+def test_scoped_keyring_error_still_reaches_legacy_fallback(mock_env, tmp_path):
+    """A transient failure on the scoped read must not skip the legacy lookup."""
+    def get_password(ns, k):
+        if ns == "titan.core":
+            raise RuntimeError("backend hiccup")
+        return "sk-legacy-copy" if ns == "titan" else None
+
+    with patch('keyring.get_password', side_effect=get_password), \
+         patch('keyring.set_password'), \
+         patch('keyring.delete_password'):
+        sm = SecretManager(project_path=tmp_path)
+        assert sm.get("k", namespace="titan.core") == "sk-legacy-copy"
+
+
+def test_resolve_reports_origin(tmp_project_path, mock_env, mock_keyring):
+    os.environ["FROM_ENV"] = "env-value"
+    (tmp_project_path / ".titan" / "secrets.env").write_text("FROM_FILE='file-value'\n")
+    mock_keyring[0].side_effect = lambda ns, k: "kr-value" if k == "from_keyring" else None
+
+    sm = SecretManager(project_path=tmp_project_path)
+    assert sm.resolve("from_env") == ("env-value", "env")
+    assert sm.resolve("from_file") == ("file-value", "project")
+    assert sm.resolve("from_keyring") == ("kr-value", "keyring")
+    assert sm.resolve("missing", namespace="titan") == (None, None)
+
+
+def test_set_registers_value_for_redaction(tmp_project_path, mock_env, mock_keyring):
+    """Store-then-use must redact before any read-back happens."""
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("fresh_token", "just-typed-secret", scope="user")
+    assert redaction.redact("echo just-typed-secret") == f"echo {redaction.REDACTED}"

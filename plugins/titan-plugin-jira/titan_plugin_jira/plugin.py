@@ -99,7 +99,13 @@ class JiraPlugin(TitanPlugin):
         """
         Pick the first token key that resolves, by existence only.
 
-        Priority: project-specific → plugin-specific → env var → email-specific.
+        Priority: project-specific → global → email-specific. Each key
+        resolves through the broker's full cascade (env var `JIRA_API_TOKEN`
+        already satisfies the `jira_api_token` candidate — a separate
+        env-var candidate would be dead code), and the reported source
+        reflects the LEVEL that actually resolved it, not the candidate's
+        label: an env-provided token must show up as "environment", not as
+        a stored global token.
 
         Returns:
             (key, source_info) — key is None when nothing resolves; source_info
@@ -114,15 +120,21 @@ class JiraPlugin(TitanPlugin):
         candidates.extend([
             ("jira_api_token",
              {"type": "global", "details": "Global JIRA token (recommended)"}),
-            ("JIRA_API_TOKEN",
-             {"type": "environment", "details": "Environment variable"}),
             (f"{email}_jira_api_token",
              {"type": "email-specific", "details": f"Token for email '{email}'"}),
         ])
 
         for key, source in candidates:
-            if broker.exists(key):
-                return key, {"name": key, **source}
+            origin = broker.source(key)
+            if origin is None:
+                continue
+            if origin == "env":
+                source = {"type": "environment",
+                          "details": f"Environment variable {key.upper()}"}
+            elif origin == "project":
+                source = {"type": "project-secrets",
+                          "details": "Project .titan/secrets.env"}
+            return key, {"name": key, **source}
 
         return None, {
             "name": "unknown",

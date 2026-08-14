@@ -129,3 +129,27 @@ def test_nested_tests_directory_is_scanned(tmp_path):
 def test_top_level_tests_directory_still_skipped(tmp_path):
     _write(tmp_path, "tests/test_x.py", "import keyring\n")
     assert scan_plugin_source(tmp_path) == []
+
+
+# --- Second review round ---
+
+def test_relative_import_of_own_keyring_module_not_flagged(tmp_path):
+    _write(tmp_path, "pkg/uses.py", "from .keyring import Backend\nfrom . import keyring\n")
+    assert scan_plugin_source(tmp_path) == []
+
+
+def test_unreadable_file_becomes_finding_not_exception(tmp_path):
+    import os
+    _write(tmp_path, "locked.py", "import keyring\n")
+    os.chmod(tmp_path / "locked.py", 0o000)
+    try:
+        findings = scan_plugin_source(tmp_path)
+    finally:
+        os.chmod(tmp_path / "locked.py", 0o644)
+    assert [f.code for f in findings] == ["unparseable"]
+
+
+def test_null_byte_file_becomes_finding(tmp_path):
+    (tmp_path / "weird.py").write_bytes(b"x = 1\x00\nimport keyring\n")
+    findings = scan_plugin_source(tmp_path)
+    assert [f.code for f in findings] == ["unparseable"]
