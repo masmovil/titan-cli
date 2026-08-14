@@ -415,3 +415,64 @@ def test_set_registers_value_for_redaction(tmp_project_path, mock_env, mock_keyr
     sm = SecretManager(project_path=tmp_project_path)
     sm.set("fresh_token", "just-typed-secret", scope="user")
     assert redaction.redact("echo just-typed-secret") == f"echo {redaction.REDACTED}"
+
+
+# --- Fixes from the PR #261 third review round ---
+
+def test_append_to_file_without_trailing_newline(tmp_project_path, mock_env, mock_keyring):
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text('OTHER="a"')  # no trailing newline
+
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("new_key", "b-value", scope="project")
+
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("other") == "a"
+    assert fresh.get("new_key") == "b-value"
+
+
+def test_update_removes_duplicate_definitions(tmp_project_path, mock_env, mock_keyring):
+    """dotenv resolves the LAST definition — an update must not leave one behind."""
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("github_token='old1'\nGITHUB_TOKEN='old2'\n")
+
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("github_token", "new-value", scope="project")
+
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("github_token") == "new-value"
+    assert secrets_file.read_text().count("GITHUB_TOKEN") == 1
+
+
+def test_lowercase_without_export_can_be_deleted(tmp_project_path, mock_env, mock_keyring):
+    mock_keyring[0].return_value = None
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("github_token='abc-value'\n")
+
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.delete("github_token", scope="project")
+    assert "github_token" not in secrets_file.read_text()
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("github_token") is None
+
+
+def test_uppercase_with_export_can_be_updated(tmp_project_path, mock_env, mock_keyring):
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("export API_TOKEN='old'\n")
+
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("api_token", "new-value", scope="project")
+
+    fresh = SecretManager(project_path=tmp_project_path)
+    assert fresh.get("api_token") == "new-value"
+
+
+def test_scoped_delete_does_not_sweep_legacy_it_never_owned(keyring_store, tmp_path):
+    """One plugin's delete must not destroy a legacy copy another plugin
+    would migrate — the sweep needs ownership evidence (a scoped copy)."""
+    keyring_store[("titan", "github_token")] = "legacy-copy"
+
+    sm = SecretManager(project_path=tmp_path)
+    sm.delete("github_token", namespace="titan.plugins.jira", scope="user")
+
+    assert keyring_store == {("titan", "github_token"): "legacy-copy"}

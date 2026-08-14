@@ -204,14 +204,25 @@ class SecretManager:
 
             key_upper = key.upper()
             entry = f"{key_upper}={_quote_env_value(value)}\n"
+            # Replace the FIRST definition and drop any duplicates: dotenv
+            # resolves the LAST one, so rewriting only the first while a
+            # second survives would leave the stale value winning on load.
             updated = False
-            for i, line in enumerate(existing_lines):
+            kept_lines = []
+            for line in existing_lines:
                 if _line_defines_key(line, key_upper):
-                    existing_lines[i] = entry
-                    updated = True
-                    break
+                    if not updated:
+                        kept_lines.append(entry)
+                        updated = True
+                    continue
+                kept_lines.append(line)
+            existing_lines = kept_lines
 
             if not updated:
+                # A file without a trailing newline would glue the new entry
+                # onto the previous one, destroying both.
+                if existing_lines and not existing_lines[-1].endswith("\n"):
+                    existing_lines[-1] += "\n"
                 existing_lines.append(entry)
 
             with open(secrets_file, "w") as f:
@@ -234,7 +245,21 @@ class SecretManager:
         if scope == "user":
             # Sweep the legacy service names too: a copy left there would be
             # resurrected by the lazy-migration fallback on the next read.
-            targets = (namespace, *LEGACY_NAMESPACES) if namespace not in LEGACY_NAMESPACES else (namespace,)
+            # BUT only when this namespace holds its own copy — that is the
+            # evidence it owns the key (it stored or migrated it). The legacy
+            # entries are shared by every namespace's fallback, so sweeping
+            # unconditionally would let one plugin's delete destroy the copy
+            # another plugin has yet to migrate. Any read/exists through a
+            # scoped namespace migrates the key first, so legitimate owners
+            # always have the scoped copy by the time they delete.
+            targets = [namespace]
+            if namespace not in LEGACY_NAMESPACES:
+                try:
+                    owns_key = keyring.get_password(namespace, key) is not None
+                except Exception:
+                    owns_key = False
+                if owns_key:
+                    targets.extend(LEGACY_NAMESPACES)
             for target in targets:
                 try:
                     keyring.delete_password(target, key)

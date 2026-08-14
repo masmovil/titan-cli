@@ -43,22 +43,31 @@ class PluginTrust(StrEnum):
     LOCAL = "local"
 
 
-_OFFICIAL_NAMES = frozenset(p["name"] for p in KNOWN_PLUGINS)
+_OFFICIAL_PACKAGES = {p["name"]: p["package_name"] for p in KNOWN_PLUGINS}
 
 
-def classify_plugin(plugin_name: str, channel: Optional[PluginChannel]) -> PluginTrust:
+def classify_plugin(
+    plugin_name: str,
+    channel: Optional[PluginChannel],
+    dist_name: Optional[str] = None,
+) -> PluginTrust:
     """
-    Classify a plugin from its name and effective source channel.
+    Classify a plugin from its name, effective source channel, and (for
+    entry-point installs) the distribution that owns the entry point.
 
     `channel` is None for plugins discovered via entry points (regular
     package installs); a source override in the project config makes it
-    DEV_LOCAL or STABLE.
+    DEV_LOCAL or STABLE. OFFICIAL requires the entry point to come from the
+    official package, not just to carry an official NAME — the name is
+    third-party-controlled (any installed package can register an entry
+    point called "git"), the owning distribution is not.
     """
     if channel == PluginChannel.DEV_LOCAL:
         return PluginTrust.LOCAL
     if channel == PluginChannel.STABLE:
         return PluginTrust.COMMUNITY
-    if plugin_name in _OFFICIAL_NAMES:
+    expected_package = _OFFICIAL_PACKAGES.get(plugin_name)
+    if expected_package and dist_name == expected_package:
         return PluginTrust.OFFICIAL
     return PluginTrust.COMMUNITY
 
@@ -73,13 +82,12 @@ class TrustFinding:
     detail: str
 
 
-# Non-code directories, skipped at any depth.
+# Non-code directories, skipped at any depth. Test directories are NOT
+# skipped anywhere — with the plugin root on sys.path (the dev_local and
+# pinned-checkout reality), even a top-level `tests/` is an importable
+# package, so code there can run and must be scanned; the finding's file
+# path makes its location plain to whoever triages it.
 _SKIPPED_DIRS = {".git", "__pycache__", ".venv", "venv"}
-
-# Test directories are only skipped as TOP-LEVEL siblings of the package:
-# skipping `tests` at any depth would let a plugin hide importable runtime
-# code in `<pkg>/tests/` and never have it scanned.
-_SKIPPED_TOP_LEVEL_DIRS = {"tests", "test"}
 
 _VAULT_MODULE = "titan_cli.core.security._vault"
 
@@ -113,8 +121,6 @@ def scan_plugin_source(source_dir: Path) -> list[TrustFinding]:
         rel_parts = path.relative_to(source_dir).parts
         if any(part in _SKIPPED_DIRS for part in rel_parts):
             continue
-        if rel_parts[0] in _SKIPPED_TOP_LEVEL_DIRS:
-            continue
         rel = "/".join(rel_parts)
 
         # A file the scan cannot inspect must become a finding, never an
@@ -129,7 +135,10 @@ def scan_plugin_source(source_dir: Path) -> list[TrustFinding]:
             continue
         try:
             tree = ast.parse(source)
-        except (SyntaxError, ValueError) as e:
+        except (SyntaxError, ValueError, RecursionError, MemoryError) as e:
+            # RecursionError/MemoryError included on purpose: the tree is
+            # untrusted plugin source, and one crafted file must degrade to
+            # a finding, not abort the scan for the whole plugin.
             lineno = getattr(e, "lineno", 0) or 0
             msg = getattr(e, "msg", None) or str(e)
             findings.append(TrustFinding(rel, lineno, "unparseable",

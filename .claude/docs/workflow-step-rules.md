@@ -86,3 +86,15 @@ Runtime rules:
   watching a workflow should be able to notice the wrong one without reading the log —
   that is what prompts them to change it. Skip it only where your own output already
   names the provider.
+
+## Secrets In Steps
+
+- Use `ctx.secret_broker` for anything credential-shaped: `exists`/`store`/
+  `prompt_and_store`/`delete`/`create_client` and the use-primitives. There is
+  no way to read a value back — that is the design, not a missing feature.
+- Never place a raw secret (or material derived from one, like a decrypted
+  key) in `ctx.data` or in `Success`/`Skip`/`Exit` metadata. The result types
+  scan their metadata at construction and raise `SecretLeakError`. Wrap
+  derived material in `SensitiveValue` and call `.reveal()` only at client
+  construction.
+- Full guide: [Secrets & Security](security.md).

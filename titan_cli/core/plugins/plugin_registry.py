@@ -125,7 +125,11 @@ class PluginRegistry:
                     raise TypeError("Plugin class must inherit from TitanPlugin")
                 self._plugins[ep.name] = plugin_class()
                 self._plugin_versions[ep.name] = ep.dist.version if ep.dist else "unknown"
-                self._plugin_trust[ep.name] = classify_plugin(ep.name, channel=None)
+                self._plugin_trust[ep.name] = classify_plugin(
+                    ep.name,
+                    channel=None,
+                    dist_name=ep.dist.name if ep.dist else None,
+                )
                 logger.debug("plugin_loaded", name=ep.name)
             except Exception as e:
                 logger.exception("plugin_load_failed", name=ep.name)

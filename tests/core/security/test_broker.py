@@ -330,3 +330,55 @@ def test_broker_public_api_is_exactly_the_allowlist():
         "SecretBroker's public surface changed. Adding a method here is a "
         "deliberate act: anything value-returning breaks the no-read guarantee."
     )
+
+
+# --- Fixes from the PR #261 third review round ---
+
+def test_prompt_and_store_rejects_empty_and_whitespace(keyring_store, tmp_path):
+    for typed in ("", "   "):
+        broker = SecretBroker(
+            SecretManager(project_path=tmp_path), "titan.plugins.demo",
+            prompter=lambda p, t=typed: t,
+        )
+        assert broker.prompt_and_store("token", "Token:") is None
+    assert keyring_store == {}
+
+
+def test_source_reports_project_level(keyring_store, tmp_path):
+    (tmp_path / ".titan").mkdir()
+    (tmp_path / ".titan" / "secrets.env").write_text("FILE_KEY='v'\n")
+    broker = SecretBroker(SecretManager(project_path=tmp_path), "titan.plugins.demo")
+    assert broker.source("file_key") == "project"
+
+
+def test_delete_returns_false_when_project_file_shadows(keyring_store, tmp_path):
+    (tmp_path / ".titan").mkdir()
+    (tmp_path / ".titan" / "secrets.env").write_text("TOKEN='file-copy'\n")
+    keyring_store[("titan.plugins.demo", "token")] = "kr-copy"
+    broker = SecretBroker(SecretManager(project_path=tmp_path), "titan.plugins.demo")
+    assert broker.delete("token") is False
+    assert broker.exists("token") is True
+
+
+def test_stdin_retry_does_not_delete_when_value_came_from_project_file(keyring_store, tmp_path):
+    (tmp_path / ".titan").mkdir()
+    (tmp_path / ".titan" / "secrets.env").write_text("PASSPHRASE='file-pass'\n")
+    keyring_store[("titan.plugins.demo", "passphrase")] = "keyring-copy"
+    prompts = []
+    broker = SecretBroker(
+        SecretManager(project_path=tmp_path), "titan.plugins.demo",
+        prompter=lambda p: prompts.append(p) or "typed",
+    )
+    result = broker.run_with_secret_stdin("passphrase", "Pass:", ["false"])
+    assert result.exit_code != 0
+    assert prompts == []
+    assert keyring_store[("titan.plugins.demo", "passphrase")] == "keyring-copy"
+
+
+def test_namespaces_isolate_same_key(keyring_store, tmp_path):
+    """A backend ignoring the namespace parameter must fail the suite."""
+    vault = SecretManager(project_path=tmp_path)
+    SecretBroker(vault, "titan.plugins.a").store("token", "value-a")
+    SecretBroker(vault, "titan.plugins.b").store("token", "value-b")
+    assert keyring_store[("titan.plugins.a", "token")] == "value-a"
+    assert keyring_store[("titan.plugins.b", "token")] == "value-b"

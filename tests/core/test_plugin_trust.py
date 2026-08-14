@@ -15,9 +15,15 @@ from titan_cli.core.plugins.trust import (
 
 # --- Classification -------------------------------------------------------
 
-def test_official_plugin_from_entry_point():
-    assert classify_plugin("git", channel=None) == PluginTrust.OFFICIAL
-    assert classify_plugin("github", channel=None) == PluginTrust.OFFICIAL
+def test_official_plugin_requires_matching_distribution():
+    assert classify_plugin("git", channel=None, dist_name="titan-plugin-git") == PluginTrust.OFFICIAL
+    assert classify_plugin("github", channel=None, dist_name="titan-plugin-github") == PluginTrust.OFFICIAL
+
+
+def test_official_name_from_foreign_distribution_is_community():
+    """An entry point NAMED git from a third-party package must not be OFFICIAL."""
+    assert classify_plugin("git", channel=None, dist_name="evil-package") == PluginTrust.COMMUNITY
+    assert classify_plugin("git", channel=None, dist_name=None) == PluginTrust.COMMUNITY
 
 
 def test_unknown_entry_point_plugin_is_community():
@@ -84,9 +90,12 @@ def test_secret_manager_attribute_flagged(tmp_path):
     assert "secret-manager" in codes
 
 
-def test_tests_directory_skipped(tmp_path):
+def test_tests_directories_are_scanned_too(tmp_path):
+    """tests/ is importable when the plugin root is on sys.path — no blind spots."""
     _write(tmp_path, "tests/test_x.py", "import keyring\n")
-    assert scan_plugin_source(tmp_path) == []
+    findings = scan_plugin_source(tmp_path)
+    assert [f.code for f in findings] == ["keyring-import"]
+    assert findings[0].file == "tests/test_x.py"
 
 
 def test_unparseable_file_is_reported_not_hidden(tmp_path):
@@ -126,9 +135,10 @@ def test_nested_tests_directory_is_scanned(tmp_path):
     assert {f.code for f in scan_plugin_source(tmp_path)} == {"keyring-import"}
 
 
-def test_top_level_tests_directory_still_skipped(tmp_path):
-    _write(tmp_path, "tests/test_x.py", "import keyring\n")
-    assert scan_plugin_source(tmp_path) == []
+def test_deeply_nested_expression_becomes_finding(tmp_path):
+    (tmp_path / "deep.py").write_text("x = " + "(" * 40000 + "1" + ")" * 40000 + "\n")
+    findings = scan_plugin_source(tmp_path)
+    assert [f.code for f in findings] == ["unparseable"]
 
 
 # --- Second review round ---

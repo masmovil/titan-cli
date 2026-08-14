@@ -8,6 +8,7 @@ that never receives a secret cannot leak it, redaction only covers the paths
 where a secret legitimately flows (e.g. a subprocess that echoes its input).
 """
 
+import re
 import threading
 from typing import Optional
 
@@ -26,7 +27,9 @@ _secrets: set[str] = set()
 
 def register_secret(value: str) -> None:
     """Record a secret value for detection, and for masking if long enough."""
-    if not value:
+    # Whitespace-only "values" are never secrets; registering one would make
+    # redact() rewrite every matching whitespace run in all output.
+    if not value or not value.strip():
         return
     with _lock:
         _secrets.add(value)
@@ -47,13 +50,28 @@ def redact(text: str) -> str:
     return text
 
 
+# Below this length, bare substring matching over-triggers (a short id like
+# "1234" appears inside branch names, versions, hashes), so short values must
+# stand alone as a token to count as a hit. Long values keep plain substring
+# matching — embedding is exactly the leak being looked for.
+_BOUNDARY_MATCH_MAX = 8
+
+
 def contains_secret(text: str) -> bool:
     """Whether `text` embeds any registered secret value."""
     if not text:
         return False
     with _lock:
         known = tuple(_secrets)
-    return any(value in text for value in known)
+    for value in known:
+        if len(value) >= _BOUNDARY_MATCH_MAX:
+            if value in text:
+                return True
+        elif re.search(
+            rf"(?<![A-Za-z0-9]){re.escape(value)}(?![A-Za-z0-9])", text
+        ):
+            return True
+    return False
 
 
 def find_secret_in(obj, _path: str = "", _seen: Optional[set] = None) -> Optional[str]:
@@ -104,6 +122,26 @@ def find_secret_in(obj, _path: str = "", _seen: Optional[set] = None) -> Optiona
             if found:
                 return found
         return None
+
+    # Plain objects (dataclasses, Pydantic models, the UI models step
+    # metadata usually carries) are walked through their attributes — a raw
+    # token inside a model field must not pass just because it is wrapped in
+    # an object. The intentionally opaque types (SensitiveValue, SecretRef)
+    # use __slots__ and therefore have no __dict__: they stay exempt by
+    # construction, not by an allowlist someone must remember to update.
+    attrs = getattr(obj, "__dict__", None)
+    if isinstance(attrs, dict) and attrs:
+        if _seen is None:
+            _seen = set()
+        if id(obj) in _seen:
+            return None
+        _seen.add(id(obj))
+        type_name = type(obj).__name__
+        for name, value in attrs.items():
+            attr_path = f"{_path}.{name}" if _path else f"{type_name}.{name}"
+            found = find_secret_in(value, attr_path, _seen)
+            if found:
+                return found
     return None
 
 

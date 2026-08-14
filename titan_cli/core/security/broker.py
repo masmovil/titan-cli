@@ -44,6 +44,12 @@ def derive_namespace(plugin_name: Optional[str]) -> str:
     Derived here, inside the boundary, from the identity the executor read
     off the workflow definition — never accepted as free input from the
     code that will use the broker.
+
+    The reserved identities ("core", "project", "user") map onto Titan's own
+    scopes on purpose — the engine builder uses `for_plugin("core")` for
+    app-level consumers. A PLUGIN claiming one of those names is rejected at
+    registration (`plugin_registry._reject_reserved_plugin_name`), which is
+    the layer that knows the difference between Titan and a plugin.
     """
     if not plugin_name or plugin_name == "core":
         return "titan.core"
@@ -144,7 +150,9 @@ class SecretBroker:
                 "user for a secret here."
             )
         value = self._prompter(prompt)
-        if not value:
+        if not value or not value.strip():
+            # Same rule as store(): a whitespace-only entry would be written
+            # as a "success" the vault then treats as absent.
             return None
         self._vault.set(key, value, namespace=self._namespace, scope="user")
         register_secret(value)
@@ -333,7 +341,7 @@ class SecretBroker:
         if self._prompter is None:
             return None
         value = self._prompter(prompt)
-        if not value:
+        if not value or not value.strip():
             return None
         self._vault.set(key, value, namespace=self._namespace, scope="user")
         register_secret(value)

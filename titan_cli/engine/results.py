@@ -18,10 +18,17 @@ def _reject_secret_metadata(result_type: str, metadata: Optional[dict]) -> None:
         return
     # Imported here: engine must stay importable without dragging the whole
     # security package (and its keyring backend) in at module-import time.
+    # Deliberately NOT wrapped in try/except ImportError: core.security is a
+    # hard dependency of the running app (the executor mints every broker
+    # from it), so an import failure here means Titan is broken anyway —
+    # silently degrading to "no leak scan" would weaken the guarantee to
+    # hide a symptom of that larger failure.
     from titan_cli.core.security import SecretLeakError, find_secret_in
 
     found = find_secret_in(metadata)
-    if found:
+    # Presence decides, not path truthiness — the guard must not hinge on a
+    # path string happening to be non-empty.
+    if found is not None:
         raise SecretLeakError(
             f"{result_type} metadata carries a secret value at '{found}'. "
             "Metadata is merged into ctx.data and may be logged; wrap derived "

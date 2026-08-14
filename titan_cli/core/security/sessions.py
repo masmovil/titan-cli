@@ -47,7 +47,8 @@ def create_ai_provider(
     Args:
         connection_id: The connection whose key is read.
         connection_cfg: The connection's `AIConnectionConfig`.
-        project_path: Where project secrets are read from, defaults to cwd.
+        project_path: Where project secrets are read from; defaults to the
+            detected project root (git root, cwd fallback).
 
     Raises:
         AIConfigurationError: Unknown source type, missing key for a direct
@@ -72,6 +73,11 @@ def create_ai_provider(
 
     vault = _vault_for(project_path)
     api_key = vault.get(f"{connection_id}_api_key", namespace=_AI_NAMESPACE)
+    # Env vars and .titan/secrets.env can legitimately hold "": a blank key
+    # reaching the SDK surfaces as an opaque 401 much later, so treat it as
+    # absent here — same rule as create_authenticated_session.
+    if api_key is not None and not api_key.strip():
+        api_key = None
 
     if not api_key and connection_cfg.connection_type != AIConnectionType.GATEWAY:
         raise AIConfigurationError(
