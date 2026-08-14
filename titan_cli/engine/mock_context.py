@@ -152,25 +152,6 @@ class MockGitHubClient:
         return ClientSuccess(data=["bug", "feature", "documentation"], message="Labels retrieved")
 
 
-class MockSecretManager:
-    """Mock SecretManager for previews"""
-
-    def __init__(self, project_path=None):
-        self.project_path = project_path
-
-    def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
-        """Mock get secret - returns fake values"""
-        mock_secrets = {
-            "github_token": "ghp_mocktoken123",
-            "anthropic_api_key": "sk-ant-mock123",
-        }
-        return mock_secrets.get(key, default)
-
-    def set(self, key: str, value: str) -> None:
-        """Mock set secret - does nothing"""
-        pass
-
-
 # Export all mock classes for use in previews
 __all__ = [
     "MockGitStatus",
@@ -178,5 +159,4 @@ __all__ = [
     "MockAIResponse",
     "MockAIClient",
     "MockGitHubClient",
-    "MockSecretManager",
 ]

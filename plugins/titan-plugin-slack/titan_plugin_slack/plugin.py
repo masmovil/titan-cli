@@ -9,7 +9,7 @@ from titan_cli.core.config import TitanConfig
 from titan_cli.core.logging import get_logger
 from titan_cli.core.plugins.models import SlackPluginConfig
 from titan_cli.core.plugins.plugin_base import TitanPlugin
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker
 
 from .clients.slack_client import SlackClient
 from .config import (
@@ -22,6 +22,16 @@ from .oauth import SlackOAuthFlow, SlackOAuthResult
 from .screens.slack_config_screen import SlackConfigScreen
 
 logger = get_logger(__name__)
+
+
+def _parse_expiry(raw: Optional[str]) -> Optional[int]:
+    """Epoch seconds from the stored expiry, or None when absent/corrupt."""
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 class SlackPlugin(TitanPlugin):
@@ -90,9 +100,9 @@ class SlackPlugin(TitanPlugin):
 
         config.load()
 
-    def _should_refresh_token(self, token_expires_at: int | None, refresh_token: str | None) -> bool:
+    def _should_refresh_token(self, token_expires_at: int | None, has_refresh_token: bool) -> bool:
         """Return whether the current token should be refreshed before use."""
-        if not refresh_token:
+        if not has_refresh_token:
             return False
         if token_expires_at is None:
             return True
@@ -101,7 +111,7 @@ class SlackPlugin(TitanPlugin):
     def _persist_refreshed_tokens(
         self,
         config: TitanConfig,
-        secrets: SecretManager,
+        broker: SecretBroker,
         project_name: str,
         result: SlackOAuthResult,
         validated_config: SlackPluginConfig,
@@ -110,14 +120,13 @@ class SlackPlugin(TitanPlugin):
         token_key = build_project_slack_token_key(project_name)
         refresh_token_key = build_project_slack_refresh_token_key(project_name)
         token_expires_at_key = build_project_slack_token_expires_at_key(project_name)
-        secrets.set(token_key, result.access_token, scope="user")
+        broker.store(token_key, result.access_token)
         if result.refresh_token:
-            secrets.set(refresh_token_key, result.refresh_token, scope="user")
+            broker.store(refresh_token_key, result.refresh_token)
         if result.expires_in:
-            secrets.set(
+            broker.store(
                 token_expires_at_key,
                 str(int(time.time()) + result.expires_in),
-                scope="user",
             )
 
         self._save_project_slack_config(
@@ -134,7 +143,7 @@ class SlackPlugin(TitanPlugin):
     def _make_token_refresher(
         self,
         config: TitanConfig,
-        secrets: SecretManager,
+        broker: SecretBroker,
         project_name: str,
     ) -> Callable[[], str]:
         """Build a callable that exchanges the stored refresh token for a new
@@ -144,8 +153,7 @@ class SlackPlugin(TitanPlugin):
 
         def _refresh() -> str:
             refresh_token_key = build_project_slack_refresh_token_key(project_name)
-            current_refresh_token = secrets.get(refresh_token_key)
-            if not current_refresh_token:
+            if not broker.exists(refresh_token_key):
                 raise SlackConfigurationError(
                     f"No Slack refresh token available for project '{project_name}'. "
                     "Reconnect Slack for this repository."
@@ -159,14 +167,19 @@ class SlackPlugin(TitanPlugin):
                 )
 
             flow = SlackOAuthFlow(client_id=validated_config.oauth_client_id)
-            refreshed = flow.refresh_access_token(current_refresh_token)
+            # The stored refresh token crosses into the exchange call; what
+            # comes back is a fresh credential from Slack's response, not a
+            # value read out of the vault.
+            refreshed = broker.create_client(
+                refresh_token_key, flow.refresh_access_token
+            )
 
             # Slack rotates the refresh token on every use: persisting immediately
             # replaces the one we just consumed so the next refresh (proactive or
             # reactive) doesn't retry with an already-invalidated token.
             self._persist_refreshed_tokens(
                 config,
-                secrets,
+                broker,
                 project_name,
                 refreshed,
                 validated_config,
@@ -175,7 +188,7 @@ class SlackPlugin(TitanPlugin):
 
         return _refresh
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         """Initialize the Slack client using the current user's personal token."""
         plugin_config_data = self._get_plugin_config(config)
         if not plugin_config_data:
@@ -190,26 +203,28 @@ class SlackPlugin(TitanPlugin):
         refresh_token_key = build_project_slack_refresh_token_key(project_name)
         token_expires_at_key = build_project_slack_token_expires_at_key(project_name)
 
-        user_token = secrets.get(token_key)
-        if not user_token:
+        if not broker.exists(token_key):
             raise SlackConfigurationError(
                 f"Slack user token not found for project '{project_name}'. Configure Slack for this repository first."
             )
 
-        refresh_token = secrets.get(refresh_token_key)
-        token_expires_at_raw = secrets.get(token_expires_at_key)
-        try:
-            token_expires_at = int(token_expires_at_raw) if token_expires_at_raw else None
-        except ValueError:
-            token_expires_at = None
-
-        token_refresher = (
-            self._make_token_refresher(config, secrets, project_name) if refresh_token else None
+        has_refresh_token = broker.exists(refresh_token_key)
+        # The expiry timestamp lives next to the tokens but is metadata, not
+        # a credential: deriving the int through the broker is fine.
+        token_expires_at = broker.create_client(
+            token_expires_at_key, _parse_expiry, required=False
         )
 
-        if self._should_refresh_token(token_expires_at, refresh_token):
+        token_refresher = (
+            self._make_token_refresher(config, broker, project_name)
+            if has_refresh_token
+            else None
+        )
+
+        refreshed_token: Optional[str] = None
+        if self._should_refresh_token(token_expires_at, has_refresh_token):
             try:
-                user_token = token_refresher()
+                refreshed_token = token_refresher()
                 refreshed_config_data = self._get_plugin_config(config)
                 validated_config = SlackPluginConfig(**refreshed_config_data)
             except Exception as exc:
@@ -223,12 +238,27 @@ class SlackPlugin(TitanPlugin):
                     project_name=project_name,
                 )
 
-        self._client = SlackClient(
-            user_token=user_token,
-            team_id=validated_config.default_team_id,
-            default_channels=validated_config.default_channels,
-            token_refresher=token_refresher,
-        )
+        def _build_client(user_token: str) -> SlackClient:
+            # A blank stored token (manual secrets.env edits, keyring damage)
+            # would build a client that looks authenticated and fails later
+            # as an opaque 401 — fail here with the actionable message.
+            if not user_token or not user_token.strip():
+                raise SlackConfigurationError(
+                    "Stored Slack user token is empty. "
+                    "Reconnect Slack for this repository."
+                )
+            return SlackClient(
+                user_token=user_token,
+                team_id=validated_config.default_team_id,
+                default_channels=validated_config.default_channels,
+                token_refresher=token_refresher,
+            )
+
+        if refreshed_token is not None:
+            # Fresh from Slack's OAuth response, never read out of the vault.
+            self._client = _build_client(refreshed_token)
+        else:
+            self._client = broker.create_client(token_key, _build_client)
 
     def is_available(self) -> bool:
         """Return whether the plugin has an initialized client."""

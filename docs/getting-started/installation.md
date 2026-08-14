@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python 3.10 or later
+- Python 3.11 or later
 - macOS, Linux, or Windows (WSL2 recommended on Windows)
 
 ---

@@ -12,7 +12,6 @@ from titan_cli.engine.mock_context import (
     MockGitClient,
     MockAIClient,
     MockGitHubClient,
-    MockSecretManager,
 )
 from titan_cli.engine import WorkflowContext
 from titan_cli.engine.ui_container import UIComponents
@@ -52,11 +51,8 @@ def create_create_pr_ai_mock_context() -> WorkflowContext:
     github.repo_owner = "mockuser"
     github.repo_name = "titan-cli"
 
-    secrets = MockSecretManager()
-
     # Build context
     ctx = WorkflowContext(
-        secrets=secrets,
         ui=ui,
         views=views
     )

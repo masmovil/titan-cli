@@ -27,7 +27,7 @@ from titan_cli.ai.models import AIMessage
 from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.logging import get_logger
 from titan_cli.core.models import AIConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker
 from titan_cli.external_cli.adapters import get_headless_adapter
 
 from .availability import AIAvailabilityChecker
@@ -79,15 +79,28 @@ class AIExecutor:
     """
     Resolves and runs a step's AI request against the provider the user chose.
 
-    `ai_config`/`secrets` may be `None`, mirroring how `ctx.ai` can already be
-    `None` when AI is not configured at all - resolution then reports that
-    nothing is available rather than raising.
+    `ai_config`/`provider_factory`/`secret_broker` may be `None`, mirroring
+    how `ctx.ai` can already be `None` when AI is not configured at all -
+    resolution then reports that nothing is available rather than raising.
     """
 
-    def __init__(self, ai_config: Optional[AIConfig], secrets: Optional[SecretManager]):
+    def __init__(
+        self,
+        ai_config: Optional[AIConfig],
+        provider_factory: Optional[Callable] = None,
+        secret_broker: Optional[SecretBroker] = None,
+    ):
+        """
+        Args:
+            ai_config: The AI configuration, or None when AI is unconfigured.
+            provider_factory: Builds authenticated providers for remote
+                clients — normally `titan_cli.core.security.create_ai_provider`.
+            secret_broker: Core-scoped broker the availability checker uses
+                to test key existence without ever reading a value.
+        """
         self.ai_config = ai_config
-        self.secrets = secrets
-        self.availability = AIAvailabilityChecker(ai_config, secrets)
+        self.provider_factory = provider_factory
+        self.availability = AIAvailabilityChecker(ai_config, secret_broker)
         self.resolver = AIRouteResolver(ai_config, self.availability)
         self._remote_clients: Dict[str, AIClient] = {}
 
@@ -346,7 +359,7 @@ class AIExecutor:
         themselves) use this to honor the connection the user picked. Returns
         `None` if a client cannot be built for it.
         """
-        if not self.ai_config or not self.secrets:
+        if not self.ai_config or not self.provider_factory:
             return None
 
         cache_key = decision.connection_id or "__default__"
@@ -355,7 +368,9 @@ class AIExecutor:
             return cached
 
         try:
-            client = AIClient(self.ai_config, self.secrets, connection_id=decision.connection_id)
+            client = AIClient(
+                self.ai_config, self.provider_factory, connection_id=decision.connection_id
+            )
         except AIConfigurationError as e:
             logger.warning(
                 "ai_executor_remote_client_unavailable",

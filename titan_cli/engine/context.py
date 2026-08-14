@@ -5,8 +5,6 @@ WorkflowContext - Dependency injection container for workflows.
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 
-from titan_cli.core.secrets import SecretManager
-
 
 @dataclass
 class WorkflowContext:
@@ -17,7 +15,7 @@ class WorkflowContext:
     - Dependency injection (clients, services)
     - Shared data storage between steps
     - Textual TUI components
-    - Access to secrets
+    - Namespace-scoped secret management (`secret_broker`)
 
     UI Architecture:
         ctx.textual.text     # Textual TUI components
@@ -26,8 +24,10 @@ class WorkflowContext:
         ctx.textual.prompts
     """
 
-    # Core dependencies
-    secrets: SecretManager
+    # Namespace-scoped secrets API for the current step, assigned per step by
+    # the executor. A step can store/check/delete secrets in its own
+    # namespace; there is deliberately no way to read a value back.
+    secret_broker: Optional[Any] = None
 
     # Textual TUI components (for TUI mode)
     textual: Optional[Any] = None

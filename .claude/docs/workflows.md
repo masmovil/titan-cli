@@ -75,6 +75,11 @@ Runs a shell command directly.
 
 Add `use_shell: true` if the command requires shell features (pipes, redirects). Avoid for untrusted input.
 
+**Environment**: command steps inherit the user's console environment (same as typing the
+command yourself). Titan-managed project secrets (`.titan/secrets.env`) are NOT part of it —
+the vault keeps them in memory, never in `os.environ`. The resolved command echoed to the UI
+(and the command output display) pass through the secret-redaction filter.
+
 ### 3. Nested Workflow
 
 Calls another workflow as a step. The sub-workflow's result is returned to the parent.

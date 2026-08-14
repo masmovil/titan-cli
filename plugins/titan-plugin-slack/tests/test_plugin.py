@@ -10,6 +10,30 @@ from titan_plugin_slack.exceptions import SlackConfigurationError
 from titan_plugin_slack.oauth import SlackOAuthResult
 
 
+class FakeBroker:
+    """Dict-backed stand-in honoring the SecretBroker surface plugins use."""
+
+    def __init__(self, values=None):
+        self.values = dict(values or {})
+        self.stored = {}
+
+    def exists(self, key):
+        return self.values.get(key) is not None
+
+    def store(self, key, value):
+        self.values[key] = value
+        self.stored[key] = value
+
+    def delete(self, key):
+        self.values.pop(key, None)
+
+    def create_client(self, key, builder, required=True):
+        value = self.values.get(key)
+        if value is None and required:
+            raise KeyError(key)
+        return builder(value)
+
+
 def test_slack_plugin_basic_properties() -> None:
     plugin = SlackPlugin()
 
@@ -63,11 +87,10 @@ def test_slack_plugin_initialize_requires_user_token() -> None:
     config = MagicMock()
     config.config.plugins = {"slack": MagicMock(config={"oauth_client_id": "123"})}
     config.get_project_name.return_value = "demo-project"
-    secrets = MagicMock()
-    secrets.get.return_value = None
+    broker = FakeBroker()
 
     with pytest.raises(SlackConfigurationError):
-        plugin.initialize(config, secrets)
+        plugin.initialize(config, broker)
 
 
 def test_slack_plugin_initialize_uses_personal_token() -> None:
@@ -77,17 +100,16 @@ def test_slack_plugin_initialize_uses_personal_token() -> None:
         "slack": MagicMock(config={"default_team_id": "T123"})
     }
     config.get_project_name.return_value = "demo-project"
-    secrets = MagicMock()
-    secrets.get.side_effect = ["xoxp-user-token", None, None]
+    broker = FakeBroker({"demo-project_slack_user_token": "xoxp-user-token"})
 
-    plugin.initialize(config, secrets)
+    plugin.initialize(config, broker)
 
     client = plugin.get_client()
     assert client.user_token == "xoxp-user-token"
     assert client.team_id == "T123"
     assert client.timeout == 30
-    assert secrets.get.call_args_list[0].args == ("demo-project_slack_user_token",)
-    assert secrets.get.call_args_list[1].args == ("demo-project_slack_refresh_token",)
+    # No refresh token stored -> no refresher was built and nothing written.
+    assert broker.stored == {}
 
 
 def test_slack_plugin_initialize_refreshes_expiring_pkce_token(tmp_path: Path, monkeypatch) -> None:
@@ -138,8 +160,7 @@ default_channels = ["general"]
         "demo-project_slack_refresh_token": "xoxe-old-refresh-token",
         "demo-project_slack_token_expires_at": "1",
     }
-    secrets = MagicMock()
-    secrets.get.side_effect = lambda key: secret_values.get(key)
+    broker = FakeBroker(secret_values)
 
     refreshed = SlackOAuthResult(
         access_token="xoxe-new-token",
@@ -162,15 +183,10 @@ default_channels = ["general"]
 
     monkeypatch.setattr("titan_plugin_slack.plugin.SlackOAuthFlow", FakeFlow)
 
-    plugin.initialize(config, secrets)
+    plugin.initialize(config, broker)
 
     client = plugin.get_client()
     assert client.user_token == "xoxe-new-token"
-    secrets.set.assert_any_call("demo-project_slack_user_token", "xoxe-new-token", scope="user")
-    secrets.set.assert_any_call(
-        "demo-project_slack_refresh_token", "xoxe-new-refresh-token", scope="user"
-    )
-    expires_at_call = next(
-        call for call in secrets.set.call_args_list if call.args[0] == "demo-project_slack_token_expires_at"
-    )
-    assert expires_at_call.kwargs["scope"] == "user"
+    assert broker.stored["demo-project_slack_user_token"] == "xoxe-new-token"
+    assert broker.stored["demo-project_slack_refresh_token"] == "xoxe-new-refresh-token"
+    assert "demo-project_slack_token_expires_at" in broker.stored

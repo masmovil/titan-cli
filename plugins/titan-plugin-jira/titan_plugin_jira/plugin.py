@@ -5,7 +5,7 @@ from titan_cli.core.result import ClientSuccess, ClientError
 from titan_cli.core.plugins.models import JiraPluginConfig
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker
 from .clients.jira_client import JiraClient
 from .exceptions import JiraConfigurationError, JiraClientError
 from .messages import msg
@@ -39,7 +39,7 @@ class JiraPlugin(TitanPlugin):
     def dependencies(self) -> list[str]:
         return []
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         """
         Initialize with configuration.
 
@@ -50,8 +50,9 @@ class JiraPlugin(TitanPlugin):
         Note: TitanConfig automatically merges global and project configs,
         so _get_plugin_config() returns the already-merged configuration.
 
-        Reads API token from secrets:
-            JIRA_API_TOKEN or {email}_jira_api_token
+        Resolves the API token key by existence (never reading a value):
+            project-specific → jira_api_token → JIRA_API_TOKEN (env) →
+            {email}_jira_api_token
         """
         # Get plugin-specific configuration data (already merged by TitanConfig)
         plugin_config_data = self._get_plugin_config(config)
@@ -63,83 +64,88 @@ class JiraPlugin(TitanPlugin):
         except ValidationError as e:
             raise JiraConfigurationError(str(e)) from e
 
-        # Get API token from secrets
-        # Try multiple secret keys for backwards compatibility
-        # Priority: project-specific → plugin-specific → env var → email-specific
         project_name = config.get_project_name()
-        project_key = f"{project_name}_jira_api_token" if project_name else None
-
-        api_token = (
-            (secrets.get(project_key) if project_key else None) or  # Project-specific keychain
-            secrets.get("jira_api_token") or  # Standard: plugin_fieldname
-            secrets.get("JIRA_API_TOKEN") or  # Environment variable
-            secrets.get(f"{validated_config.email}_jira_api_token")  # Email-specific
+        token_key, token_source = self._resolve_token_key(
+            broker, project_name, validated_config.email
         )
 
-        if not api_token:
+        if not token_key:
             raise JiraConfigurationError(
                 "JIRA API token not found in secrets. "
                 "Please configure the JIRA plugin to set the API token."
             )
 
-        # Initialize client with validated configuration
-        self._client = JiraClient(
-            base_url=validated_config.base_url,
-            email=validated_config.email,
-            api_token=api_token,
-            project_key=validated_config.default_project,
-            timeout=validated_config.timeout,
-            enable_cache=validated_config.enable_cache,
-            cache_ttl=validated_config.cache_ttl
+        # The token crosses into the client constructor inside the broker
+        # call; the plugin never holds the value.
+        self._client = broker.create_client(
+            token_key,
+            lambda api_token: JiraClient(
+                base_url=validated_config.base_url,
+                email=validated_config.email,
+                api_token=api_token,
+                project_key=validated_config.default_project,
+                timeout=validated_config.timeout,
+                enable_cache=validated_config.enable_cache,
+                cache_ttl=validated_config.cache_ttl,
+            ),
         )
 
-        # Store token source info for diagnostics (without exposing token value)
-        self._token_source = self._identify_token_source(
-            secrets, project_name, validated_config.email, api_token
-        )
+        # Token source info for diagnostics (the key that resolved, no value)
+        self._token_source = token_source
 
-    def _identify_token_source(
-        self, secrets: SecretManager, project_name: Optional[str],
-        email: str, token: str
-    ) -> dict:
+    def _resolve_token_key(
+        self, broker: SecretBroker, project_name: Optional[str], email: str
+    ) -> tuple[Optional[str], dict]:
         """
-        Identify which source the token came from for diagnostics.
+        Pick the first token key that resolves, by existence only.
+
+        Priority: project-specific → global → email-specific. Each key
+        resolves through the broker's full cascade (env var `JIRA_API_TOKEN`
+        already satisfies the `jira_api_token` candidate — a separate
+        env-var candidate would be dead code), and the reported source
+        reflects the LEVEL that actually resolved it, not the candidate's
+        label: an env-provided token must show up as "environment", not as
+        a stored global token.
 
         Returns:
-            Dict with source info (name, type, details)
+            (key, source_info) — key is None when nothing resolves; source_info
+            describes where the token comes from, for diagnostics (no value).
         """
-        project_key = f"{project_name}_jira_api_token" if project_name else None
+        candidates = []
+        if project_name:
+            candidates.append((
+                f"{project_name}_jira_api_token",
+                {"type": "project-specific", "details": f"Token for project '{project_name}'"},
+            ))
+        candidates.extend([
+            ("jira_api_token",
+             {"type": "global", "details": "Global JIRA token (recommended)"}),
+            (f"{email}_jira_api_token",
+             {"type": "email-specific", "details": f"Token for email '{email}'"}),
+        ])
 
-        if project_key and secrets.get(project_key) == token:
-            return {
-                "name": project_key,
-                "type": "project-specific",
-                "details": f"Token for project '{project_name}'"
-            }
-        elif secrets.get("jira_api_token") == token:
-            return {
-                "name": "jira_api_token",
-                "type": "global",
-                "details": "Global JIRA token (recommended)"
-            }
-        elif secrets.get("JIRA_API_TOKEN") == token:
-            return {
-                "name": "JIRA_API_TOKEN",
-                "type": "environment",
-                "details": "Environment variable"
-            }
-        elif secrets.get(f"{email}_jira_api_token") == token:
-            return {
-                "name": f"{email}_jira_api_token",
-                "type": "email-specific",
-                "details": f"Token for email '{email}'"
-            }
-        else:
-            return {
-                "name": "unknown",
-                "type": "unknown",
-                "details": "Token source could not be identified"
-            }
+        for key, source in candidates:
+            origin = broker.source(key)
+            if origin is None:
+                continue
+            if origin == "env":
+                source = {"type": "environment",
+                          "details": f"Environment variable {key.upper()}"}
+            elif origin == "project":
+                source = {"type": "project-secrets",
+                          "details": "Project .titan/secrets.env"}
+            else:
+                # Keyring: the candidate's label already says which KEY was
+                # picked; make the storage level explicit too, so the user
+                # never reads a scope label as a storage location.
+                source = {**source, "details": f"{source['details']} (system keyring)"}
+            return key, {"name": key, **source}
+
+        return None, {
+            "name": "unknown",
+            "type": "unknown",
+            "details": "Token source could not be identified",
+        }
 
     @property
     def has_default_project(self) -> bool:

@@ -19,7 +19,7 @@ from titan_plugin_slack.steps.summary_steps import (
 
 
 def _build_context() -> WorkflowContext:
-    ctx = WorkflowContext(secrets=MagicMock())
+    ctx = WorkflowContext()
     ctx.textual = MagicMock()
 
     loading_mock = MagicMock()

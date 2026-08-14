@@ -43,7 +43,7 @@ class _FakeTextual:
 
 
 def _make_context(*, worktree_created=True, worktree_path="/tmp/wt", with_git=True):
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     if with_git:
         ctx.git = Mock()
