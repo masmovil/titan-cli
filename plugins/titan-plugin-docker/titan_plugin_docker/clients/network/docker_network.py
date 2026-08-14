@@ -6,6 +6,7 @@ Low-level Docker CLI command executor.
 Handles subprocess execution and error handling.
 No model conversion - returns raw command output strings.
 """
+import re
 import subprocess
 import shutil
 import time
@@ -14,6 +15,24 @@ from typing import Callable, List, Optional
 from titan_cli.core.logging.config import get_logger
 
 from ...exceptions import DockerError, DockerClientError, DockerCommandError
+
+# ANSI escape sequences (CSI/OSC/single-char) plus stray C0 control chars.
+# Even with --progress=plain, tools invoked inside a build can emit color or
+# cursor codes; a TUI text widget renders those raw, garbling the console.
+_ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
+_CTRL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _sanitize_output_line(line: str) -> str:
+    """Strip ANSI escapes and control chars so TUI widgets render plain text.
+
+    A lone carriage-return redraw (`foo\rbar`) keeps only the final state,
+    which is what the terminal would have shown.
+    """
+    line = _ANSI_RE.sub("", line)
+    if "\r" in line:
+        line = line.rsplit("\r", 1)[-1]
+    return _CTRL_RE.sub("", line)
 
 
 class DockerNetwork:
@@ -144,7 +163,7 @@ class DockerNetwork:
                 bufsize=1,
             )
             for line in process.stdout:
-                stripped = line.rstrip("\n")
+                stripped = _sanitize_output_line(line.rstrip("\n"))
                 lines.append(stripped)
                 on_line(stripped)
             process.wait()

@@ -59,6 +59,10 @@ class BuildService:
 
             args = [
                 "docker", "buildx", "build",
+                # Line-oriented output: without this buildx may pick its TTY
+                # renderer (ANSI cursor-movement redraws) and the streamed
+                # "lines" become raw control sequences that garble the console.
+                "--progress=plain",
                 "-t", image_ref,
                 "-f", target.dockerfile,
             ]

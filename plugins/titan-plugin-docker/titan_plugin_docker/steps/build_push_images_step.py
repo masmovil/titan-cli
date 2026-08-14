@@ -1,5 +1,5 @@
 # plugins/titan-plugin-docker/titan_plugin_docker/steps/build_push_images_step.py
-from textual.widgets import TextArea
+from textual.widgets import Log
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
@@ -13,11 +13,19 @@ from ..exceptions import DockerError
 LIVE_CONSOLE_HEIGHT = 40
 FINISHED_CONSOLE_HEIGHT = 12
 
+# The console is a `Log`, not a `TextArea`: Log is Textual's append-only
+# streaming widget. TextArea is an editor — flooding it with per-line
+# `insert()` calls from a worker thread (exactly what a fully-cached build
+# does: a hundred lines in one burst) desyncs its wrapped-layout cache and
+# the rendering degrades to one character per row, even though the document
+# itself is correct. Log has no edit machinery to desync.
 
-def _make_on_output(app, console: TextArea):
+
+def _make_on_output(app, console: Log):
     def _append_line(line: str) -> None:
-        console.insert(f"{line}\n", location=console.document.end)
-        console.scroll_end(animate=False)
+        # Log drops truly empty lines; buildx uses them as block separators,
+        # so keep them as a single space to preserve the log's rhythm.
+        console.write_line(line or " ")
 
     def on_output(line: str) -> None:
         try:
@@ -28,7 +36,7 @@ def _make_on_output(app, console: TextArea):
     return on_output
 
 
-def _collapse_console(app, console: TextArea) -> None:
+def _collapse_console(app, console: Log) -> None:
     def _apply() -> None:
         console.styles.height = FINISHED_CONSOLE_HEIGHT
         console.scroll_end(animate=False)
@@ -88,7 +96,7 @@ def build_push_images_step(ctx: WorkflowContext) -> WorkflowResult:
         platforms = target.platforms or "builder native"
         ctx.textual.begin_step(f"[{index}/{len(targets)}] {target.name} ({platforms})")
 
-        console = TextArea(read_only=True, show_line_numbers=False, soft_wrap=False)
+        console = Log(highlight=False, auto_scroll=True)
         console.styles.height = LIVE_CONSOLE_HEIGHT
         console.styles.border = ("round", "gray")
         ctx.textual.mount(console)
