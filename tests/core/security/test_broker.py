@@ -382,3 +382,14 @@ def test_namespaces_isolate_same_key(keyring_store, tmp_path):
     SecretBroker(vault, "titan.plugins.b").store("token", "value-b")
     assert keyring_store[("titan.plugins.a", "token")] == "value-a"
     assert keyring_store[("titan.plugins.b", "token")] == "value-b"
+
+
+# --- Fourth review round ---
+
+def test_delete_when_shadowed_still_removes_keyring_copy(keyring_store, tmp_path):
+    import os
+    os.environ["TOKEN"] = "from-env"
+    keyring_store[("titan.plugins.demo", "token")] = "kr-copy"
+    broker = SecretBroker(SecretManager(project_path=tmp_path), "titan.plugins.demo")
+    assert broker.delete("token") is False  # env shadow survives...
+    assert keyring_store == {}              # ...but the keyring copy is gone

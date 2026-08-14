@@ -239,6 +239,14 @@ class SlackPlugin(TitanPlugin):
                 )
 
         def _build_client(user_token: str) -> SlackClient:
+            # A blank stored token (manual secrets.env edits, keyring damage)
+            # would build a client that looks authenticated and fails later
+            # as an opaque 401 — fail here with the actionable message.
+            if not user_token or not user_token.strip():
+                raise SlackConfigurationError(
+                    "Stored Slack user token is empty. "
+                    "Reconnect Slack for this repository."
+                )
             return SlackClient(
                 user_token=user_token,
                 team_id=validated_config.default_team_id,

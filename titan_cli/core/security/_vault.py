@@ -267,20 +267,22 @@ class SecretManager:
                     pass  # Keyring might not be available / entry absent
 
         elif scope == "project":
-            self._project_secrets.pop(key.upper(), None)
-
-            secrets_file = self.project_path / ".titan" / "secrets.env"
-            if not secrets_file.exists():
-                return
-
-            with open(secrets_file, "r") as f:
-                lines = f.readlines()
-
             key_upper = key.upper()
-            filtered = [line for line in lines if not _line_defines_key(line, key_upper)]
+            secrets_file = self.project_path / ".titan" / "secrets.env"
 
-            with open(secrets_file, "w") as f:
-                f.writelines(filtered)
+            # File first, memory second: dropping the in-memory copy before a
+            # file operation that then fails would leave get() reporting the
+            # secret gone while the file still holds it.
+            if secrets_file.exists():
+                with open(secrets_file, "r") as f:
+                    lines = f.readlines()
+
+                filtered = [line for line in lines if not _line_defines_key(line, key_upper)]
+
+                with open(secrets_file, "w") as f:
+                    f.writelines(filtered)
+
+            self._project_secrets.pop(key_upper, None)
 
         else:
             raise ValueError(

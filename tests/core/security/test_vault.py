@@ -476,3 +476,52 @@ def test_scoped_delete_does_not_sweep_legacy_it_never_owned(keyring_store, tmp_p
     sm.delete("github_token", namespace="titan.plugins.jira", scope="user")
 
     assert keyring_store == {("titan", "github_token"): "legacy-copy"}
+
+
+# --- Fixes from the PR #261 fourth review round ---
+
+def test_resolve_priority_when_same_key_everywhere(tmp_project_path, mock_env, mock_keyring):
+    os.environ["SHARED"] = "env-wins"
+    (tmp_project_path / ".titan" / "secrets.env").write_text("SHARED='from-file'\n")
+    mock_keyring[0].return_value = "from-keyring"
+
+    sm = SecretManager(project_path=tmp_project_path)
+    assert sm.resolve("shared") == ("env-wins", "env")
+
+
+def test_vault_stores_blank_values_brokers_are_the_guard(tmp_project_path, mock_env, mock_keyring):
+    """Pinned semantics: the vault (inside the boundary) does not validate
+    values — the broker's store/prompt paths are where blanks are rejected.
+    A blank read back from the keyring is treated as absent."""
+    sm = SecretManager(project_path=tmp_project_path)
+    sm.set("blank", "   ", scope="user")
+    mock_keyring[1].assert_called_once_with("titan", "blank", "   ")
+
+    mock_keyring[0].return_value = ""
+    assert sm.get("blank") is None
+
+
+def test_default_project_path_is_cwd(tmp_path, mock_env, mock_keyring, monkeypatch):
+    """The raw vault falls back to cwd; project-root resolution is the
+    responsibility of create_broker_factory / the session factories."""
+    (tmp_path / ".titan").mkdir()
+    (tmp_path / ".titan" / "secrets.env").write_text("CWD_KEY='cwd-value'\n")
+    monkeypatch.chdir(tmp_path)
+
+    sm = SecretManager()
+    assert sm.project_path == tmp_path
+    assert sm.get("cwd_key") == "cwd-value"
+
+
+def test_delete_project_scope_keeps_memory_if_file_write_fails(tmp_project_path, mock_env, mock_keyring):
+    secrets_file = tmp_project_path / ".titan" / "secrets.env"
+    secrets_file.write_text("TOKEN='value'\n")
+    sm = SecretManager(project_path=tmp_project_path)
+
+    with patch("builtins.open", side_effect=OSError("disk full")):
+        with pytest.raises(OSError):
+            sm.delete("token", scope="project")
+
+    # Memory and file still agree: the secret survives in both.
+    assert sm.get("token") == "value"
+    assert "TOKEN" in secrets_file.read_text()

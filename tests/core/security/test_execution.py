@@ -202,3 +202,14 @@ def test_run_redacted_devnull_stdin_when_no_input():
     result = run_redacted(["cat"], timeout=5)
     assert result.exit_code == 0
     assert result.stdout == ""
+
+
+def test_stderr_is_redacted(vault):
+    from titan_cli.core.security.execution import run_redacted
+    from titan_cli.core.security.redaction import register_secret, REDACTED
+    register_secret("stderr-secret-value")
+    result = run_redacted(
+        ["python3", "-c", "import sys; sys.stderr.write('leak stderr-secret-value here')"]
+    )
+    assert "stderr-secret-value" not in result.stderr
+    assert REDACTED in result.stderr

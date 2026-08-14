@@ -134,6 +134,11 @@ class JiraPlugin(TitanPlugin):
             elif origin == "project":
                 source = {"type": "project-secrets",
                           "details": "Project .titan/secrets.env"}
+            else:
+                # Keyring: the candidate's label already says which KEY was
+                # picked; make the storage level explicit too, so the user
+                # never reads a scope label as a storage location.
+                source = {**source, "details": f"{source['details']} (system keyring)"}
             return key, {"name": key, **source}
 
         return None, {
