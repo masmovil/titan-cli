@@ -1,6 +1,6 @@
 # core/models/__init__.py
 from enum import StrEnum
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -153,6 +153,23 @@ class AIPreferences(BaseModel):
 AIConfig.model_rebuild()
 
 
+class SecurityConfig(BaseModel):
+    """
+    Security posture for third-party plugin execution.
+
+    `community_plugins` names the isolation model community plugins run
+    under. Only "in_process" exists today; "worker" and "sandbox" are the
+    planned future values — declaring the key now means existing configs
+    already state their posture explicitly when those land. An unknown
+    value fails validation loudly rather than silently running in-process.
+    """
+
+    community_plugins: Literal["in_process"] = Field(
+        "in_process",
+        description="Isolation model for community plugins (future: worker | sandbox).",
+    )
+
+
 class TitanConfigModel(BaseModel):
     """
     The main Pydantic model for the entire Titan CLI configuration.
@@ -166,4 +183,7 @@ class TitanConfigModel(BaseModel):
     ai: Optional[AIConfig] = Field(None, description="AI connection configuration.")
     plugins: Dict[str, PluginConfig] = Field(
         default_factory=dict, description="Dictionary of plugin configurations."
+    )
+    security: Optional[SecurityConfig] = Field(
+        None, description="Security posture for third-party plugin execution."
     )

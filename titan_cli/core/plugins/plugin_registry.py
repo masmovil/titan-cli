@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional
 from ..errors import PluginLoadError, PluginInitializationError
 from .plugin_base import TitanPlugin
 from .community_sources import PluginChannel, get_github_token, parse_plugin_metadata
+from .trust import PluginTrust, TrustFinding, classify_plugin, scan_plugin_source
 from .runtime import PluginRuntimeManager
 from titan_cli.core.logging import get_logger
 
@@ -73,6 +74,8 @@ class PluginRegistry:
         self._failed_plugins: Dict[str, Exception] = {}
         self._discovered_plugin_names: List[str] = []
         self._plugin_versions: Dict[str, str] = {}
+        self._plugin_trust: Dict[str, PluginTrust] = {}
+        self._security_findings: Dict[str, list[TrustFinding]] = {}
         self._plugin_sync_events: list[str] = []
         self._dev_local_sys_paths: set[str] = set()
         self._dev_local_package_roots: set[str] = set()
@@ -103,6 +106,7 @@ class PluginRegistry:
                     raise TypeError("Plugin class must inherit from TitanPlugin")
                 self._plugins[ep.name] = plugin_class()
                 self._plugin_versions[ep.name] = ep.dist.version if ep.dist else "unknown"
+                self._plugin_trust[ep.name] = classify_plugin(ep.name, channel=None)
                 logger.debug("plugin_loaded", name=ep.name)
             except Exception as e:
                 logger.exception("plugin_load_failed", name=ep.name)
@@ -224,6 +228,7 @@ class PluginRegistry:
                     if package_root:
                         self._dev_local_package_roots.add(package_root)
                     self._plugin_versions[plugin_name] = PluginChannel.DEV_LOCAL
+                    self._record_trust_scan(plugin_name, PluginChannel.DEV_LOCAL, Path(repo_path))
                     if plugin_name not in self._discovered_plugin_names:
                         self._discovered_plugin_names.append(plugin_name)
                     logger.info(
@@ -266,6 +271,9 @@ class PluginRegistry:
                 if package_root:
                     self._dev_local_package_roots.add(package_root)
                 self._plugin_versions[plugin_name] = f"stable@{resolved_commit[:12]}"
+                self._record_trust_scan(
+                    plugin_name, PluginChannel.STABLE, Path(runtime.paths.source_dir)
+                )
                 if runtime.created:
                     requested_ref = config.get_project_plugin_requested_ref(plugin_name) or resolved_commit[:12]
                     self._plugin_sync_events.append(
@@ -335,6 +343,43 @@ class PluginRegistry:
         """Get the installed package version for a plugin, from distribution metadata."""
         return self._plugin_versions.get(name, "unknown")
 
+    def get_plugin_trust(self, name: str) -> Optional[PluginTrust]:
+        """Trust classification for a loaded plugin (None if unknown)."""
+        return self._plugin_trust.get(name)
+
+    def get_security_findings(self, name: str) -> list[TrustFinding]:
+        """Secret-access constructs found by the static scan for a plugin."""
+        return list(self._security_findings.get(name, []))
+
+    def _record_trust_scan(
+        self, plugin_name: str, channel: PluginChannel, source_dir: Path
+    ) -> None:
+        """
+        Classify a source-overridden plugin and statically scan its tree.
+
+        The scan warns, never blocks: a finding means the plugin's source
+        plainly touches secret machinery (`keyring`, the private vault,
+        `SecretManager`), which the user should know about — but whether to
+        keep running it is their call.
+        """
+        self._plugin_trust[plugin_name] = classify_plugin(plugin_name, channel)
+        try:
+            findings = scan_plugin_source(source_dir)
+        except OSError as e:
+            logger.warning(
+                "plugin_security_scan_failed", name=plugin_name, error=str(e)
+            )
+            return
+        self._security_findings[plugin_name] = findings
+        if findings:
+            logger.warning(
+                "plugin_security_scan_findings",
+                name=plugin_name,
+                trust=str(self._plugin_trust[plugin_name]),
+                count=len(findings),
+                findings=[f"{f.file}:{f.line} {f.code}" for f in findings[:10]],
+            )
+
     def reset(self):
         """Resets the registry, clearing all loaded plugins and re-discovering."""
         for repo_path in list(self._dev_local_sys_paths):
@@ -356,5 +401,7 @@ class PluginRegistry:
         self._plugins.clear()
         self._failed_plugins.clear()
         self._plugin_versions.clear()
+        self._plugin_trust.clear()
+        self._security_findings.clear()
         self._plugin_sync_events.clear()
         self.discover()
