@@ -1,0 +1,18 @@
+name: "Docker Up"
+description: "Start Docker Compose services (all services, or a project-configured group) and show status"
+
+steps:
+  - id: select_service_group
+    name: "Select Docker Services"
+    plugin: docker
+    step: select_service_group
+
+  - id: compose_up
+    name: "Start Docker Services"
+    plugin: docker
+    step: compose_up
+
+  - id: compose_status
+    name: "Docker Compose Status"
+    plugin: docker
+    step: compose_status

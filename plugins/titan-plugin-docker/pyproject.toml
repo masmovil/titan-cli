@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "titan-plugin-docker"
+version = "1.0.0"
+description = "Docker plugin for Titan CLI"
+authors = ["MasOrange Apps Team <apps-management-stores@masorange.es>"]
+packages = [{include = "titan_plugin_docker"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+titan-cli = ">=0.7.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.plugins."titan.plugins"]
+docker = "titan_plugin_docker.plugin:DockerPlugin"

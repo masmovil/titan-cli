@@ -60,6 +60,7 @@ class WorkflowContextBuilder:
         self._github = None
         self._jira = None
         self._slack = None
+        self._docker = None
 
         # Plugin managers (keyed by plugin name)
         self._plugin_managers: dict = {}
@@ -233,6 +234,33 @@ class WorkflowContextBuilder:
                 self._slack = None
         return self
 
+    def with_docker(self, docker_client: Optional[Any] = None) -> WorkflowContextBuilder:
+        """
+        Add Docker client to workflow context.
+
+        The Docker client is optional and only used by Docker plugin steps.
+        Other plugin steps will have ctx.docker = None and should ignore it.
+
+        Args:
+            docker_client: Optional DockerClient instance (auto-loaded if None).
+                          If plugin is not available or fails to load, sets ctx.docker = None.
+
+        Returns:
+            Self for method chaining
+        """
+        if docker_client:
+            self._docker = docker_client
+        else:
+            docker_plugin = self._plugin_registry.get_plugin("docker")
+            if docker_plugin and docker_plugin.is_available():
+                try:
+                    self._docker = docker_plugin.get_client()
+                except Exception:
+                    self._docker = None
+            else:
+                self._docker = None
+        return self
+
 
     def build(self) -> WorkflowContext:
         """Build the WorkflowContext."""
@@ -246,4 +274,5 @@ class WorkflowContextBuilder:
             github_managers=self._plugin_managers.get("github"),
             jira=self._jira,
             slack=self._slack,
+            docker=self._docker,
         )

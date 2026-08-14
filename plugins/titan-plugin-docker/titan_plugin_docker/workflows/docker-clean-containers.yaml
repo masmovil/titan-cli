@@ -1,0 +1,13 @@
+name: "Docker Clean Containers"
+description: "List every container on this host and remove selected stopped ones (host-wide, not just this project)"
+
+steps:
+  - id: select_containers_to_remove
+    name: "Select Containers to Remove"
+    plugin: docker
+    step: select_containers_to_remove
+
+  - id: remove_containers
+    name: "Remove Containers"
+    plugin: docker
+    step: remove_containers

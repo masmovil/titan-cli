@@ -24,7 +24,8 @@ packages = [
     {include = "titan_plugin_git", from = "plugins/titan-plugin-git"},
     {include = "titan_plugin_github", from = "plugins/titan-plugin-github"},
     {include = "titan_plugin_jira", from = "plugins/titan-plugin-jira"},
-    {include = "titan_plugin_slack", from = "plugins/titan-plugin-slack"}
+    {include = "titan_plugin_slack", from = "plugins/titan-plugin-slack"},
+    {include = "titan_plugin_docker", from = "plugins/titan-plugin-docker"}
 ]
 
 [tool.poetry.dependencies]
@@ -67,6 +68,7 @@ titan-plugin-git = {path = "plugins/titan-plugin-git", develop = true}
 titan-plugin-github = {path = "plugins/titan-plugin-github", develop = true}
 titan-plugin-jira = {path = "plugins/titan-plugin-jira", develop = true}
 titan-plugin-slack = {path = "plugins/titan-plugin-slack", develop = true}
+titan-plugin-docker = {path = "plugins/titan-plugin-docker", develop = true}
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -80,6 +82,7 @@ git = "titan_plugin_git.plugin:GitPlugin"
 github = "titan_plugin_github.plugin:GitHubPlugin"
 jira = "titan_plugin_jira.plugin:JiraPlugin"
 slack = "titan_plugin_slack.plugin:SlackPlugin"
+docker = "titan_plugin_docker.plugin:DockerPlugin"
 
 [tool.pytest.ini_options]
 testpaths = [
@@ -87,7 +90,8 @@ testpaths = [
     "plugins/titan-plugin-git/tests",
     "plugins/titan-plugin-github/tests",
     "plugins/titan-plugin-jira/tests",
-    "plugins/titan-plugin-slack/tests"
+    "plugins/titan-plugin-slack/tests",
+    "plugins/titan-plugin-docker/tests"
 ]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

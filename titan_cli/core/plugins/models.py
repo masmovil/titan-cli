@@ -183,3 +183,40 @@ class SlackPluginConfig(BaseModel):
             seen.add(key)
             normalized.append(normalized_name)
         return normalized
+
+
+class DockerBuildTargetConfig(BaseModel):
+    """Configuration for a single buildable Docker image."""
+
+    name: str = Field(..., description="Unique name identifying this build target within the project.")
+    dockerfile: str = Field(..., description="Path to the Dockerfile, relative to the project root.")
+    context: str = Field(".", description="Build context path, relative to the project root.")
+    image: str = Field(..., description="Image reference to build/push (e.g. 'ghcr.io/org/app').")
+    target: Optional[str] = Field(None, description="Optional Dockerfile build stage to target (e.g. 'production').")
+    platforms: Optional[str] = Field(
+        None,
+        description=(
+            "Comma-separated platform list for 'docker buildx build --platform' "
+            "(e.g. 'linux/amd64' or 'linux/amd64,linux/arm64'). When unset, no "
+            "--platform flag is passed and buildx builds for the builder's native "
+            "platform. Set it when the deploy target differs from the build host, "
+            "or to opt into multi-arch - each extra platform the host doesn't match "
+            "is built under QEMU emulation and costs a full slow build."
+        ),
+    )
+    tag: str = Field("latest", description="Tag applied to the built image.")
+    push: bool = Field(False, description="Whether to push the image to the registry after building.")
+
+
+class DockerPluginConfig(BaseModel):
+    """Configuration for Docker plugin."""
+
+    compose_file: str = Field("docker-compose.yml", description="Path to the docker-compose file, relative to the project root.")
+    service_groups: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Named groups of compose service names (e.g. {'infra': ['db', 'cache']}). Names are project-defined and have no special meaning to the plugin.",
+    )
+    build_targets: List[DockerBuildTargetConfig] = Field(
+        default_factory=list,
+        description="Docker images this project knows how to build/push.",
+    )
