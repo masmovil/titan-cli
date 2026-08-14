@@ -204,7 +204,7 @@ def test_run_redacted_devnull_stdin_when_no_input():
     assert result.stdout == ""
 
 
-def test_stderr_is_redacted(vault):
+def test_stderr_is_redacted():
     from titan_cli.core.security.execution import run_redacted
     from titan_cli.core.security.redaction import register_secret, REDACTED
     register_secret("stderr-secret-value")

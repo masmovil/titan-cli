@@ -116,16 +116,22 @@ class SecretManager:
         failed command must not delete a keyring entry when the value came
         from the environment).
         """
+        # Blank values are treated as ABSENT at every level, uniformly: an
+        # empty/whitespace env var means "unset" in practice, and a blank
+        # credential authenticates as nothing and fails as an opaque 401
+        # downstream. A blank at one level falls through to the next.
         env_key = key.upper()
         if env_key in os.environ:
             value = os.environ[env_key]
-            register_secret(value)
-            return value, "env"
+            if value.strip():
+                register_secret(value)
+                return value, "env"
 
         if env_key in self._project_secrets:
             value = self._project_secrets[env_key]
-            register_secret(value)
-            return value, "project"
+            if value.strip():
+                register_secret(value)
+                return value, "project"
 
         try:
             value = keyring.get_password(namespace, key)
@@ -133,7 +139,7 @@ class SecretManager:
             # Keyring might not be available for THIS read; the legacy
             # fallback below gets its own attempt, same as a miss.
             value = None
-        if value:
+        if value and value.strip():
             register_secret(value)
             return value, "keyring"
 
@@ -225,11 +231,13 @@ class SecretManager:
                     existing_lines[-1] += "\n"
                 existing_lines.append(entry)
 
-            with open(secrets_file, "w") as f:
+            # Plaintext credentials must never be world-readable, not even
+            # for an instant: create WITH 0600 (a plain open() would create
+            # under the umask and leave a readable window until a chmod).
+            # The chmod still runs for files that predate the tightening.
+            fd = os.open(secrets_file, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
                 f.writelines(existing_lines)
-            # Plaintext credentials must not be world-readable: the plain
-            # open() above creates the file with the process umask (0644
-            # on most systems), so tighten it explicitly every write.
             os.chmod(secrets_file, 0o600)
 
             self._project_secrets[key_upper] = value

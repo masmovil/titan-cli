@@ -294,6 +294,11 @@ class SecretBroker:
         Run `command` with the secret injected as `env_var` in a MINIMAL
         environment (base allowlist + `env_allowlist`), so the injected
         variable is the only sensitive thing the subprocess can see or dump.
+
+        Deliberately has NO stale-credential retry (unlike
+        `run_with_secret_stdin`, whose retry exists for the GPG/keysafe
+        semantics its consumers depend on) — add it only when a real
+        consumer needs it, with the same keyring-origin-only rule.
         """
         value = self._resolve(key, prompt)
         if value is None:

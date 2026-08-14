@@ -156,3 +156,19 @@ def test_empty_stored_value_is_rejected(monkeypatch):
     monkeypatch.setenv("EMPTY_TOKEN", "   ")
     with pytest.raises(KeyError):
         create_authenticated_session(SecretRef("titan.core", "empty_token"))
+
+
+def test_missing_default_model_raises_configuration_error(monkeypatch):
+    from titan_cli.core.models import AIConnectionConfig, AIConnectionType, AIGatewayBackend
+    from titan_cli.core.security.sessions import create_ai_provider
+    from titan_cli.ai.exceptions import AIConfigurationError
+    from unittest.mock import patch
+
+    conn = AIConnectionConfig(
+        name="X", connection_type=AIConnectionType.GATEWAY,
+        gateway_backend=AIGatewayBackend.OPENAI_COMPATIBLE,
+        base_url="https://x.example", default_model=None,
+    )
+    with patch('keyring.get_password', return_value="sk-key"):
+        with pytest.raises(AIConfigurationError, match="default_model"):
+            create_ai_provider("x", conn)

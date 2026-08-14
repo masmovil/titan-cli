@@ -525,3 +525,15 @@ def test_delete_project_scope_keeps_memory_if_file_write_fails(tmp_project_path,
     # Memory and file still agree: the secret survives in both.
     assert sm.get("token") == "value"
     assert "TOKEN" in secrets_file.read_text()
+
+
+# --- Fifth review round ---
+
+def test_blank_value_at_higher_level_falls_through(tmp_project_path, mock_env, mock_keyring):
+    """A blank env/project value means 'unset' — the cascade keeps going."""
+    os.environ["TOKEN"] = "   "
+    (tmp_project_path / ".titan" / "secrets.env").write_text("TOKEN=''\n")
+    mock_keyring[0].return_value = "real-keyring-value"
+
+    sm = SecretManager(project_path=tmp_project_path)
+    assert sm.resolve("token") == ("real-keyring-value", "keyring")

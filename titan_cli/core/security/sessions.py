@@ -92,6 +92,13 @@ def create_ai_provider(
             f"base_url is required for gateway connection '{connection_id}'"
         )
 
+    if not connection_cfg.default_model or not connection_cfg.default_model.strip():
+        # The SDKs fail on a missing model with generic errors that don't
+        # name the connection; fail here with the actionable one.
+        raise AIConfigurationError(
+            f"default_model is required for connection '{connection_id}'"
+        )
+
     kwargs = {"model": connection_cfg.default_model}
     if api_key:
         kwargs["api_key"] = api_key

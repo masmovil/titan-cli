@@ -363,7 +363,7 @@ When creating new steps or refactoring existing ones:
 
 ## Tech Stack
 
-- **Python 3.10+**
+- **Python 3.11+**
 - **Textual**: TUI framework
 - **Anthropic SDK**: Anthropic direct provider
 - **Google GenAI SDK**: Gemini direct provider

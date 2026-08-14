@@ -85,7 +85,7 @@ This setup allows you to:
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.11+
 - `pipx` (recommended) or `pip`
 - `poetry` (for dependency management)
 

@@ -6,7 +6,7 @@ authors = ["MasOrange Apps Team <apps-management-stores@masorange.es>"]
 packages = [{include = "titan_plugin_git"}]
 
 [tool.poetry.dependencies]
-python = ">=3.10"
+python = ">=3.11"
 titan-cli = ">=0.7.2"
 
 [build-system]

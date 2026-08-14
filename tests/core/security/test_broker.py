@@ -280,7 +280,10 @@ def test_stdin_retry_does_not_delete_when_value_came_from_env(keyring_store, tmp
     assert keyring_store[("titan.plugins.demo", "passphrase")] == "unrelated-keyring-copy"
 
 
-def test_stdin_retry_still_replaces_stale_keyring_value(keyring_store, tmp_path):
+def test_stdin_retry_replaces_keyring_value_on_any_command_failure(keyring_store, tmp_path):
+    """Pinned semantics: ANY command failure (except exec failures 126/127
+    and timeouts) triggers replace — the broker cannot generically tell a
+    bad credential from another failure, so it re-prompts once."""
     keyring_store[("titan.plugins.demo", "passphrase")] = "stale"
     broker = SecretBroker(
         SecretManager(project_path=tmp_path), "titan.plugins.demo",
