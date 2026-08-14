@@ -989,7 +989,7 @@ class AIConfigWizardScreen(BaseScreen):
 
     def save_configuration(self) -> None:
         """Save the AI connection configuration."""
-        from titan_cli.core.secrets import SecretManager
+        from titan_cli.core.security import create_broker_factory
         from titan_cli.core.logging import get_logger
         from titan_cli.core.models import (
             AIConnectionType,
@@ -1038,10 +1038,10 @@ class AIConfigWizardScreen(BaseScreen):
             logger.info("ai_config_saved", connection=connection_name)
 
             # Save API key to secrets (if provided)
-            secrets = SecretManager()
+            broker = create_broker_factory().for_plugin("core")
             api_key = self.wizard_data.get("api_key")
             if api_key:  # Only save if API key is not empty
-                secrets.set(f"{connection_id}_api_key", api_key, scope="user")
+                broker.store(f"{connection_id}_api_key", api_key)
                 logger.debug("api_key_saved", connection_id=connection_id)
             else:
                 logger.debug(

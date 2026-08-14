@@ -114,7 +114,7 @@ def _make_file(path: str) -> UIFileChange:
 
 
 def _make_context(sample_pr: UIPullRequest) -> WorkflowContext:
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.github = Mock()
     ctx.git = Mock()
@@ -205,7 +205,7 @@ def test_fetch_pr_review_bundle_uses_local_u3_diff_when_github_diff_unavailable(
 
 def test_fetch_pr_review_bundle_exits_when_pr_has_no_files_and_no_diff():
     pr = _make_pr(is_cross_repository=True)
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.github = Mock()
     ctx.git = Mock()
@@ -234,7 +234,7 @@ def test_fetch_pr_review_bundle_includes_current_github_user():
 
 
 def test_build_thread_review_candidates_filters_to_current_user_threads():
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_pr"] = _make_pr(is_cross_repository=False, author_name="author")
     ctx.data["review_current_user"] = "reviewer"
@@ -276,7 +276,7 @@ def test_build_thread_review_candidates_filters_to_current_user_threads():
 
 
 def test_build_thread_review_candidates_errors_without_current_user():
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_pr"] = _make_pr(is_cross_repository=False)
     ctx.data["review_threads"] = []
@@ -288,7 +288,7 @@ def test_build_thread_review_candidates_errors_without_current_user():
 
 
 def test_score_review_candidates_exits_when_no_reviewable_candidates_remain():
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["change_manifest"] = ChangeManifest(
         pr=PullRequestManifest(
@@ -354,7 +354,7 @@ def _make_thread(*, reply_body: str, path: str, line: int, body: str) -> UIComme
 
 
 def test_build_thread_review_contexts_includes_referenced_commit_contexts():
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.github = Mock()
     ctx.data["thread_review_candidates"] = [
@@ -411,7 +411,7 @@ def test_build_thread_review_contexts_includes_referenced_commit_contexts():
 
 
 def test_build_thread_review_contexts_resolves_referenced_commits_against_fork_head_repo():
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.github = Mock()
     ctx.data["review_pr"] = _make_pr(is_cross_repository=True, author_name="author", head_repository_name="fork-repo")
@@ -466,7 +466,7 @@ def test_build_thread_review_contexts_resolves_referenced_commits_against_fork_h
 
 
 def test_build_thread_review_contexts_ignores_unavailable_referenced_commits():
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.github = Mock()
     ctx.data["thread_review_candidates"] = [
@@ -553,7 +553,7 @@ def test_ai_review_findings_splits_oversized_batch_via_prompt_budget_manager(mon
     fake_adapter = _FakeFindingsAdapter()
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [
         _make_findings_batch("batch_1", {"a.py": 3000, "b.py": 3000})
@@ -603,7 +603,7 @@ def test_ai_review_findings_parses_markdown_fenced_response(monkeypatch):
     fake_adapter = _FakeFencedAdapter('```json\n[{"title": "Bug"}]\n```')
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -656,7 +656,7 @@ def test_ai_review_findings_recovers_via_reformat_retry(monkeypatch):
     )
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -685,7 +685,7 @@ def test_ai_review_findings_marks_batch_failed_when_reformat_retry_also_fails(mo
     )
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -722,7 +722,7 @@ def test_ai_review_findings_partial_batch_failure_still_succeeds_with_flag(monke
     )
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     # The canned-stdout sequence assumes batch order — pin the pool to 1.
     ctx.data["review_profile"] = ReviewProfile(findings_batch_concurrency=1)
@@ -775,7 +775,7 @@ def test_ai_review_findings_returns_error_when_all_batches_fail(monkeypatch):
     fake_adapter = _FakeFailingCLIAdapter(exit_code=1)
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [
         _make_findings_batch("batch_1", {"a.py": 100}),
@@ -834,7 +834,7 @@ def test_ai_review_findings_non_list_payload_goes_through_reformat_retry(monkeyp
     )
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -864,7 +864,7 @@ def test_ai_review_findings_non_list_payload_marks_failed_when_retry_also_non_li
     )
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -922,7 +922,7 @@ def test_ai_review_findings_uses_structured_output_when_supported(monkeypatch):
     fake_adapter = _FakeStructuredOutputAdapter('{"findings": [{"title": "Bug"}]}')
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -951,7 +951,7 @@ def test_ai_review_findings_structured_output_retry_also_requests_schema(monkeyp
     fake_adapter = _FakeStructuredOutputAdapter("I won't call that tool.")
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -983,7 +983,7 @@ def test_ai_review_findings_restricts_tools_when_supported(monkeypatch):
     fake_adapter = _FakeStructuredOutputAdapter('{"findings": [{"title": "Bug"}]}')
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -1008,7 +1008,7 @@ def test_ai_review_findings_omits_disallowed_tools_when_unsupported(monkeypatch)
     fake_adapter = _FakeSequentialAdapter(['[{"title": "Bug"}]'])
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -1035,7 +1035,7 @@ def test_ai_review_findings_reformat_retry_also_restricts_tools(monkeypatch):
     fake_adapter = _FakeStructuredOutputAdapter("I won't call that tool.")
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -1081,7 +1081,7 @@ def test_ai_review_findings_caps_effort_for_worktree_reference_batch(monkeypatch
     fake_adapter = _FakeStructuredOutputAdapter('{"findings": []}')
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_worktree_reference_batch("batch_1", "HomeScreen.kt")]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -1106,7 +1106,7 @@ def test_ai_review_findings_omits_effort_when_no_worktree_reference(monkeypatch)
     fake_adapter = _FakeStructuredOutputAdapter('{"findings": []}')
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
     ctx.data["review_strategy"] = ReviewStrategy(
@@ -1132,7 +1132,7 @@ def test_ai_thread_resolution_parses_markdown_fenced_response(monkeypatch):
     fake_adapter = _FakeFencedAdapter('```json\n[{"thread_id": "t1", "decision": "resolved"}]\n```')
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["thread_review_contexts"] = [
         ThreadReviewContext(
@@ -1155,7 +1155,7 @@ def test_ai_thread_resolution_falls_back_to_empty_decisions_on_parse_failure(mon
     fake_adapter = _FakeFencedAdapter("I could not analyse these threads.")
     monkeypatch.setattr(code_review_steps, "_resolve_headless_adapter", lambda _pref: fake_adapter)
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["thread_review_contexts"] = [
         ThreadReviewContext(
@@ -1184,7 +1184,7 @@ _OTHER_SHA = "b" * 40
 
 
 def _read_access_ctx(*, head_sha=_HEAD_SHA, checkout_sha=_HEAD_SHA, dirty=False, with_git=True):
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_commit_sha"] = head_sha
     if with_git:
@@ -1266,7 +1266,7 @@ def test_file_read_access_blocks_when_head_sha_unknown():
 
 
 def _drift_ctx(current_sha_result):
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.github = Mock()
     ctx.github.get_pr_commit_sha.return_value = current_sha_result
@@ -1305,7 +1305,7 @@ def test_resolve_drift_changed_files_returns_pushed_paths():
     comments degrade — after a fetch, since the new head postdates the review's own."""
     from titan_plugin_github.operations.review_action_operations import detect_head_sha_drift
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.git = Mock()
     ctx.git.fetch.return_value = ClientSuccess(data=None, message="ok")
     ctx.git.get_changed_files.return_value = ClientSuccess(
@@ -1327,11 +1327,11 @@ def test_resolve_drift_changed_files_unknowable_returns_none():
 
     drift = detect_head_sha_drift("a" * 40, "b" * 40)
 
-    no_git_ctx = WorkflowContext(secrets=Mock())
+    no_git_ctx = WorkflowContext()
     no_git_ctx.git = None
     assert code_review_steps._resolve_drift_changed_files(no_git_ctx, drift) is None
 
-    failing_ctx = WorkflowContext(secrets=Mock())
+    failing_ctx = WorkflowContext()
     failing_ctx.git = Mock()
     failing_ctx.git.fetch.return_value = ClientSuccess(data=None, message="ok")
     failing_ctx.git.get_changed_files.return_value = ClientError(
@@ -1371,7 +1371,7 @@ def _make_finding_model(
 
 
 def _verify_ctx(findings: list, adapter_stdout: str | None = None) -> WorkflowContext:
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["deduped_findings"] = findings
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
@@ -1539,7 +1539,7 @@ class _FakeConcurrencyTrackingAdapter:
 def _concurrency_ctx(batch_count: int, concurrency: int) -> WorkflowContext:
     from titan_plugin_github.models.review_profile_models import ReviewProfile
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_profile"] = ReviewProfile(findings_batch_concurrency=concurrency)
     ctx.data["review_context_batches"] = [
@@ -1631,7 +1631,7 @@ def test_ai_review_findings_worker_crash_marks_batch_failed_not_step_crash(monke
 
 def _rescue_ctx(adapter_stdouts: list[str]) -> tuple[WorkflowContext, "_FakeSequentialAdapter"]:
     fake_adapter = _FakeSequentialAdapter(adapter_stdouts)
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_profile"] = ReviewProfile(findings_batch_concurrency=1)
     ctx.data["review_context_batches"] = [_make_findings_batch("batch_1", {"a.py": 100})]
@@ -1762,7 +1762,7 @@ def _synthesis_ctx(
     diff: str | None = None,
 ) -> tuple[WorkflowContext, "_FakeSequentialAdapter"]:
     fake_adapter = _FakeSequentialAdapter(adapter_stdouts)
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_profile"] = ReviewProfile(
         findings_batch_concurrency=1, findings_synthesis_enabled=enabled
@@ -2037,7 +2037,7 @@ class _FakeExitCodeAdapter:
 
 def _timeout_ctx(adapter_script: list[tuple[int, str]], *, worktree_reference: bool = True):
     fake_adapter = _FakeExitCodeAdapter(adapter_script)
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.data["review_profile"] = ReviewProfile(findings_batch_concurrency=1)
     if worktree_reference:
@@ -2125,7 +2125,7 @@ def test_release_review_worktree_cleans_and_clears_context(monkeypatch):
         gh_operations, "cleanup_worktree", lambda git, path: removed.append(path) or True
     )
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.git = Mock()
     ctx.data["worktree_created"] = True
@@ -2149,7 +2149,7 @@ def test_validate_review_actions_releases_worktree_even_with_no_actions(monkeypa
         gh_operations, "cleanup_worktree", lambda git, path: removed.append(path) or True
     )
 
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.textual = _FakeTextual()
     ctx.git = Mock()
     ctx.data["review_action_proposals"] = []

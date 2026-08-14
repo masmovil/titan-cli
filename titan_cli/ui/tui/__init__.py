@@ -111,7 +111,7 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                 def on_project_wizard_complete(_=None):
                     """After project wizard completes, show main menu."""
                     # Reload project config without resetting plugins
-                    from titan_cli.core.secrets import SecretManager
+                    from titan_cli.core.security import create_broker_factory
                     from titan_cli.core.models import TitanConfigModel
 
                     _project_root = find_project_root()
@@ -122,11 +122,11 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                     merged = self.config._merge_configs(self.config.global_config, self.config.project_config)
                     self.config.config = TitanConfigModel(**merged)
 
-                    # Update secrets manager to use project root
-                    self.config.secrets = SecretManager(project_path=_project_root)
+                    # Rebuild the broker factory against the project root
+                    self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
                     # Initialize only the configured plugins (without reset)
-                    self.config.registry.initialize_plugins(config=self.config, secrets=self.config.secrets)
+                    self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
 
                     # Reload workflow registry to reflect enabled/disabled plugins
                     self.config.workflows.reload()
@@ -162,7 +162,7 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                         )
                     else:
                         # Project is configured, reload configs without resetting plugins
-                        from titan_cli.core.secrets import SecretManager
+                        from titan_cli.core.security import create_broker_factory
                         from titan_cli.core.models import TitanConfigModel
 
                         self.config.project_config_path = project_config_path
@@ -172,11 +172,11 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                         merged = self.config._merge_configs(self.config.global_config, self.config.project_config)
                         self.config.config = TitanConfigModel(**merged)
 
-                        # Update secrets manager to use project root
-                        self.config.secrets = SecretManager(project_path=_project_root)
+                        # Rebuild the broker factory against the project root
+                        self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
                         # Initialize plugins with new config
-                        self.config.registry.initialize_plugins(config=self.config, secrets=self.config.secrets)
+                        self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
 
                         # Reload workflow registry to reflect enabled/disabled plugins
                         self.config.workflows.reload()
@@ -221,7 +221,7 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                 def on_project_wizard_complete(_=None):
                     """After project wizard completes, show main menu."""
                     # Reload project config without resetting plugins
-                    from titan_cli.core.secrets import SecretManager
+                    from titan_cli.core.security import create_broker_factory
                     from titan_cli.core.models import TitanConfigModel
 
                     _project_root = find_project_root()
@@ -232,11 +232,11 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                     merged = self.config._merge_configs(self.config.global_config, self.config.project_config)
                     self.config.config = TitanConfigModel(**merged)
 
-                    # Update secrets manager to use project root
-                    self.config.secrets = SecretManager(project_path=_project_root)
+                    # Rebuild the broker factory against the project root
+                    self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
                     # Initialize only the configured plugins (without reset)
-                    self.config.registry.initialize_plugins(config=self.config, secrets=self.config.secrets)
+                    self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
 
                     # Reload workflow registry to reflect enabled/disabled plugins
                     self.config.workflows.reload()

@@ -33,7 +33,7 @@ class MockTextual:
 
 
 def make_context(mock_github_client=None, **data):
-    ctx = WorkflowContext(secrets=Mock(), textual=MockTextual(), github=mock_github_client)
+    ctx = WorkflowContext(textual=MockTextual(), github=mock_github_client)
     ctx.data.update(data)
     return ctx
 

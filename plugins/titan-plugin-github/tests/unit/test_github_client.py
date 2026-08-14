@@ -29,16 +29,14 @@ def github_client(mock_gh_network, mock_graphql_network):
     """Create a GitHubClient instance with mocked networks"""
     from titan_cli.core.plugins.models import GitHubPluginConfig
 
-    with patch('titan_plugin_github.clients.github_client.SecretManager'):
-        with patch('titan_plugin_github.clients.github_client.GitClient'):
-            config = GitHubPluginConfig(repo_owner="test-owner", repo_name="test-repo")
-            return GitHubClient(
-                config=config,
-                secrets=Mock(),
-                git_client=Mock(),
-                repo_owner="test-owner",
-                repo_name="test-repo"
-            )
+    with patch('titan_plugin_github.clients.github_client.GitClient'):
+        config = GitHubPluginConfig(repo_owner="test-owner", repo_name="test-repo")
+        return GitHubClient(
+            config=config,
+            git_client=Mock(),
+            repo_owner="test-owner",
+            repo_name="test-repo"
+        )
 
 
 def test_client_initialization():
@@ -47,25 +45,23 @@ def test_client_initialization():
 
     with patch('titan_plugin_github.clients.github_client.GHNetwork'):
         with patch('titan_plugin_github.clients.github_client.GraphQLNetwork'):
-            with patch('titan_plugin_github.clients.github_client.SecretManager'):
-                with patch('titan_plugin_github.clients.github_client.GitClient'):
-                    config = GitHubPluginConfig(repo_owner="test-owner", repo_name="test-repo")
-                    client = GitHubClient(
-                        config=config,
-                        secrets=Mock(),
-                        git_client=Mock(),
-                        repo_owner="test-owner",
-                        repo_name="test-repo"
-                    )
+            with patch('titan_plugin_github.clients.github_client.GitClient'):
+                config = GitHubPluginConfig(repo_owner="test-owner", repo_name="test-repo")
+                client = GitHubClient(
+                    config=config,
+                    git_client=Mock(),
+                    repo_owner="test-owner",
+                    repo_name="test-repo"
+                )
 
-                    assert client.repo_owner == "test-owner"
-                    assert client.repo_name == "test-repo"
-                    assert client._gh_network is not None
-                    assert client._pr_service is not None
-                    assert client._review_service is not None
-                    assert client._issue_service is not None
-                    assert client._team_service is not None
-                    assert client._release_service is not None
+                assert client.repo_owner == "test-owner"
+                assert client.repo_name == "test-repo"
+                assert client._gh_network is not None
+                assert client._pr_service is not None
+                assert client._review_service is not None
+                assert client._issue_service is not None
+                assert client._team_service is not None
+                assert client._release_service is not None
 
 
 def test_get_pull_request_delegates_to_service(github_client, sample_ui_pr):

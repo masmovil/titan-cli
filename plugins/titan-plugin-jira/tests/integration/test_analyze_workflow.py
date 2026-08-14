@@ -9,7 +9,6 @@ import json
 import pytest
 from unittest.mock import MagicMock, Mock
 from titan_cli.engine import WorkflowContextBuilder, Success, Error, Skip
-from titan_cli.core.secrets import SecretManager
 from titan_cli.core.result import ClientSuccess
 from titan_plugin_jira.models import UIJiraIssue
 
@@ -184,11 +183,8 @@ def mock_views():
 @pytest.fixture
 def workflow_context(mock_jira_client, mock_ai_client, mock_ui_components, mock_views):
     """Build workflow context with mocked dependencies."""
-    secrets = SecretManager()
-
     ctx = WorkflowContextBuilder(
         plugin_registry=None,  # Not needed for this test
-        secrets=secrets,
         ai_config=None
     ).build()
 

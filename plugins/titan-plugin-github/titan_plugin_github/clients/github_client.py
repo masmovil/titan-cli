@@ -9,7 +9,6 @@ from typing import List, Optional, Dict, Any
 import json
 
 from titan_cli.core.result import ClientResult, ClientSuccess, ClientError
-from titan_cli.core.secrets import SecretManager
 from titan_cli.core.plugins.models import GitHubPluginConfig
 from titan_plugin_git.clients.git_client import GitClient
 
@@ -30,7 +29,7 @@ class GitHubClient:
 
     Examples:
         >>> config = GitHubPluginConfig()
-        >>> client = GitHubClient(config, secrets, git_client, "owner", "repo")
+        >>> client = GitHubClient(config, git_client, "owner", "repo")
         >>> result = client.get_pull_request(123)
         >>> match result:
         ...     case ClientSuccess(data=pr):
@@ -40,7 +39,6 @@ class GitHubClient:
     def __init__(
         self,
         config: GitHubPluginConfig,
-        secrets: SecretManager,
         git_client: GitClient,
         repo_owner: str,
         repo_name: str,
@@ -51,7 +49,6 @@ class GitHubClient:
 
         Args:
             config: GitHub configuration
-            secrets: SecretManager instance
             git_client: Initialized GitClient instance
             repo_owner: GitHub repository owner
             repo_name: GitHub repository name
@@ -61,7 +58,6 @@ class GitHubClient:
             GitHubAuthenticationError: If gh CLI is not authenticated
         """
         self.config = config
-        self.secrets = secrets
         self.git_client = git_client
         self.repo_owner = repo_owner
         self.repo_name = repo_name

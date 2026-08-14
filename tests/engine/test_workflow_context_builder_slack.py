@@ -14,7 +14,6 @@ def test_with_slack_loads_client_from_plugin_registry() -> None:
 
     ctx = WorkflowContextBuilder(
         plugin_registry=plugin_registry,
-        secrets=MagicMock(),
         ai_config=None,
     ).with_slack().build()
 
@@ -27,7 +26,6 @@ def test_with_slack_uses_explicit_client() -> None:
 
     ctx = WorkflowContextBuilder(
         plugin_registry=plugin_registry,
-        secrets=MagicMock(),
         ai_config=None,
     ).with_slack(slack_client).build()
 

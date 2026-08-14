@@ -8,7 +8,6 @@ per-task preference decides the CLI, and every way it can fail comes back with a
 reason instead of a silent swap.
 """
 
-from unittest.mock import Mock
 
 import pytest
 
@@ -64,7 +63,7 @@ def _executor(
         connections={default_connection: connection} if default_connection else {},
         preferences=AIPreferences(tasks=task_preferences or {}),
     )
-    executor = AIExecutor(ai_config=config, secrets=None)
+    executor = AIExecutor(ai_config=config)
     executor.availability._cache["headless"] = [
         AIProviderAvailability(provider=AIProviderType.CLI_HEADLESS, identifier=cli)
         for cli in installed
@@ -79,7 +78,7 @@ def _executor(
 
 
 def _ctx(executor) -> WorkflowContext:
-    ctx = WorkflowContext(secrets=Mock())
+    ctx = WorkflowContext()
     ctx.ai_router = executor
     return ctx
 
@@ -194,7 +193,7 @@ def test_a_configured_cli_that_is_not_installed_is_named():
 
 def test_no_router_keeps_the_first_available_cli_behavior():
     """A step called without the façade wired (outside a workflow run)."""
-    adapter, note, ai_off = code_review_steps._resolve_review_adapter(WorkflowContext(secrets=Mock()), ai_review_plan)
+    adapter, note, ai_off = code_review_steps._resolve_review_adapter(WorkflowContext(), ai_review_plan)
 
     assert adapter.cli_name == "auto"
     assert note is None

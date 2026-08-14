@@ -7,7 +7,7 @@ from typing import Optional, Any
 
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.models import AIConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import create_ai_provider, create_broker_factory
 from .context import WorkflowContext
 from titan_cli.ai.client import AIClient
 from titan_cli.ai.exceptions import AIConfigurationError
@@ -20,7 +20,6 @@ class WorkflowContextBuilder:
 
     Example:
         plugin_registry = PluginRegistry()
-        secrets = SecretManager()
         ai_config = AIConfig(
             default_connection="default",
             connections={
@@ -32,7 +31,7 @@ class WorkflowContextBuilder:
                 }
             },
         )
-        ctx = WorkflowContextBuilder(plugin_registry, secrets, ai_config) \\
+        ctx = WorkflowContextBuilder(plugin_registry, ai_config=ai_config) \\
             .with_ai() \\
             .with_ai_router() \\
             .build()
@@ -41,7 +40,6 @@ class WorkflowContextBuilder:
     def __init__(
         self,
         plugin_registry: PluginRegistry,
-        secrets: SecretManager,
         ai_config: Optional[AIConfig] = None
     ):
         """
@@ -49,11 +47,9 @@ class WorkflowContextBuilder:
 
         Args:
             plugin_registry: The PluginRegistry instance.
-            secrets: The SecretManager instance.
             ai_config: Optional AI configuration.
         """
         self._plugin_registry = plugin_registry
-        self._secrets = secrets
         self._ai_config = ai_config
 
         # Service clients
@@ -82,7 +78,7 @@ class WorkflowContextBuilder:
             # Convenience - auto-create from ai_config
             if self._ai_config:
                 try:
-                    self._ai = AIClient(self._ai_config, self._secrets)
+                    self._ai = AIClient(self._ai_config, create_ai_provider)
                 except AIConfigurationError:
                     self._ai = None
             else:
@@ -104,7 +100,11 @@ class WorkflowContextBuilder:
         if ai_router:
             self._ai_router = ai_router
         else:
-            self._ai_router = AIExecutor(self._ai_config, self._secrets)
+            self._ai_router = AIExecutor(
+                self._ai_config,
+                provider_factory=create_ai_provider,
+                secret_broker=create_broker_factory().for_plugin("core"),
+            )
         return self
 
     def with_titan_config(self, titan_config: Optional[Any] = None) -> WorkflowContextBuilder:
@@ -237,7 +237,6 @@ class WorkflowContextBuilder:
     def build(self) -> WorkflowContext:
         """Build the WorkflowContext."""
         return WorkflowContext(
-            secrets=self._secrets,
             plugin_manager=self._plugin_registry,
             titan_config=self._titan_config,
             ai=self._ai,

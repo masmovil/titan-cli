@@ -21,7 +21,9 @@ Titan CLI is a command-line tool with a Textual-based TUI (Terminal User Interfa
 titan-cli/
 ├── titan_cli/                 # Core application
 │   ├── engine/               # Workflow engine
-│   ├── core/                # Config, plugins, workflows, logging, secrets
+│   ├── core/                # Config, plugins, workflows, logging
+│   │   └── security/        # THE secrets trust boundary (vault, broker,
+│   │                        #   redaction) — see Secrets & Security below
 │   ├── ai/                  # AI layer: providers (Anthropic, OpenAI,
 │   │                        #   Gemini, LiteLLM), agents, LLM tools
 │   ├── ui/tui/              # Textual TUI interface
@@ -86,6 +88,25 @@ Workflows are defined in YAML files and executed through steps that can:
 - Display information in the TUI
 
 ## Technical Documentation
+
+### Secrets & Security
+
+**📖 [Secrets & Security Guide](.claude/docs/security.md)** ⭐
+
+**No Titan API ever returns a secret string.** All raw secret handling lives
+behind `titan_cli/core/security/` (CI-enforced import boundary). The rules
+every step/plugin must follow:
+
+- Steps use `ctx.secret_broker` (pre-scoped per plugin); plugins receive a
+  broker in `initialize(config, broker)`. There is **no `get()`** — use
+  `create_client()`, a session factory, or a use-primitive
+  (`run_with_secret_stdin` / `run_with_secret_env` / `with_secret_tempfile`).
+- Never put a raw secret in `ctx.data` or result metadata: `Success`/`Skip`/
+  `Exit` scan their metadata and raise `SecretLeakError`. Wrap plugin-derived
+  sensitive material (decrypted keys, service accounts) in `SensitiveValue`
+  and `reveal()` it as late as possible.
+- Never pass a credential on argv or via the inherited environment — the
+  use-primitives exist for exactly that.
 
 ### Workflows
 
@@ -342,7 +363,7 @@ When creating new steps or refactoring existing ones:
 
 ## Tech Stack
 
-- **Python 3.10+**
+- **Python 3.11+**
 - **Textual**: TUI framework
 - **Anthropic SDK**: Anthropic direct provider
 - **Google GenAI SDK**: Gemini direct provider

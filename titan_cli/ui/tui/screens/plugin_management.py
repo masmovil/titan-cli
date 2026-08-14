@@ -312,7 +312,8 @@ class PluginManagementScreen(BaseScreen):
             return False
 
         token_key = f"{project_name}_slack_user_token"
-        return not bool(self.config.secrets.get(token_key))
+        broker = self.config.broker_factory.for_plugin("slack")
+        return not broker.exists(token_key)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle plugin selection (Enter key)."""
@@ -418,6 +419,22 @@ class PluginManagementScreen(BaseScreen):
 
             version = self.config.registry.get_plugin_version(plugin_name)
             details.mount(Static(f"[bold]Version:[/bold] {version}"))
+
+            trust = self.config.registry.get_plugin_trust(plugin_name)
+            if trust is not None:
+                details.mount(Static(f"[bold]Trust:[/bold] {trust}"))
+
+            findings = self.config.registry.get_security_findings(plugin_name)
+            if findings:
+                details.mount(Text(""))
+                details.mount(Static(
+                    f"[bold yellow]⚠ Security scan:[/bold yellow] this plugin's source "
+                    f"touches secret machinery ({len(findings)} finding(s)):"
+                ))
+                for finding in findings[:5]:
+                    details.mount(DimText(f"  {finding.file}:{finding.line} — {finding.detail}"))
+                if len(findings) > 5:
+                    details.mount(DimText(f"  … and {len(findings) - 5} more (see logs)"))
 
         # Check if plugin has configuration schema
         has_config = False

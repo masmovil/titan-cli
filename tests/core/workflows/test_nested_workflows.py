@@ -9,7 +9,6 @@ import yaml
 from titan_cli.core.workflows.workflow_registry import WorkflowRegistry
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.workflows.project_step_source import ProjectStepSource
-from titan_cli.core.secrets import SecretManager
 from titan_cli.engine.workflow_executor import WorkflowExecutor
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Error
@@ -160,8 +159,7 @@ def test_nested_workflow_not_found(create_workflow_file, workflow_registry, mock
 
     # When executor tries to run this, it should fail gracefully
     executor = WorkflowExecutor(workflow_registry, mock_plugin_registry)
-    mock_secrets = MagicMock(spec=SecretManager)
-    ctx = WorkflowContext(secrets=mock_secrets, data={}, plugin_manager=None)
+    ctx = WorkflowContext(data={}, plugin_manager=None)
 
     # Execute the workflow step that references non-existent workflow
     from titan_cli.core.workflows.models import WorkflowStepModel
@@ -544,8 +542,7 @@ def test_hook_steps_skipped_during_execution(create_workflow_file, workflow_regi
 
     # Create executor and context
     executor = WorkflowExecutor(workflow_registry, mock_plugin_registry)
-    mock_secrets = MagicMock(spec=SecretManager)
-    ctx = WorkflowContext(secrets=mock_secrets, data={}, plugin_manager=None)
+    ctx = WorkflowContext(data={}, plugin_manager=None)
 
     # Execute workflow - this should skip the hook steps
     # Note: We expect command steps to fail since we're in a test environment,
