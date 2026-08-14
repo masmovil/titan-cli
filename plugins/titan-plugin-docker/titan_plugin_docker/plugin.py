@@ -6,7 +6,7 @@ from pathlib import Path
 from titan_cli.core.plugins.models import DockerPluginConfig
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker
 
 from .clients.docker_client import DockerClient
 from .exceptions import DockerClientError
@@ -30,7 +30,7 @@ class DockerPlugin(TitanPlugin):
     def dependencies(self) -> list[str]:
         return []
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         """
         Initialize with configuration.
 
