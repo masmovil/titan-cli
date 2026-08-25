@@ -7,7 +7,7 @@ packages = [{include = "titan_plugin_slack"}]
 
 [tool.poetry.dependencies]
 python = ">=3.11"
-titan-cli = ">=0.7.2"
+titan-cli = ">=0.8.0"
 slack-sdk = ">=3.27.0"
 requests = ">=2.31.0"
 

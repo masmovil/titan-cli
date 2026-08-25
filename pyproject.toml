@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "titan-cli"
-version = "0.7.2"
+version = "0.8.0"
 description = "Modular development tools orchestrator - Streamline your workflows with AI integration and intuitive terminal UI"
 authors = ["MasOrange Apps Team <apps-management-stores@masorange.es>"]
 readme = "README.md"
