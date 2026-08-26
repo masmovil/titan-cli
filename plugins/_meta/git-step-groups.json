@@ -1,0 +1,56 @@
+{
+  "plugin": "git",
+  "groups": [
+    {
+      "name": "Status and Inspection",
+      "steps": [
+        {"name": "get_status", "summary": "Retrieve repository status and expose `git_status` to the workflow context."},
+        {"name": "get_current_branch", "summary": "Resolve the currently checked out branch name."},
+        {"name": "get_base_branch", "summary": "Resolve the base branch used by Git workflows."}
+      ]
+    },
+    {
+      "name": "Commits",
+      "steps": [
+        {"name": "create_commit", "summary": "Create a commit from context-provided commit message data."},
+        {"name": "push", "summary": "Push the current branch to the configured remote."},
+        {"name": "ai_generate_commit_message", "summary": "Generate a commit message from current uncommitted changes using AI."}
+      ]
+    },
+    {
+      "name": "Branching",
+      "steps": [
+        {"name": "save_current_branch", "summary": "Store the current branch in workflow context for later restore."},
+        {"name": "restore_original_branch", "summary": "Return to the branch saved earlier in workflow context."},
+        {"name": "checkout", "summary": "Checkout a specific branch from workflow context."},
+        {"name": "pull", "summary": "Update the current branch from the configured remote."},
+        {"name": "create_branch", "summary": "Create a new branch from workflow-provided branch data."}
+      ]
+    },
+    {
+      "name": "Merging",
+      "steps": [
+        {"name": "resolve_merge_target", "summary": "Resolve which branch is merged and verify the repository is ready for it."},
+        {"name": "fetch_merge_source", "summary": "Fetch the source branch from the remote without moving HEAD."},
+        {"name": "merge_source_branch", "summary": "Merge the fetched ref into the current branch and report conflicts."},
+        {"name": "complete_merge", "summary": "Stage resolved conflicts and commit the merge with git's suggested message."}
+      ]
+    },
+    {
+      "name": "Diff Summaries",
+      "steps": [
+        {"name": "show_uncommitted_diff_summary", "summary": "Summarize local uncommitted changes for humans and downstream AI steps."},
+        {"name": "show_branch_diff_summary", "summary": "Summarize branch-level changes relative to the base branch."}
+      ]
+    },
+    {
+      "name": "Worktrees",
+      "steps": [
+        {"name": "create_worktree", "summary": "Create a worktree for isolated branch work."},
+        {"name": "remove_worktree", "summary": "Remove a previously created worktree."},
+        {"name": "worktree_commit", "summary": "Create a commit inside a specific worktree."},
+        {"name": "worktree_push", "summary": "Push a branch from a specific worktree."}
+      ]
+    }
+  ]
+}

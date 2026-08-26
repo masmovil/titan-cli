@@ -1,0 +1,3833 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Modular development tools orchestrator — Automate Git, GitHub, Jira workflows with AI assistance">
+      
+      
+      
+        <link rel="canonical" href="https://masorange.github.io/titan-cli/plugins/github/client-api/">
+      
+      
+        <link rel="prev" href="../overview/">
+      
+      
+        <link rel="next" href="../workflow-steps/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Client API - Titan CLI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#github-client-api" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Titan CLI" class="md-header__button md-logo" aria-label="Titan CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Titan CLI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Client API
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/masorange/titan-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    masorange/titan-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../concepts/workflows/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../contributing/development-setup/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Titan CLI" class="md-nav__button md-logo" aria-label="Titan CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Titan CLI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/masorange/titan-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    masorange/titan-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/your-first-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Your First Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/your-first-textual-step/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Your First Textual Step
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/textual-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Textual in Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/ai-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Git
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../git/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../git/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../git/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../git/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GitHub
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accessing-the-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessing the client
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pull-request-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pull request operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pull request operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a pull request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a pull request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-pull-requests-pending-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List pull requests pending review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-your-pull-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List your pull requests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-all-pull-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List all pull requests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-a-pull-request-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read a pull request diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-patches-for-specific-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read patches for specific files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-changed-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List changed files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-changed-files-with-stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List changed files with stats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkout-a-pull-request-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkout a pull request locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#add-a-pr-comment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add a PR comment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-pr-head-commit-sha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the PR head commit SHA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-referenced-commit-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read referenced commit context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merge-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge a pull request
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Review operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-review-threads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get review threads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resolve-a-review-thread" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolve a review thread
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-reviews-for-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get reviews for a pull request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-draft-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a draft review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#submit-a-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Submit a review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-draft-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a draft review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reply-to-a-review-comment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply to a review comment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-general-pr-comments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get general PR comments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#add-a-general-issue-style-comment-to-a-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add a general issue-style comment to a PR
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#request-or-re-request-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request or re-request review
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#issue-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Issue operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-an-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create an issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-repository-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List repository labels
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Release operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a release
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-releases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List releases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contents-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contents operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Contents operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#list-a-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List a directory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-path-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a path exists
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#team-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Team operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Team operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#list-team-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List team members
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utility-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Utility operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Utility operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#read-the-pr-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read the PR template
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-current-github-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the current GitHub user
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-users-display-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a user's display name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-current-users-display-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the current user's display name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-default-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the default branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-profile-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review profile configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Review profile configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#review-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resolution-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolution rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jira
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Jira
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Slack
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Docker
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/development-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accessing-the-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessing the client
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pull-request-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pull request operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Pull request operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a pull request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a pull request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-pull-requests-pending-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List pull requests pending review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-your-pull-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List your pull requests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-all-pull-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List all pull requests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-a-pull-request-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read a pull request diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-patches-for-specific-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read patches for specific files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-changed-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List changed files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-changed-files-with-stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List changed files with stats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkout-a-pull-request-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkout a pull request locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#add-a-pr-comment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add a PR comment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-pr-head-commit-sha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the PR head commit SHA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-referenced-commit-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read referenced commit context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merge-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge a pull request
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Review operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-review-threads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get review threads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resolve-a-review-thread" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolve a review thread
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-reviews-for-a-pull-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get reviews for a pull request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-draft-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a draft review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#submit-a-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Submit a review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-draft-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a draft review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reply-to-a-review-comment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply to a review comment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-general-pr-comments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get general PR comments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#add-a-general-issue-style-comment-to-a-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add a general issue-style comment to a PR
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#request-or-re-request-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request or re-request review
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#issue-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issue operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Issue operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-an-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create an issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-repository-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List repository labels
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Release operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a release
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-releases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List releases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contents-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contents operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Contents operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#list-a-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List a directory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-path-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a path exists
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#team-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Team operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Team operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#list-team-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List team members
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#utility-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Utility operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Utility operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#read-the-pr-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read the PR template
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-current-github-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the current GitHub user
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-users-display-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a user's display name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-current-users-display-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the current user's display name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-default-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the default branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-profile-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review profile configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Review profile configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#review-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resolution-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolution rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="github-client-api">GitHub Client API<a class="headerlink" href="#github-client-api" title="Permanent link">&para;</a></h1>
+<p>The GitHub plugin adds GitHub operations to Titan through a high-level client and reusable workflows. It covers pull requests, reviews, issues, releases, teams, and repository metadata.</p>
+<p>This page documents the plugin from a functional point of view, while also showing how each capability is called and which parameters it needs.</p>
+<hr />
+<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
+<p>To use the GitHub plugin in a project:</p>
+<ul>
+<li>Enable the <code>github</code> plugin in <code>.titan/config.toml</code></li>
+<li>Enable the <code>git</code> plugin, because the GitHub plugin depends on it</li>
+<li>Use a GitHub repository that is either configured explicitly or detectable from the git remote</li>
+<li>Install and authenticate the <code>gh</code> CLI</li>
+</ul>
+<p>Example project configuration:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">[plugins.git]</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">[plugins.github]</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">[plugins.github.config]</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">repo_owner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;example-org&quot;</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">repo_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;example-repo&quot;</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">default_branch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;main&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">pr_template_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;.github/pull_request_template.md&quot;</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">auto_assign_prs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<hr />
+<h2 id="accessing-the-client">Accessing the client<a class="headerlink" href="#accessing-the-client" title="Permanent link">&para;</a></h2>
+<p>In Titan code, the public entry point is the GitHub plugin client:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">github_plugin</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">registry</span><span class="o">.</span><span class="n">get_plugin</span><span class="p">(</span><span class="s2">&quot;github&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">client</span> <span class="o">=</span> <span class="n">github_plugin</span><span class="o">.</span><span class="n">get_client</span><span class="p">()</span>
+</code></pre></div>
+<p>The client returns <code>ClientResult[...]</code> values. In practice, this means each call can succeed with data or return an error result.</p>
+<hr />
+<h2 id="pull-request-operations">Pull request operations<a class="headerlink" href="#pull-request-operations" title="Permanent link">&para;</a></h2>
+<h3 id="create-a-pull-request">Create a pull request<a class="headerlink" href="#create-a-pull-request" title="Permanent link">&para;</a></h3>
+<p>Creates a new pull request from a head branch into a base branch.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">client</span><span class="o">.</span><span class="n">create_pull_request</span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;Add search filters&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">body</span><span class="o">=</span><span class="s2">&quot;## Summary</span><span class="se">\n</span><span class="s2">- adds filter controls</span><span class="se">\n</span><span class="s2">- updates results state&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">base</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">head</span><span class="o">=</span><span class="s2">&quot;feature/search-filters&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">draft</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">assignees</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;alice&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">reviewers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;bob&quot;</span><span class="p">,</span> <span class="s2">&quot;example-org/backend-team&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">labels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;feature&quot;</span><span class="p">,</span> <span class="s2">&quot;ui&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">excluded_reviewers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;carol&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>title</code>: Required. Pull request title.</li>
+<li><code>body</code>: Required. Pull request description.</li>
+<li><code>base</code>: Required. Target branch.</li>
+<li><code>head</code>: Required. Source branch.</li>
+<li><code>draft</code>: Optional. Whether to create the PR as draft.</li>
+<li><code>assignees</code>: Optional. GitHub usernames to assign.</li>
+<li><code>reviewers</code>: Optional. Usernames or teams.</li>
+<li><code>labels</code>: Optional. Labels to apply.</li>
+<li><code>excluded_reviewers</code>: Optional. Usernames to exclude after team expansion.</li>
+</ul>
+<h3 id="get-a-pull-request">Get a pull request<a class="headerlink" href="#get-a-pull-request" title="Permanent link">&para;</a></h3>
+<p>Fetches a single pull request by number.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pull_request</span><span class="p">(</span><span class="mi">123</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>A <code>UIPullRequest</code> object with the following fields:</p>
+<ul>
+<li><code>number</code>: PR number</li>
+<li><code>title</code>: PR title  </li>
+<li><code>body</code>: PR description</li>
+<li><code>status_icon</code>: Status emoji (🟢 open, 🔴 closed, 🟣 merged, 📝 draft)</li>
+<li><code>state</code>: PR state (OPEN, CLOSED, MERGED)</li>
+<li><code>author_name</code>: GitHub username of PR author</li>
+<li><code>head_ref</code>: Source branch name</li>
+<li><code>base_ref</code>: Target branch name</li>
+<li><code>branch_info</code>: Formatted branch information (e.g., "feature/xyz → main")</li>
+<li><code>stats</code>: Formatted change statistics (e.g., "+123 -45")</li>
+<li><code>files_changed</code>: Number of files changed</li>
+<li><code>is_mergeable</code>: Whether the PR can be merged</li>
+<li><code>is_draft</code>: Whether the PR is a draft</li>
+<li><code>review_summary</code>: Formatted review status (e.g., "✅ 2 approved")</li>
+<li><code>labels</code>: List of label names</li>
+<li><code>requested_reviewers</code>: GitHub usernames of all users requested to review</li>
+<li><code>pending_reviewers</code>: GitHub usernames of users who haven't reviewed yet</li>
+</ul>
+<h3 id="list-pull-requests-pending-review">List pull requests pending review<a class="headerlink" href="#list-pull-requests-pending-review" title="Permanent link">&para;</a></h3>
+<p>Returns PRs that still need your review.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_pending_review_prs</span><span class="p">(</span><span class="n">max_results</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span> <span class="n">include_team_reviews</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>max_results</code>: Optional. Maximum number of PRs to return.</li>
+<li><code>include_team_reviews</code>: Optional. Include PRs requested from your teams.</li>
+</ul>
+<h3 id="list-your-pull-requests">List your pull requests<a class="headerlink" href="#list-your-pull-requests" title="Permanent link">&para;</a></h3>
+<p>Returns pull requests created by the authenticated user.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_my_prs</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="s2">&quot;open&quot;</span><span class="p">,</span> <span class="n">max_results</span><span class="o">=</span><span class="mi">25</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>state</code>: Optional. PR state such as <code>open</code>, <code>closed</code>, or <code>merged</code>.</li>
+<li><code>max_results</code>: Optional. Maximum number of PRs to return.</li>
+</ul>
+<h3 id="list-all-pull-requests">List all pull requests<a class="headerlink" href="#list-all-pull-requests" title="Permanent link">&para;</a></h3>
+<p>Returns pull requests from the repository without filtering by author.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_all_prs</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="s2">&quot;open&quot;</span><span class="p">,</span> <span class="n">max_results</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>state</code>: Optional. PR state such as <code>open</code>, <code>closed</code>, or <code>merged</code>.</li>
+<li><code>max_results</code>: Optional. Maximum number of PRs to return.</li>
+</ul>
+<h3 id="read-a-pull-request-diff">Read a pull request diff<a class="headerlink" href="#read-a-pull-request-diff" title="Permanent link">&para;</a></h3>
+<p>Returns the pull request diff as text.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_diff</span><span class="p">(</span><span class="n">pr_number</span><span class="o">=</span><span class="mi">123</span><span class="p">,</span> <span class="n">context_lines</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>context_lines</code>: Optional. Number of diff context lines.</li>
+</ul>
+<h3 id="read-patches-for-specific-files">Read patches for specific files<a class="headerlink" href="#read-patches-for-specific-files" title="Permanent link">&para;</a></h3>
+<p>Returns patch text only for selected files in a PR.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_file_patches</span><span class="p">(</span><span class="mi">123</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;src/search.py&quot;</span><span class="p">,</span> <span class="s2">&quot;tests/test_search.py&quot;</span><span class="p">])</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>file_paths</code>: Required. List of paths to extract patches for.</li>
+</ul>
+<h3 id="list-changed-files">List changed files<a class="headerlink" href="#list-changed-files" title="Permanent link">&para;</a></h3>
+<p>Returns the file paths changed in a pull request.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_files</span><span class="p">(</span><span class="mi">123</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+</ul>
+<h3 id="list-changed-files-with-stats">List changed files with stats<a class="headerlink" href="#list-changed-files-with-stats" title="Permanent link">&para;</a></h3>
+<p>Returns each changed file together with additions, deletions, and status.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_files_with_stats</span><span class="p">(</span><span class="mi">123</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+</ul>
+<h3 id="checkout-a-pull-request-locally">Checkout a pull request locally<a class="headerlink" href="#checkout-a-pull-request-locally" title="Permanent link">&para;</a></h3>
+<p>Checks out the pull request branch in the local repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">client</span><span class="o">.</span><span class="n">checkout_pr</span><span class="p">(</span><span class="mi">123</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+</ul>
+<h3 id="add-a-pr-comment">Add a PR comment<a class="headerlink" href="#add-a-pr-comment" title="Permanent link">&para;</a></h3>
+<p>Adds a general comment to a pull request.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">client</span><span class="o">.</span><span class="n">add_comment</span><span class="p">(</span><span class="mi">123</span><span class="p">,</span> <span class="s2">&quot;Please add test coverage for the empty state.&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>body</code>: Required. Comment body.</li>
+</ul>
+<h3 id="get-the-pr-head-commit-sha">Get the PR head commit SHA<a class="headerlink" href="#get-the-pr-head-commit-sha" title="Permanent link">&para;</a></h3>
+<p>Returns the pull request's head commit SHA (<code>headRefOid</code>). Reliable regardless of
+how many commits the PR has — it does not depend on the commit list, which the
+<code>gh</code> CLI truncates at 100 entries.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_commit_sha</span><span class="p">(</span><span class="mi">123</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+</ul>
+<h3 id="read-referenced-commit-context">Read referenced commit context<a class="headerlink" href="#read-referenced-commit-context" title="Permanent link">&para;</a></h3>
+<p>Returns compact remote context for a commit SHA mentioned in review discussion,
+including changed files and a truncated patch excerpt suitable for AI prompts.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_commit_review_context</span><span class="p">(</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="s2">&quot;343e2e9&quot;</span><span class="p">,</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="n">max_files</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="n">max_patch_chars</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>commit_ref</code>: Required. Full or short commit SHA resolvable in the current repository.</li>
+<li><code>max_files</code>: Optional. Maximum number of changed files to include in the returned context.</li>
+<li><code>max_patch_chars</code>: Optional. Maximum combined patch excerpt size before truncation.</li>
+</ul>
+<h3 id="merge-a-pull-request">Merge a pull request<a class="headerlink" href="#merge-a-pull-request" title="Permanent link">&para;</a></h3>
+<p>Merges a pull request using the selected merge strategy.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">client</span><span class="o">.</span><span class="n">merge_pr</span><span class="p">(</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">pr_number</span><span class="o">=</span><span class="mi">123</span><span class="p">,</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="n">merge_method</span><span class="o">=</span><span class="s2">&quot;squash&quot;</span><span class="p">,</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">commit_title</span><span class="o">=</span><span class="s2">&quot;Add search filters&quot;</span><span class="p">,</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">commit_message</span><span class="o">=</span><span class="s2">&quot;Adds filtering controls and updates result handling.&quot;</span><span class="p">,</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>merge_method</code>: Optional. Merge strategy such as <code>merge</code>, <code>squash</code>, or <code>rebase</code>.</li>
+<li><code>commit_title</code>: Optional. Merge commit title.</li>
+<li><code>commit_message</code>: Optional. Merge commit message.</li>
+</ul>
+<hr />
+<h2 id="review-operations">Review operations<a class="headerlink" href="#review-operations" title="Permanent link">&para;</a></h2>
+<h3 id="get-review-threads">Get review threads<a class="headerlink" href="#get-review-threads" title="Permanent link">&para;</a></h3>
+<p>Returns code review threads for a pull request.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_review_threads</span><span class="p">(</span><span class="n">pr_number</span><span class="o">=</span><span class="mi">123</span><span class="p">,</span> <span class="n">include_resolved</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>include_resolved</code>: Optional. Include resolved threads.</li>
+</ul>
+<h3 id="resolve-a-review-thread">Resolve a review thread<a class="headerlink" href="#resolve-a-review-thread" title="Permanent link">&para;</a></h3>
+<p>Marks a review thread as resolved.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">client</span><span class="o">.</span><span class="n">resolve_review_thread</span><span class="p">(</span><span class="s2">&quot;THREAD_NODE_ID&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>thread_node_id</code>: Required. GraphQL node ID of the thread.</li>
+</ul>
+<h3 id="get-reviews-for-a-pull-request">Get reviews for a pull request<a class="headerlink" href="#get-reviews-for-a-pull-request" title="Permanent link">&para;</a></h3>
+<p>Returns submitted reviews such as approvals, change requests, and comments.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_reviews</span><span class="p">(</span><span class="mi">123</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+</ul>
+<h3 id="create-a-draft-review">Create a draft review<a class="headerlink" href="#create-a-draft-review" title="Permanent link">&para;</a></h3>
+<p>Creates a draft review before submitting it.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">client</span><span class="o">.</span><span class="n">create_draft_review</span><span class="p">(</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>    <span class="n">pr_number</span><span class="o">=</span><span class="mi">123</span><span class="p">,</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>    <span class="n">payload</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>        <span class="s2">&quot;body&quot;</span><span class="p">:</span> <span class="s2">&quot;I left a few comments.&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>        <span class="s2">&quot;comments&quot;</span><span class="p">:</span> <span class="p">[],</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>    <span class="p">},</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>payload</code>: Required. Review payload to send to GitHub.</li>
+</ul>
+<h3 id="submit-a-review">Submit a review<a class="headerlink" href="#submit-a-review" title="Permanent link">&para;</a></h3>
+<p>Submits a review event, optionally using an existing draft review.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">client</span><span class="o">.</span><span class="n">submit_review</span><span class="p">(</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>    <span class="n">pr_number</span><span class="o">=</span><span class="mi">123</span><span class="p">,</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>    <span class="n">review_id</span><span class="o">=</span><span class="mi">456</span><span class="p">,</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>    <span class="n">event</span><span class="o">=</span><span class="s2">&quot;APPROVE&quot;</span><span class="p">,</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>    <span class="n">body</span><span class="o">=</span><span class="s2">&quot;Looks good to me.&quot;</span><span class="p">,</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>review_id</code>: Optional. Draft review ID, or <code>None</code> to submit directly.</li>
+<li><code>event</code>: Required. Review event such as <code>APPROVE</code>, <code>REQUEST_CHANGES</code>, or <code>COMMENT</code>.</li>
+<li><code>body</code>: Optional. Review summary text.</li>
+</ul>
+<h3 id="delete-a-draft-review">Delete a draft review<a class="headerlink" href="#delete-a-draft-review" title="Permanent link">&para;</a></h3>
+<p>Deletes an existing draft review.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">client</span><span class="o">.</span><span class="n">delete_review</span><span class="p">(</span><span class="n">pr_number</span><span class="o">=</span><span class="mi">123</span><span class="p">,</span> <span class="n">review_id</span><span class="o">=</span><span class="mi">456</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>review_id</code>: Required. Draft review ID.</li>
+</ul>
+<h3 id="reply-to-a-review-comment">Reply to a review comment<a class="headerlink" href="#reply-to-a-review-comment" title="Permanent link">&para;</a></h3>
+<p>Adds a reply to an existing PR review comment.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="n">client</span><span class="o">.</span><span class="n">reply_to_comment</span><span class="p">(</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>    <span class="n">pr_number</span><span class="o">=</span><span class="mi">123</span><span class="p">,</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>    <span class="n">comment_id</span><span class="o">=</span><span class="mi">789</span><span class="p">,</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>    <span class="n">body</span><span class="o">=</span><span class="s2">&quot;Updated in the latest commit.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>comment_id</code>: Required. Comment ID to reply to.</li>
+<li><code>body</code>: Required. Reply text.</li>
+</ul>
+<h3 id="get-general-pr-comments">Get general PR comments<a class="headerlink" href="#get-general-pr-comments" title="Permanent link">&para;</a></h3>
+<p>Returns PR comments that are not attached to a code line: top-level conversation
+comments plus the summary bodies of submitted reviews (where findings without an
+inline anchor end up). Pending reviews and empty review bodies (plain approvals)
+are skipped. Each entry is wrapped as a pseudo-thread whose <code>thread_id</code> starts
+with <code>general_</code>.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_general_comments</span><span class="p">(</span><span class="mi">123</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+</ul>
+<h3 id="add-a-general-issue-style-comment-to-a-pr">Add a general issue-style comment to a PR<a class="headerlink" href="#add-a-general-issue-style-comment-to-a-pr" title="Permanent link">&para;</a></h3>
+<p>Adds a non-inline comment to the pull request conversation.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">client</span><span class="o">.</span><span class="n">add_issue_comment</span><span class="p">(</span><span class="mi">123</span><span class="p">,</span> <span class="s2">&quot;This is ready for another pass.&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>body</code>: Required. Comment body.</li>
+</ul>
+<h3 id="request-or-re-request-review">Request or re-request review<a class="headerlink" href="#request-or-re-request-review" title="Permanent link">&para;</a></h3>
+<p>Requests review from one or more users.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">client</span><span class="o">.</span><span class="n">request_pr_review</span><span class="p">(</span><span class="mi">123</span><span class="p">,</span> <span class="n">reviewers</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;alice&quot;</span><span class="p">,</span> <span class="s2">&quot;bob&quot;</span><span class="p">])</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>pr_number</code>: Required. Pull request number.</li>
+<li><code>reviewers</code>: Optional. List of GitHub usernames.</li>
+</ul>
+<hr />
+<h2 id="issue-operations">Issue operations<a class="headerlink" href="#issue-operations" title="Permanent link">&para;</a></h2>
+<h3 id="create-an-issue">Create an issue<a class="headerlink" href="#create-an-issue" title="Permanent link">&para;</a></h3>
+<p>Creates a new GitHub issue.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">client</span><span class="o">.</span><span class="n">create_issue</span><span class="p">(</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;Search results are not paginated&quot;</span><span class="p">,</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>    <span class="n">body</span><span class="o">=</span><span class="s2">&quot;The results page should support server-side pagination.&quot;</span><span class="p">,</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>    <span class="n">assignees</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;alice&quot;</span><span class="p">],</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>    <span class="n">labels</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;bug&quot;</span><span class="p">,</span> <span class="s2">&quot;backend&quot;</span><span class="p">],</span>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>title</code>: Required. Issue title.</li>
+<li><code>body</code>: Required. Issue body.</li>
+<li><code>assignees</code>: Optional. Assignee usernames.</li>
+<li><code>labels</code>: Optional. Labels to apply.</li>
+</ul>
+<h3 id="list-repository-labels">List repository labels<a class="headerlink" href="#list-repository-labels" title="Permanent link">&para;</a></h3>
+<p>Returns the labels available in the repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_labels</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<hr />
+<h2 id="release-operations">Release operations<a class="headerlink" href="#release-operations" title="Permanent link">&para;</a></h2>
+<h3 id="create-a-release">Create a release<a class="headerlink" href="#create-a-release" title="Permanent link">&para;</a></h3>
+<p>Creates a GitHub release from a tag.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="n">client</span><span class="o">.</span><span class="n">create_release</span><span class="p">(</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>    <span class="n">tag_name</span><span class="o">=</span><span class="s2">&quot;v1.2.0&quot;</span><span class="p">,</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;v1.2.0&quot;</span><span class="p">,</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    <span class="n">notes</span><span class="o">=</span><span class="s2">&quot;Release notes for version 1.2.0.&quot;</span><span class="p">,</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>    <span class="n">generate_notes</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>    <span class="n">verify_tag</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>    <span class="n">prerelease</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>tag_name</code>: Required. Git tag to release.</li>
+<li><code>title</code>: Optional. Release title.</li>
+<li><code>notes</code>: Optional. Release notes.</li>
+<li><code>generate_notes</code>: Optional. Let GitHub generate the notes automatically.</li>
+<li><code>verify_tag</code>: Optional. Verify that the tag exists before creating the release.</li>
+<li><code>prerelease</code>: Optional. Mark the release as prerelease.</li>
+</ul>
+<h3 id="list-releases">List releases<a class="headerlink" href="#list-releases" title="Permanent link">&para;</a></h3>
+<p>Lists published GitHub releases for the repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_releases</span><span class="p">(</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>    <span class="n">limit</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>    <span class="n">exclude_drafts</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>limit</code>: Optional. Maximum number of releases to return. Defaults to <code>15</code>.</li>
+<li><code>exclude_drafts</code>: Optional. Exclude draft releases from the result. Defaults to <code>True</code>.</li>
+</ul>
+<p>Returns a <code>ClientResult[List[UIRelease]]</code>. Each <code>UIRelease</code> includes <code>tag_name</code>, <code>title</code>, <code>url</code>, <code>is_prerelease</code>, <code>published_at</code>, and <code>is_draft</code>. The <code>body</code> field is left empty for list results — call <code>get_release</code> to fetch the full notes.</p>
+<h3 id="get-a-release">Get a release<a class="headerlink" href="#get-a-release" title="Permanent link">&para;</a></h3>
+<p>Fetches a single GitHub release, including its full notes body.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_release</span><span class="p">(</span><span class="n">tag_name</span><span class="o">=</span><span class="s2">&quot;v1.2.0&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>tag_name</code>: Required. Tag of the release to fetch.</li>
+</ul>
+<p>Returns a <code>ClientResult[UIRelease]</code> with <code>body</code> populated with the release notes text.</p>
+<hr />
+<h2 id="contents-operations">Contents operations<a class="headerlink" href="#contents-operations" title="Permanent link">&para;</a></h2>
+<p>Browse a repository's file tree through the GitHub Contents API, without cloning it locally. Both methods default to the client's own configured repo, but accept <code>repo_owner</code>/<code>repo_name</code> to read from a different repository.</p>
+<h3 id="list-a-directory">List a directory<a class="headerlink" href="#list-a-directory" title="Permanent link">&para;</a></h3>
+<p>Lists the entries of a directory in a repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_repository_directory</span><span class="p">(</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>    <span class="s2">&quot;services/backend&quot;</span><span class="p">,</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>    <span class="n">ref</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>    <span class="n">repo_owner</span><span class="o">=</span><span class="s2">&quot;example-org&quot;</span><span class="p">,</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>    <span class="n">repo_name</span><span class="o">=</span><span class="s2">&quot;other-repo&quot;</span><span class="p">,</span>
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>path</code>: Required. Directory path relative to the repo root. Pass <code>""</code> for the repo root.</li>
+<li><code>ref</code>: Optional. Branch, tag, or commit SHA to read from. Defaults to the repo's default branch.</li>
+<li><code>repo_owner</code>: Optional. Overrides the client's configured repo owner for this call.</li>
+<li><code>repo_name</code>: Optional. Overrides the client's configured repo name for this call.</li>
+</ul>
+<p>Returns a <code>ClientResult[List[dict]]</code>. Each entry is shaped like <code>{"name": str, "path": str, "type": "dir" | "file"}</code>. Returns <code>ClientError</code> (<code>NOT_A_DIRECTORY</code>) if <code>path</code> points to a file instead of a directory, and <code>ClientError</code> (<code>NOT_FOUND</code>) if the path doesn't exist.</p>
+<h3 id="check-whether-a-path-exists">Check whether a path exists<a class="headerlink" href="#check-whether-a-path-exists" title="Permanent link">&para;</a></h3>
+<p>Checks whether a path exists in a repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">client</span><span class="o">.</span><span class="n">path_exists</span><span class="p">(</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>    <span class="s2">&quot;Dockerfile&quot;</span><span class="p">,</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>    <span class="n">ref</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a>    <span class="n">repo_owner</span><span class="o">=</span><span class="s2">&quot;example-org&quot;</span><span class="p">,</span>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>    <span class="n">repo_name</span><span class="o">=</span><span class="s2">&quot;other-repo&quot;</span><span class="p">,</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>path</code>: Required. Path relative to the repo root.</li>
+<li><code>ref</code>: Optional. Branch, tag, or commit SHA to check against. Defaults to the repo's default branch.</li>
+<li><code>repo_owner</code>: Optional. Overrides the client's configured repo owner for this call.</li>
+<li><code>repo_name</code>: Optional. Overrides the client's configured repo name for this call.</li>
+</ul>
+<p>Returns a <code>ClientResult[bool]</code> — <code>ClientSuccess(data=False)</code> for a missing path, not a <code>ClientError</code>.</p>
+<hr />
+<h2 id="team-operations">Team operations<a class="headerlink" href="#team-operations" title="Permanent link">&para;</a></h2>
+<h3 id="list-team-members">List team members<a class="headerlink" href="#list-team-members" title="Permanent link">&para;</a></h3>
+<p>Returns the members of a GitHub team.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_team_members</span><span class="p">(</span><span class="s2">&quot;example-org/backend-team&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>team_slug</code>: Required. Team identifier in <code>org/team</code> format.</li>
+</ul>
+<p>This is also used internally when a pull request is created with team reviewers.</p>
+<hr />
+<h2 id="utility-operations">Utility operations<a class="headerlink" href="#utility-operations" title="Permanent link">&para;</a></h2>
+<h3 id="read-the-pr-template">Read the PR template<a class="headerlink" href="#read-the-pr-template" title="Permanent link">&para;</a></h3>
+<p>Returns the configured PR template content when one is available.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_pr_template</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-the-current-github-user">Get the current GitHub user<a class="headerlink" href="#get-the-current-github-user" title="Permanent link">&para;</a></h3>
+<p>Returns the authenticated GitHub username.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_current_user</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-a-users-display-name">Get a user's display name<a class="headerlink" href="#get-a-users-display-name" title="Permanent link">&para;</a></h3>
+<p>Returns the display name for a GitHub login, falling back to the login if needed.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_user_display_name</span><span class="p">(</span><span class="s2">&quot;alice&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>login</code>: Required. GitHub username.</li>
+</ul>
+<h3 id="get-the-current-users-display-name">Get the current user's display name<a class="headerlink" href="#get-the-current-users-display-name" title="Permanent link">&para;</a></h3>
+<p>Returns the display name of the authenticated user.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_current_user_display_name</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-the-default-branch">Get the default branch<a class="headerlink" href="#get-the-default-branch" title="Permanent link">&para;</a></h3>
+<p>Returns the repository default branch from Titan config, GitHub metadata, or local git configuration.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_default_branch</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<hr />
+<h2 id="related-workflows">Related workflows<a class="headerlink" href="#related-workflows" title="Permanent link">&para;</a></h2>
+<p>The GitHub plugin ships with workflows that use these capabilities directly:</p>
+<ul>
+<li><code>create-pr-ai</code>: Creates a pull request after committing and pushing changes, with AI-generated PR content.</li>
+<li><code>create-issue-ai</code>: Creates a GitHub issue from an AI-suggested title and description.</li>
+<li><code>review-pr</code>: Runs a focused AI review over the changed files most likely to contain actionable problems.</li>
+<li><code>respond-pr-comments</code>: Helps review pending comments, reply to them, and request another review.</li>
+</ul>
+<p>These workflows can be used as-is or extended from <code>.titan/workflows/</code>.</p>
+<h2 id="review-profile-configuration">Review profile configuration<a class="headerlink" href="#review-profile-configuration" title="Permanent link">&para;</a></h2>
+<p>The <code>review-pr</code> workflow can be tailored per project with files under <code>.titan/review/</code>.
+If these files do not exist, the plugin uses built-in defaults automatically.</p>
+<h3 id="review-profile">Review profile<a class="headerlink" href="#review-profile" title="Permanent link">&para;</a></h3>
+<p>File: <code>.titan/review/profile.yaml</code></p>
+<p>Controls path heuristics used to:</p>
+<ul>
+<li>classify the PR shape</li>
+<li>score candidate files for deep review</li>
+<li>select applicable review axes</li>
+</ul>
+<p>Supported fields:</p>
+<ul>
+<li><code>version</code>: Required format version. Current value: <code>1</code>.</li>
+<li><code>change_patterns</code>: Optional. Map of pattern groups such as <code>central_behavior</code>, <code>entrypoint</code>, or <code>repeated_callsite</code> to glob lists.</li>
+<li><code>file_roles</code>: Optional. Ordered map from functional role name to glob lists. First match wins.</li>
+<li><code>candidate_scoring</code>: Optional. List of rules with:</li>
+<li><code>name</code>: Required rule identifier.</li>
+<li><code>patterns</code>: Required glob list.</li>
+<li><code>score_delta</code>: Required integer score adjustment.</li>
+<li><code>reason</code>: Required explanation attached to the candidate.</li>
+<li><code>candidate_exclusions</code>: Optional thresholds with:</li>
+<li><code>low_signal_test_max_changes</code>: Optional integer.</li>
+<li><code>low_signal_config_max_changes</code>: Optional integer.</li>
+<li><code>review_axes</code>: Optional map keyed by checklist category ID with:</li>
+<li><code>always_include</code>: Optional boolean.</li>
+<li><code>patterns</code>: Optional glob list.</li>
+</ul>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>
+<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a><span class="nt">change_patterns</span><span class="p">:</span>
+<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a><span class="w">  </span><span class="nt">central_behavior</span><span class="p">:</span>
+<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;src/**/services/**&quot;</span>
+<a id="__codelineno-39-6" name="__codelineno-39-6" href="#__codelineno-39-6"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;src/**/domain/**&quot;</span>
+<a id="__codelineno-39-7" name="__codelineno-39-7" href="#__codelineno-39-7"></a><span class="w">  </span><span class="nt">repeated_callsite</span><span class="p">:</span>
+<a id="__codelineno-39-8" name="__codelineno-39-8" href="#__codelineno-39-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;src/**/screens/**&quot;</span>
+<a id="__codelineno-39-9" name="__codelineno-39-9" href="#__codelineno-39-9"></a>
+<a id="__codelineno-39-10" name="__codelineno-39-10" href="#__codelineno-39-10"></a><span class="nt">file_roles</span><span class="p">:</span>
+<a id="__codelineno-39-11" name="__codelineno-39-11" href="#__codelineno-39-11"></a><span class="w">  </span><span class="nt">business_logic</span><span class="p">:</span>
+<a id="__codelineno-39-12" name="__codelineno-39-12" href="#__codelineno-39-12"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;src/**/services/**&quot;</span>
+<a id="__codelineno-39-13" name="__codelineno-39-13" href="#__codelineno-39-13"></a><span class="w">  </span><span class="nt">entrypoints_or_ui</span><span class="p">:</span>
+<a id="__codelineno-39-14" name="__codelineno-39-14" href="#__codelineno-39-14"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;src/**/screens/**&quot;</span>
+<a id="__codelineno-39-15" name="__codelineno-39-15" href="#__codelineno-39-15"></a>
+<a id="__codelineno-39-16" name="__codelineno-39-16" href="#__codelineno-39-16"></a><span class="nt">candidate_scoring</span><span class="p">:</span>
+<a id="__codelineno-39-17" name="__codelineno-39-17" href="#__codelineno-39-17"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">security_sensitive</span>
+<a id="__codelineno-39-18" name="__codelineno-39-18" href="#__codelineno-39-18"></a><span class="w">    </span><span class="nt">patterns</span><span class="p">:</span>
+<a id="__codelineno-39-19" name="__codelineno-39-19" href="#__codelineno-39-19"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;**/auth/**&quot;</span>
+<a id="__codelineno-39-20" name="__codelineno-39-20" href="#__codelineno-39-20"></a><span class="w">    </span><span class="nt">score_delta</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<a id="__codelineno-39-21" name="__codelineno-39-21" href="#__codelineno-39-21"></a><span class="w">    </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;security</span><span class="nv"> </span><span class="s">or</span><span class="nv"> </span><span class="s">access-sensitive</span><span class="nv"> </span><span class="s">area&quot;</span>
+<a id="__codelineno-39-22" name="__codelineno-39-22" href="#__codelineno-39-22"></a>
+<a id="__codelineno-39-23" name="__codelineno-39-23" href="#__codelineno-39-23"></a><span class="nt">candidate_exclusions</span><span class="p">:</span>
+<a id="__codelineno-39-24" name="__codelineno-39-24" href="#__codelineno-39-24"></a><span class="w">  </span><span class="nt">low_signal_test_max_changes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15</span>
+<a id="__codelineno-39-25" name="__codelineno-39-25" href="#__codelineno-39-25"></a><span class="w">  </span><span class="nt">low_signal_config_max_changes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8</span>
+<a id="__codelineno-39-26" name="__codelineno-39-26" href="#__codelineno-39-26"></a>
+<a id="__codelineno-39-27" name="__codelineno-39-27" href="#__codelineno-39-27"></a><span class="nt">review_axes</span><span class="p">:</span>
+<a id="__codelineno-39-28" name="__codelineno-39-28" href="#__codelineno-39-28"></a><span class="w">  </span><span class="nt">functional_correctness</span><span class="p">:</span>
+<a id="__codelineno-39-29" name="__codelineno-39-29" href="#__codelineno-39-29"></a><span class="w">    </span><span class="nt">always_include</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-39-30" name="__codelineno-39-30" href="#__codelineno-39-30"></a><span class="w">  </span><span class="nt">security</span><span class="p">:</span>
+<a id="__codelineno-39-31" name="__codelineno-39-31" href="#__codelineno-39-31"></a><span class="w">    </span><span class="nt">patterns</span><span class="p">:</span>
+<a id="__codelineno-39-32" name="__codelineno-39-32" href="#__codelineno-39-32"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;**/auth/**&quot;</span>
+</code></pre></div>
+<h3 id="review-checklist">Review checklist<a class="headerlink" href="#review-checklist" title="Permanent link">&para;</a></h3>
+<p>File: <code>.titan/review/checklist.yaml</code></p>
+<p>Controls which checklist categories are offered to the AI planner and findings prompts.</p>
+<p>Supported fields:</p>
+<ul>
+<li><code>version</code>: Required format version. Current value: <code>1</code>.</li>
+<li><code>items</code>: Required ordered list of checklist items.</li>
+<li><code>id</code>: Required checklist category ID. Must be one of the built-in category IDs such as <code>functional_correctness</code>, <code>error_handling</code>, <code>security</code>, or <code>api_contract</code>.</li>
+<li><code>name</code>: Required display name.</li>
+<li><code>description</code>: Required prompt description.</li>
+<li><code>relevant_file_patterns</code>: Optional glob list.</li>
+</ul>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a><span class="nt">items</span><span class="p">:</span>
+<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">functional_correctness</span>
+<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Functional Correctness</span>
+<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Logic bugs, incorrect behavior, and missing edge cases.</span>
+<a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a>
+<a id="__codelineno-40-8" name="__codelineno-40-8" href="#__codelineno-40-8"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">security</span>
+<a id="__codelineno-40-9" name="__codelineno-40-9" href="#__codelineno-40-9"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Security</span>
+<a id="__codelineno-40-10" name="__codelineno-40-10" href="#__codelineno-40-10"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Missing auth checks, exposed secrets, or unsafe trust boundaries.</span>
+<a id="__codelineno-40-11" name="__codelineno-40-11" href="#__codelineno-40-11"></a><span class="w">    </span><span class="nt">relevant_file_patterns</span><span class="p">:</span>
+<a id="__codelineno-40-12" name="__codelineno-40-12" href="#__codelineno-40-12"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;**/auth/**&quot;</span>
+<a id="__codelineno-40-13" name="__codelineno-40-13" href="#__codelineno-40-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;**/permissions/**&quot;</span>
+</code></pre></div>
+<h3 id="resolution-rules">Resolution rules<a class="headerlink" href="#resolution-rules" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Missing <code>.titan/review/profile.yaml</code>: built-in review profile is used.</li>
+<li>Missing <code>.titan/review/checklist.yaml</code>: built-in checklist is used.</li>
+<li>Invalid YAML or invalid category IDs: the workflow fails fast with a clear configuration error.</li>
+<li>Profile overrides are block replacements, not deep merges.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

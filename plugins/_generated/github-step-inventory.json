@@ -1,0 +1,1322 @@
+{
+  "plugin": "github",
+  "groups": [
+    {
+      "name": "Pull Requests",
+      "steps": [
+        {
+          "name": "create_pr",
+          "summary": "Create a pull request from workflow context data."
+        },
+        {
+          "name": "get_pull_request",
+          "summary": "Fetch a pull request and expose it to downstream steps."
+        },
+        {
+          "name": "merge_pull_request",
+          "summary": "Merge a pull request with workflow-selected merge options."
+        },
+        {
+          "name": "verify_pull_request_state",
+          "summary": "Validate PR state before continuing a workflow."
+        },
+        {
+          "name": "ai_suggest_pr_description",
+          "summary": "Generate PR title and body from branch changes using AI."
+        }
+      ]
+    },
+    {
+      "name": "Prompt and Selection",
+      "steps": [
+        {
+          "name": "prompt_for_pr_title",
+          "summary": "Prompt for a pull request title."
+        },
+        {
+          "name": "prompt_for_pr_body",
+          "summary": "Prompt for a pull request body."
+        },
+        {
+          "name": "prompt_for_pr_draft",
+          "summary": "Ask whether the pull request should be created as a draft."
+        },
+        {
+          "name": "prompt_for_issue_body_step",
+          "summary": "Prompt for free-form issue input before AI expansion."
+        },
+        {
+          "name": "prompt_for_self_assign",
+          "summary": "Ask whether the current user should be assigned."
+        },
+        {
+          "name": "prompt_for_labels",
+          "summary": "Prompt for GitHub labels to attach to an issue or PR."
+        }
+      ]
+    },
+    {
+      "name": "Issue Creation",
+      "steps": [
+        {
+          "name": "ai_suggest_issue_title_and_body",
+          "summary": "Generate issue content from user input and templates using AI."
+        },
+        {
+          "name": "preview_and_confirm_issue",
+          "summary": "Preview generated issue content and confirm creation."
+        },
+        {
+          "name": "create_issue",
+          "summary": "Create the GitHub issue from workflow context data."
+        }
+      ]
+    },
+    {
+      "name": "Pull Request Review",
+      "steps": [
+        {
+          "name": "select_pr_for_review",
+          "summary": "Select a pull request that needs response or review."
+        },
+        {
+          "name": "fetch_pending_comments",
+          "summary": "Load unresolved PR comments into workflow context."
+        },
+        {
+          "name": "check_clean_state",
+          "summary": "Ensure the current branch state is safe before checkout."
+        },
+        {
+          "name": "checkout_pr_branch",
+          "summary": "Switch to the PR branch while preserving original branch context."
+        },
+        {
+          "name": "review_comments",
+          "summary": "Guide the user through comment resolution and local changes."
+        },
+        {
+          "name": "push_commits",
+          "summary": "Push local follow-up commits back to the PR branch."
+        },
+        {
+          "name": "send_comment_replies",
+          "summary": "Submit replies for the reviewed comments."
+        },
+        {
+          "name": "request_review",
+          "summary": "Request another review after applying comment changes."
+        },
+        {
+          "name": "checkout_original_branch",
+          "summary": "Restore the original branch after review work completes."
+        }
+      ]
+    },
+    {
+      "name": "Code Review",
+      "steps": [
+        {
+          "name": "select_pr_for_code_review",
+          "summary": "Choose a PR to analyze in the advanced code review pipeline."
+        },
+        {
+          "name": "fetch_pr_review_bundle",
+          "summary": "Collect the review bundle with PR, diff, files, and discussion context."
+        },
+        {
+          "name": "build_change_manifest",
+          "summary": "Build a structured manifest of changed files and review targets."
+        },
+        {
+          "name": "build_existing_comments_index",
+          "summary": "Index existing review comments to avoid duplicates."
+        },
+        {
+          "name": "classify_pr",
+          "summary": "Classify PR size and composition before review planning."
+        },
+        {
+          "name": "score_review_candidates",
+          "summary": "Rank changed files and exclude low-value review candidates."
+        },
+        {
+          "name": "build_review_checklist",
+          "summary": "Prepare a review checklist from PR context."
+        },
+        {
+          "name": "select_review_strategy",
+          "summary": "Choose the review execution strategy from deterministic PR signals."
+        },
+        {
+          "name": "ai_review_plan",
+          "summary": "Ask AI to plan the directed review strategy."
+        },
+        {
+          "name": "validate_review_plan",
+          "summary": "Validate the AI review plan before execution."
+        },
+        {
+          "name": "resolve_review_context",
+          "summary": "Expand the precise review contexts needed for targeted analysis."
+        },
+        {
+          "name": "ai_review_findings",
+          "summary": "Run targeted AI analysis and produce candidate findings."
+        },
+        {
+          "name": "normalize_findings",
+          "summary": "Normalize raw AI findings into workflow-friendly structures."
+        },
+        {
+          "name": "dedupe_findings",
+          "summary": "Remove duplicate or overlapping findings before submission."
+        },
+        {
+          "name": "build_new_comment_actions",
+          "summary": "Translate validated findings into GitHub review actions."
+        },
+        {
+          "name": "validate_review_actions",
+          "summary": "Validate review actions before posting comments."
+        },
+        {
+          "name": "submit_review_actions",
+          "summary": "Submit review comments or review actions to GitHub."
+        },
+        {
+          "name": "build_thread_review_candidates",
+          "summary": "Collect review threads that may need follow-up decisions."
+        },
+        {
+          "name": "build_thread_review_contexts",
+          "summary": "Expand the context required to evaluate thread resolution."
+        },
+        {
+          "name": "ai_thread_resolution",
+          "summary": "Ask AI whether open review threads should be resolved or reopened."
+        },
+        {
+          "name": "normalize_thread_decisions",
+          "summary": "Normalize thread resolution decisions for workflow execution."
+        },
+        {
+          "name": "build_thread_actions",
+          "summary": "Build GitHub actions for thread resolution decisions."
+        }
+      ]
+    },
+    {
+      "name": "Worktree Support",
+      "steps": [
+        {
+          "name": "create_worktree",
+          "summary": "Create an isolated worktree for GitHub-focused workflow tasks."
+        },
+        {
+          "name": "cleanup_worktree",
+          "summary": "Remove a worktree created during workflow execution."
+        }
+      ]
+    },
+    {
+      "name": "Releases",
+      "steps": [
+        {
+          "name": "select_release",
+          "summary": "List published GitHub releases and select one to use as a notes source."
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "name": "ai_review_findings",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "ai_review_findings",
+      "summary": "Second AI call: find actionable problems in the exact code context.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    raw_findings (list | str): Raw AI output before normalization"
+        ],
+        "Returns": [
+          "    Success or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "ai_review_plan",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "ai_review_plan",
+      "summary": "First AI call: decide which files to read and which checklist items apply.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    review_plan (ReviewPlan)"
+        ],
+        "Returns": [
+          "    Success or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "ai_suggest_issue_title_and_body",
+      "group": "Issue Creation",
+      "module": "titan_plugin_github.steps.issue_steps",
+      "function": "ai_suggest_issue_title_and_body_step",
+      "summary": "Use AI to suggest a title and description for a GitHub issue.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    issue_body (str): Raw issue request entered by the user."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    issue_title (str): AI-generated or user-edited title.",
+          "    issue_body (str): AI-generated or user-edited body.",
+          "    issue_category (str): Detected issue category.",
+          "    labels (list[str]): Suggested labels for the issue."
+        ],
+        "Returns": [
+          "    Success: If issue content is generated and accepted.",
+          "    Skip: If AI is unavailable or the user rejects the generated issue.",
+          "    Error: If required context is missing or generation fails."
+        ]
+      },
+      "used_by_workflows": [
+        "create-issue-ai"
+      ]
+    },
+    {
+      "name": "ai_suggest_pr_description",
+      "group": "Pull Requests",
+      "module": "titan_plugin_github.steps.ai_pr_step",
+      "function": "ai_suggest_pr_description_step",
+      "summary": "Generate PR title and description using PRAgent.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.ai: An initialized AIClient",
+          "    ctx.git: An initialized GitClient",
+          "    ctx.github: An initialized GitHubClient"
+        ],
+        "Inputs (from ctx.data)": [
+          "    pr_head_branch (str): The head branch for the PR"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    pr_title (str): AI-generated PR title",
+          "    pr_body (str): AI-generated PR description",
+          "    pr_size (str): Size classification (small/medium/large/very large)",
+          "    ai_generated (bool): True if AI generated the content"
+        ],
+        "Returns": [
+          "    Success: PR description generated",
+          "    Skip: AI not configured or user declined",
+          "    Error: Failed to generate PR description"
+        ]
+      },
+      "used_by_workflows": [
+        "create-pr-ai"
+      ]
+    },
+    {
+      "name": "ai_thread_resolution",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "ai_thread_resolution",
+      "summary": "AI call: decide what to do with each open thread.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    raw_thread_decisions (list): Raw AI output before normalization"
+        ],
+        "Returns": [
+          "    Success or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "build_change_manifest",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "build_change_manifest",
+      "summary": "Build a structured manifest of the PR changes (no AI involved).",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    change_manifest (ChangeManifest): Structured PR context"
+        ],
+        "Returns": [
+          "    Success or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "build_existing_comments_index",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "build_existing_comments_index",
+      "summary": "Build a compact index of existing PR comments for deduplication.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    existing_comments_index (List[ExistingCommentIndexEntry])"
+        ],
+        "Returns": [
+          "    Success"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "build_new_comment_actions",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "build_new_comment_actions",
+      "summary": "Convert deduplicated findings into ReviewActionProposal objects.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    review_action_proposals (List[ReviewActionProposal])"
+        ],
+        "Returns": [
+          "    Success or Skip (no findings)"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "build_review_checklist",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "build_review_checklist",
+      "summary": "Assemble the review checklist for this PR.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    review_checklist (List[ReviewChecklistItem])"
+        ],
+        "Returns": [
+          "    Success"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "build_thread_actions",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "build_thread_actions",
+      "summary": "Transform ThreadDecision objects into ReviewActionProposal objects.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    review_action_proposals (List[ReviewActionProposal])"
+        ],
+        "Returns": [
+          "    Success, Skip (no actionable decisions), or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "build_thread_review_candidates",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "build_thread_review_candidates",
+      "summary": "Select open inline threads worth AI analysis.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    thread_review_candidates (List[ThreadReviewCandidate])"
+        ],
+        "Returns": [
+          "    Success, Skip (no candidates), or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "build_thread_review_contexts",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "build_thread_review_contexts",
+      "summary": "Enrich thread candidates with diff hunk context and full reply history.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: Optional GitHub client used to inspect referenced commits."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    thread_review_contexts (List[ThreadReviewContext])"
+        ],
+        "Returns": [
+          "    Success, Skip (no candidates), or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "check_clean_state",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "check_clean_state_step",
+      "summary": "Check that the working tree is clean before checking out the PR branch.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Working tree is clean",
+          "    Exit: Uncommitted changes detected \u2014 user must stash manually",
+          "    Error: Failed to check status"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "checkout_original_branch",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "checkout_original_branch_step",
+      "summary": "Restore the original branch after PR review.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Restored to original branch",
+          "    Exit: No original branch saved or checkout failed"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "checkout_pr_branch",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "checkout_pr_branch_step",
+      "summary": "Save the current branch and checkout the PR branch.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    original_branch (str): Branch to restore after review"
+        ],
+        "Returns": [
+          "    Success: PR branch checked out",
+          "    Error: Failed to fetch or checkout"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "classify_pr",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "classify_pr",
+      "summary": "Classify PR size and composition before planning.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.textual: Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    change_manifest (ChangeManifest): Structured PR change summary.",
+          "    existing_comments_index (List[ExistingCommentIndexEntry], optional): Existing comments used to estimate review activity.",
+          "    review_threads (List[UICommentThread], optional): Current review threads."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    pr_classification (PRClassification): Deterministic PR classification.",
+          "    review_profile (ReviewProfile): Resolved review profile used during classification."
+        ],
+        "Returns": [
+          "    Success: When PR classification is computed successfully.",
+          "    Error: When required context is missing or the step cannot run."
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "cleanup_worktree",
+      "group": "Worktree Support",
+      "module": "titan_plugin_github.steps.worktree_steps",
+      "function": "cleanup_worktree_step",
+      "summary": "Cleanup a worktree created for PR review.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Worktree cleaned up",
+          "    Exit: No worktree to cleanup"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "create_issue",
+      "group": "Issue Creation",
+      "module": "titan_plugin_github.steps.issue_steps",
+      "function": "create_issue_steps",
+      "summary": "Create a new GitHub issue.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    issue_title (str): Issue title.",
+          "    issue_body (str): Issue body.",
+          "    assignees (list, optional): Usernames to assign.",
+          "    labels (list, optional): Labels to apply."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    issue (GitHubIssue): The created issue object."
+        ],
+        "Returns": [
+          "    Success: If the issue is created successfully.",
+          "    Error: If required context is missing or the GitHub call fails."
+        ]
+      },
+      "used_by_workflows": [
+        "create-issue-ai"
+      ]
+    },
+    {
+      "name": "create_pr",
+      "group": "Pull Requests",
+      "module": "titan_plugin_github.steps.create_pr_step",
+      "function": "create_pr_step",
+      "summary": "Creates a GitHub pull request using data from the workflow context.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient.",
+          "    ctx.git: An initialized GitClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    pr_title (str): The title of the pull request.",
+          "    pr_body (str, optional): The body/description of the pull request.",
+          "    pr_head_branch (str): The branch with the new changes.",
+          "    pr_base_branch (str, optional): The branch to merge into. Defaults to the git plugin's configured main branch.",
+          "    pr_is_draft (bool, optional): Whether to create the PR as a draft. Defaults to False.",
+          "    pr_reviewers (list, optional): List of GitHub usernames or team slugs to request review from.",
+          "    pr_excluded_reviewers (list, optional): List of GitHub usernames to exclude from team expansion.",
+          "    pr_labels (list, optional): List of label names to add to the PR.",
+          "Configuration (from ctx.github.config):",
+          "    auto_assign_prs (bool): If True, automatically assigns the PR to the current GitHub user."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    pr_number (int): The number of the created pull request.",
+          "    pr_url (str): The URL of the created pull request."
+        ],
+        "Returns": [
+          "    Success: If the PR is created successfully.",
+          "    Error: If any required context arguments are missing or if the API call fails."
+        ]
+      },
+      "used_by_workflows": [
+        "create-pr-ai"
+      ]
+    },
+    {
+      "name": "create_worktree",
+      "group": "Worktree Support",
+      "module": "titan_plugin_github.steps.worktree_steps",
+      "function": "create_worktree_step",
+      "summary": "Create a worktree for PR review.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    worktree_path (str): Absolute path to worktree",
+          "    worktree_created (bool): Whether worktree was created"
+        ],
+        "Returns": [
+          "    Success: Worktree created",
+          "    Error: Failed to create worktree"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "dedupe_findings",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "dedupe_findings",
+      "summary": "Remove findings that duplicate existing PR comments.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    deduped_findings (List[Finding]): Findings after duplicate removal"
+        ],
+        "Returns": [
+          "    Success or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "fetch_pending_comments",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "fetch_pending_comments_step",
+      "summary": "Fetch unresolved review threads for the selected PR using GraphQL.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    review_threads (List[UICommentThread]): Unresolved review threads"
+        ],
+        "Returns": [
+          "    Success: Threads fetched",
+          "    Exit: No unresolved threads",
+          "    Error: Failed to fetch threads"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "fetch_pr_review_bundle",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "fetch_pr_review_bundle",
+      "summary": "Fetch all data needed for a full PR review cycle.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    review_pr (UIPullRequest): Pull request details",
+          "    review_diff (str): Full unified diff",
+          "    review_changed_files (List[str]): Changed file paths (may be subset for large PRs)",
+          "    review_changed_files_with_stats (List[UIFileChange]): All files with add/del stats",
+          "    review_commit_sha (str): Head commit SHA",
+          "    review_threads (List[UICommentThread]): Inline review threads (unresolved)",
+          "    review_general_comments (List[UICommentThread]): General PR-level comments",
+          "    pr_template (str | None): PR template content if available"
+        ],
+        "Returns": [
+          "    Success, Skip (empty diff), or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr",
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "get_pull_request",
+      "group": "Pull Requests",
+      "module": "titan_plugin_github.steps.pull_request_steps",
+      "function": "get_pull_request_step",
+      "summary": "Fetch a pull request and store it in workflow context.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    pr_number (int): Pull request number to fetch."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    pr_info: The fetched pull request object."
+        ],
+        "Returns": [
+          "    Success: If the pull request is fetched successfully.",
+          "    Error: If required context is missing or the GitHub call fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "merge_pull_request",
+      "group": "Pull Requests",
+      "module": "titan_plugin_github.steps.pull_request_steps",
+      "function": "merge_pull_request_step",
+      "summary": "Merge a pull request using the configured GitHub client.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    pr_number (int): Pull request number to merge.",
+          "    merge_method (str, optional): Merge strategy.",
+          "    commit_title (str, optional): Override commit title.",
+          "    commit_message (str, optional): Override commit message."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    merge_result: The GitHub merge result object."
+        ],
+        "Returns": [
+          "    Success: If the pull request is merged successfully.",
+          "    Error: If required context is missing or the GitHub call fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "normalize_findings",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "normalize_findings",
+      "summary": "Parse and validate raw AI output into Finding models.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    normalized_findings (List[Finding]): Validated Finding objects"
+        ],
+        "Returns": [
+          "    Success or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "normalize_thread_decisions",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "normalize_thread_decisions",
+      "summary": "Parse and validate raw AI output into ThreadDecision models.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    thread_decisions (List[ThreadDecision]): Validated ThreadDecision objects"
+        ],
+        "Returns": [
+          "    Success or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "preview_and_confirm_issue",
+      "group": "Issue Creation",
+      "module": "titan_plugin_github.steps.preview_step",
+      "function": "preview_and_confirm_issue_step",
+      "summary": "Show a preview of the AI-generated issue and ask for confirmation.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    issue_title (str): Generated issue title.",
+          "    issue_body (str): Generated issue body."
+        ],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the user confirms the issue preview.",
+          "    Error: If required context is missing, the user rejects, or the prompt is cancelled."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "prompt_for_issue_body_step",
+      "group": "Prompt and Selection",
+      "module": "titan_plugin_github.steps.github_prompt_steps",
+      "function": "prompt_for_issue_body_step",
+      "summary": "Interactively prompts the user for a GitHub issue body.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.textual: Textual UI components."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    issue_body (str): The body/description entered by the user."
+        ],
+        "Returns": [
+          "    Success: If the body was captured successfully.",
+          "    Error: If the user cancels.",
+          "    Skip: If issue_body already exists."
+        ]
+      },
+      "used_by_workflows": [
+        "create-issue-ai"
+      ]
+    },
+    {
+      "name": "prompt_for_labels",
+      "group": "Prompt and Selection",
+      "module": "titan_plugin_github.steps.github_prompt_steps",
+      "function": "prompt_for_labels_step",
+      "summary": "Prompt the user to select repository labels and save them to context.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    output_key (str, optional): Context key where selected labels should be stored. Defaults to \"labels\".",
+          "    prompt (str, optional): Prompt text shown to the user. Defaults to \"Select labels:\".",
+          "    default_selected_key (str, optional): Context key used to preselect labels. Defaults to output_key."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    <output_key> (list[str]): Labels selected by the user."
+        ],
+        "Returns": [
+          "    Success: If label selection completes successfully.",
+          "    Skip: If the repository has no labels.",
+          "    Error: If the GitHub client is unavailable or the prompt fails."
+        ]
+      },
+      "used_by_workflows": [
+        "create-pr-ai"
+      ]
+    },
+    {
+      "name": "prompt_for_pr_body",
+      "group": "Prompt and Selection",
+      "module": "titan_plugin_github.steps.github_prompt_steps",
+      "function": "prompt_for_pr_body_step",
+      "summary": "Interactively prompts the user for a Pull Request body.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.textual: Textual UI components."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    pr_body (str): The body/description entered by the user."
+        ],
+        "Returns": [
+          "    Success: If the body was captured successfully.",
+          "    Error: If the user cancels.",
+          "    Skip: If pr_body already exists."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "prompt_for_pr_draft",
+      "group": "Prompt and Selection",
+      "module": "titan_plugin_github.steps.github_prompt_steps",
+      "function": "prompt_for_pr_draft_step",
+      "summary": "Ask whether the pull request should be created as a draft.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.textual: Textual UI components."
+        ],
+        "Inputs (from ctx.data)": [
+          "    draft (bool | None, optional): Draft mode from workflow params. Use True/False to skip the prompt, or None to ask interactively."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    pr_is_draft (bool): Whether the PR should be created as a draft."
+        ],
+        "Returns": [
+          "    Success: If the draft preference was resolved successfully.",
+          "    Error: If the user cancels or the prompt fails."
+        ]
+      },
+      "used_by_workflows": [
+        "create-pr-ai"
+      ]
+    },
+    {
+      "name": "prompt_for_pr_title",
+      "group": "Prompt and Selection",
+      "module": "titan_plugin_github.steps.github_prompt_steps",
+      "function": "prompt_for_pr_title_step",
+      "summary": "Interactively prompts the user for a Pull Request title.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.textual: Textual UI components."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    pr_title (str): The title entered by the user."
+        ],
+        "Returns": [
+          "    Success: If the title was captured successfully.",
+          "    Error: If the user cancels or the title is empty.",
+          "    Skip: If pr_title already exists."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "prompt_for_self_assign",
+      "group": "Prompt and Selection",
+      "module": "titan_plugin_github.steps.github_prompt_steps",
+      "function": "prompt_for_self_assign_step",
+      "summary": "Asks the user if they want to assign the issue to themselves.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    assignees (list[str]): Updated assignees list when the user chooses self-assignment."
+        ],
+        "Returns": [
+          "    Success: If the assignment preference is captured successfully.",
+          "    Error: If the GitHub client is unavailable or the prompt fails."
+        ]
+      },
+      "used_by_workflows": [
+        "create-issue-ai"
+      ]
+    },
+    {
+      "name": "push_commits",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "push_commits_step",
+      "summary": "Push commits to PR branch.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    push_successful (bool): Whether push succeeded"
+        ],
+        "Returns": [
+          "    Success: Commits pushed",
+          "    Skip: No commits to push or user cancelled",
+          "    Error: Failed to push"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "request_review",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "request_review_step",
+      "summary": "Re-request review from existing reviewers.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Review re-requested",
+          "    Skip: Push didn't succeed or user cancelled",
+          "    Error: Failed to request review"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "resolve_review_context",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "resolve_review_context",
+      "summary": "Fetch the exact code context according to the validated review plan.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    review_context_package (ReviewContextPackage)"
+        ],
+        "Returns": [
+          "    Success or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "review_comments",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "review_comments_step",
+      "summary": "Review all unresolved comment threads one by one and take action.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: All threads processed",
+          "    Error: Failed to process threads"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "score_review_candidates",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "score_review_candidates",
+      "summary": "Rank changed files and precompute excluded files.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.textual: Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    change_manifest (ChangeManifest): Structured PR change summary."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    review_profile (ReviewProfile): Resolved review profile used during scoring.",
+          "    review_candidates (List[ScoredReviewCandidate]): Ranked review candidates.",
+          "    excluded_review_files (List[ExcludedFileEntry]): Files excluded from deep review."
+        ],
+        "Returns": [
+          "    Success: When review candidates are scored successfully.",
+          "    Exit: When no reviewable candidates remain after exclusions.",
+          "    Error: When required context is missing or the step cannot run."
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "select_pr_for_code_review",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "select_pr_for_code_review",
+      "summary": "List all open PRs and ask user to select one.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    review_pr_number (int): Selected PR number",
+          "    review_pr_title (str): PR title",
+          "    review_pr_head (str): Head branch",
+          "    review_pr_base (str): Base branch"
+        ],
+        "Returns": [
+          "    Success, Exit (no PRs or cancelled), or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr",
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "select_pr_for_review",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "select_pr_for_review_step",
+      "summary": "Select a PR from the user's open PRs to review comments.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    selected_pr_number (int): The selected PR number",
+          "    selected_pr_title (str): The selected PR title"
+        ],
+        "Returns": [
+          "    Success: PR selected successfully",
+          "    Exit: No PRs available or user cancelled",
+          "    Error: Failed to fetch PRs"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "select_release",
+      "group": "Releases",
+      "module": "titan_plugin_github.steps.release_steps",
+      "function": "select_release_step",
+      "summary": "List published GitHub releases and select one to use as a notes source.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    github_release_limit (int, optional): Maximum number of releases to list. Defaults to 15."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    selected_release (UIRelease): Selected GitHub release, including its notes body.",
+          "    selected_release_tag (str): Tag name of the selected release.",
+          "    selected_release_notes (str): Release notes body of the selected release.",
+          "    selected_release_url (str): URL of the selected release."
+        ],
+        "Returns": [
+          "    Success: If a release is selected successfully.",
+          "    Skip: If no published releases exist.",
+          "    Error: If the GitHub client is not available or the request fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "select_review_strategy",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "select_review_strategy",
+      "summary": "Choose review strategy based on deterministic PR classification.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.textual: Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    pr_classification (PRClassification): Deterministic PR classification."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    review_strategy (ReviewStrategy): Execution strategy for planning and findings."
+        ],
+        "Returns": [
+          "    Success: When a review strategy is selected successfully.",
+          "    Error: When required context is missing or the step cannot run."
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "send_comment_replies",
+      "group": "Pull Request Review",
+      "module": "titan_plugin_github.steps.pr_review_steps",
+      "function": "send_comment_replies_step",
+      "summary": "Send comment replies (both text responses and commit hashes).",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Replies sent",
+          "    Skip: No replies to send or user cancelled",
+          "    Error: Failed to send replies"
+        ]
+      },
+      "used_by_workflows": [
+        "respond-pr-comments"
+      ]
+    },
+    {
+      "name": "submit_review_actions",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "submit_review_actions",
+      "summary": "Submit approved ReviewActionProposal objects to GitHub.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success, Skip (no approved actions), or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr",
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "validate_review_actions",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "validate_review_actions",
+      "summary": "Present each ReviewActionProposal to the user for approval, editing, or skipping.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    approved_action_proposals (List[ReviewActionProposal])"
+        ],
+        "Returns": [
+          "    Success, Skip (none approved), or Error"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr",
+        "review-pr-thread-resolution"
+      ]
+    },
+    {
+      "name": "validate_review_plan",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "validate_review_plan",
+      "summary": "Validate the AI-generated ReviewPlan against local semantic rules.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    validated_review_plan (ReviewPlan): Same plan if valid"
+        ],
+        "Returns": [
+          "    Success or Error (halts workflow on validation failure)"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "verify_pull_request_state",
+      "group": "Pull Requests",
+      "module": "titan_plugin_github.steps.pull_request_steps",
+      "function": "verify_pull_request_state_step",
+      "summary": "Verify a pull request is currently in the expected state.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    pr_number (int): Pull request number to inspect.",
+          "    expected_state (str): Expected pull request state."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    verified_pr_info: The pull request object when verification succeeds."
+        ],
+        "Returns": [
+          "    Success: If the pull request is in the expected state.",
+          "    Error: If required context is missing, verification fails, or the GitHub call fails."
+        ]
+      },
+      "used_by_workflows": []
+    }
+  ]
+}

@@ -1,0 +1,686 @@
+{
+  "plugin": "jira",
+  "groups": [
+    {
+      "name": "Search and Selection",
+      "steps": [
+        {
+          "name": "search_saved_query",
+          "summary": "Search Jira issues using a named saved query."
+        },
+        {
+          "name": "search_jql",
+          "summary": "Search Jira issues using explicit JQL from workflow context."
+        },
+        {
+          "name": "prompt_select_issue",
+          "summary": "Prompt the user to select one issue from search results."
+        },
+        {
+          "name": "select_jira_issue",
+          "summary": "Resolve a Jira issue key from a number, a full key, or a text search."
+        }
+      ]
+    },
+    {
+      "name": "Issue Retrieval and Analysis",
+      "steps": [
+        {
+          "name": "get_issue",
+          "summary": "Fetch full details for a selected Jira issue."
+        },
+        {
+          "name": "get_comments",
+          "summary": "Fetch all comments for a Jira issue."
+        },
+        {
+          "name": "ai_analyze_issue_requirements",
+          "summary": "Generate an AI-assisted requirements analysis for the selected issue."
+        }
+      ]
+    },
+    {
+      "name": "AI Planning Handoff",
+      "steps": [
+        {
+          "name": "build_jira_task_context",
+          "summary": "Build the full AI prompt for planning work on a Jira issue."
+        },
+        {
+          "name": "confirm_and_assign_issue",
+          "summary": "Offer to assign the current issue to the user in Jira."
+        }
+      ]
+    },
+    {
+      "name": "Transitions and Fix Versions",
+      "steps": [
+        {
+          "name": "get_transitions",
+          "summary": "Load the transitions available for an issue."
+        },
+        {
+          "name": "transition_issue",
+          "summary": "Move an issue to another Jira state."
+        },
+        {
+          "name": "verify_issue_state",
+          "summary": "Check that an issue is in the expected state."
+        },
+        {
+          "name": "list_versions",
+          "summary": "List available versions for the current Jira project."
+        },
+        {
+          "name": "create_version",
+          "summary": "Create a Jira version."
+        },
+        {
+          "name": "ensure_version_exists",
+          "summary": "Create a version only when it does not already exist."
+        },
+        {
+          "name": "assign_fix_version",
+          "summary": "Assign a fix version to an issue."
+        },
+        {
+          "name": "verify_issue_has_fix_version",
+          "summary": "Verify that the issue already has the expected fix version."
+        }
+      ]
+    },
+    {
+      "name": "Issue Creation",
+      "steps": [
+        {
+          "name": "prompt_issue_description",
+          "summary": "Prompt for a brief issue description."
+        },
+        {
+          "name": "select_issue_type",
+          "summary": "Choose the Jira issue type for a new issue."
+        },
+        {
+          "name": "select_issue_priority",
+          "summary": "Choose the Jira issue priority."
+        },
+        {
+          "name": "ai_enhance_issue_description",
+          "summary": "Expand the raw issue request into title and description using AI."
+        },
+        {
+          "name": "review_issue_description",
+          "summary": "Review and optionally edit the generated issue content."
+        },
+        {
+          "name": "confirm_assignee_for_new_issue",
+          "summary": "Ask whether the new issue should be self-assigned."
+        },
+        {
+          "name": "create_generic_issue",
+          "summary": "Create a Jira issue from the prepared workflow context."
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "name": "ai_analyze_issue_requirements",
+      "group": "Issue Retrieval and Analysis",
+      "module": "titan_plugin_jira.steps.ai_analyze_issue_step",
+      "function": "ai_analyze_issue_requirements_step",
+      "summary": "Analyze JIRA issue requirements using AI.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    jira_issue (JiraTicket): JIRA issue object to analyze",
+          "    selected_issue (JiraTicket, optional): Alternative source"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    ai_analysis (str): AI-generated analysis",
+          "    analysis_sections (dict): Structured analysis breakdown"
+        ],
+        "Returns": [
+          "    Success: If the issue analysis completes successfully.",
+          "    Skip: If AI is not configured or not available.",
+          "    Error: If no issue is available to analyze."
+        ]
+      },
+      "used_by_workflows": [
+        "analyze-jira-issues"
+      ]
+    },
+    {
+      "name": "ai_enhance_issue_description",
+      "group": "Issue Creation",
+      "module": "titan_plugin_jira.steps.ai_enhance_issue_description_step",
+      "function": "ai_enhance_issue_description",
+      "summary": "Use AI to generate title and enhance the brief description into a detailed description.",
+      "docstring_sections": {
+        "Requires": [
+          "- ctx.data[\"brief_description\"]",
+          "- ctx.data[\"issue_type\"]",
+          "Stores in:",
+          "- ctx.data[\"title\"] = str (generated by AI)",
+          "- ctx.data[\"enhanced_description\"] = str"
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    WorkflowResult"
+        ]
+      },
+      "used_by_workflows": [
+        "create-generic-issue"
+      ]
+    },
+    {
+      "name": "assign_fix_version",
+      "group": "Transitions and Fix Versions",
+      "module": "titan_plugin_jira.steps.issue_management_steps",
+      "function": "assign_fix_version_step",
+      "summary": "Assign a fixVersion to a Jira issue.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the fix version is assigned successfully.",
+          "    Error: If required context is missing or the Jira call fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "build_jira_task_context",
+      "group": "AI Planning Handoff",
+      "module": "titan_plugin_jira.steps.build_jira_task_context_step",
+      "function": "build_jira_task_context_step",
+      "summary": "Build the full AI prompt for planning work on a JIRA issue.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    jira_issue (UIJiraIssue): Issue details, from get_issue",
+          "    jira_comments (list[UIJiraComment], optional): Issue comments, from get_comments"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    jira_task_context (str): Full prompt text (instructions + issue + comments)"
+        ],
+        "Returns": [
+          "    Success: Prompt built",
+          "    Error: jira_issue is missing"
+        ]
+      },
+      "used_by_workflows": [
+        "plan-jira-issue"
+      ]
+    },
+    {
+      "name": "confirm_and_assign_issue",
+      "group": "AI Planning Handoff",
+      "module": "titan_plugin_jira.steps.confirm_and_assign_issue_step",
+      "function": "confirm_and_assign_issue",
+      "summary": "Ask the user if they want to assign the current JIRA issue to themselves, and do it.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    jira_issue_key (str): JIRA issue key to assign"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    issue_assigned_to_me (bool): Whether the issue was assigned to the current user"
+        ],
+        "Returns": [
+          "    Success: Issue assigned, or user declined to assign it",
+          "    Error: JIRA client not available, issue key missing, or the assignment call failed"
+        ]
+      },
+      "used_by_workflows": [
+        "plan-jira-issue"
+      ]
+    },
+    {
+      "name": "confirm_assignee_for_new_issue",
+      "group": "Issue Creation",
+      "module": "titan_plugin_jira.steps.confirm_assignee_for_new_issue_step",
+      "function": "confirm_assignee_for_new_issue",
+      "summary": "Ask if the issue about to be created should be self-assigned.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    WorkflowResult"
+        ]
+      },
+      "used_by_workflows": [
+        "create-generic-issue"
+      ]
+    },
+    {
+      "name": "create_generic_issue",
+      "group": "Issue Creation",
+      "module": "titan_plugin_jira.steps.create_generic_issue_step",
+      "function": "create_generic_issue",
+      "summary": "Create the issue in Jira.",
+      "docstring_sections": {
+        "Requires": [
+          "- ctx.data[\"title\"]",
+          "- ctx.data[\"final_description\"]",
+          "- ctx.data[\"issue_type\"]",
+          "- ctx.data[\"priority\"]",
+          "- ctx.data[\"auto_assign\"] (bool)",
+          "- ctx.data[\"assignee_id\"] (optional, if auto_assign is True)",
+          "Stores in:",
+          "- ctx.data[\"created_issue\"] = UIJiraIssue"
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    WorkflowResult"
+        ]
+      },
+      "used_by_workflows": [
+        "create-generic-issue"
+      ]
+    },
+    {
+      "name": "create_version",
+      "group": "Transitions and Fix Versions",
+      "module": "titan_plugin_jira.steps.issue_management_steps",
+      "function": "create_version_step",
+      "summary": "Create a Jira version.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the version is created successfully.",
+          "    Error: If required context is missing or the Jira call fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "ensure_version_exists",
+      "group": "Transitions and Fix Versions",
+      "module": "titan_plugin_jira.steps.issue_management_steps",
+      "function": "ensure_version_exists_step",
+      "summary": "Ensure a Jira version exists, creating it if missing.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the version already exists or is created successfully.",
+          "    Error: If required context is missing or the Jira call fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "get_comments",
+      "group": "Issue Retrieval and Analysis",
+      "module": "titan_plugin_jira.steps.get_comments_step",
+      "function": "get_comments_step",
+      "summary": "Get all comments for a JIRA issue.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.jira: An initialized JiraClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    jira_issue_key (str): JIRA issue key (e.g., \"PROJ-123\")"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    jira_comments (list[UIJiraComment]): Comments for the issue, oldest first"
+        ],
+        "Returns": [
+          "    Success: Comments retrieved (empty list if the issue has none)",
+          "    Error: JIRA client not available, issue key missing, or the request failed"
+        ]
+      },
+      "used_by_workflows": [
+        "plan-jira-issue"
+      ]
+    },
+    {
+      "name": "get_issue",
+      "group": "Issue Retrieval and Analysis",
+      "module": "titan_plugin_jira.steps.get_issue_step",
+      "function": "get_issue_step",
+      "summary": "Get JIRA issue details by key.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    jira_issue_key (str): JIRA issue key (e.g., \"PROJ-123\")",
+          "    expand (list[str], optional): Additional fields to expand"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    jira_issue (UIJiraIssue): Issue details"
+        ],
+        "Returns": [
+          "    Success: Issue retrieved",
+          "    Error: Failed to get issue"
+        ]
+      },
+      "used_by_workflows": [
+        "plan-jira-issue"
+      ]
+    },
+    {
+      "name": "get_transitions",
+      "group": "Transitions and Fix Versions",
+      "module": "titan_plugin_jira.steps.issue_management_steps",
+      "function": "get_transitions_step",
+      "summary": "Fetch available transitions for a Jira issue.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If transitions are fetched successfully.",
+          "    Error: If required context is missing or the Jira call fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "list_versions",
+      "group": "Transitions and Fix Versions",
+      "module": "titan_plugin_jira.steps.list_versions_step",
+      "function": "list_versions_step",
+      "summary": "List unreleased versions for a JIRA project.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    project_key (str, optional): Project key. If not provided, uses default_project from JIRA plugin config."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    versions (list): List of unreleased version names",
+          "    versions_full (list): List of full unreleased version objects"
+        ],
+        "Returns": [
+          "    Success: Unreleased versions listed",
+          "    Error: Failed to fetch versions or project_key not configured",
+          "Example usage in workflow:",
+          "    ```yaml",
+          "    - id: list_versions",
+          "      plugin: jira",
+          "      step: list_versions",
+          "      params:",
+          "        project_key: \"MYPROJECT\"",
+          "    ```"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "prompt_issue_description",
+      "group": "Issue Creation",
+      "module": "titan_plugin_jira.steps.prompt_issue_description_step",
+      "function": "prompt_issue_description",
+      "summary": "Prompt user for brief description of the issue.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    WorkflowResult"
+        ]
+      },
+      "used_by_workflows": [
+        "create-generic-issue"
+      ]
+    },
+    {
+      "name": "prompt_select_issue",
+      "group": "Search and Selection",
+      "module": "titan_plugin_jira.steps.prompt_select_issue_step",
+      "function": "prompt_select_issue_step",
+      "summary": "Prompt user to select a JIRA issue from search results.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    jira_issues (List[JiraTicket]): List of issues from search"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    jira_issue_key (str): Selected issue key",
+          "    selected_issue (JiraTicket): Selected issue object"
+        ],
+        "Returns": [
+          "    Success: If the user selects a valid issue.",
+          "    Error: If there are no issues, the selection is invalid, or the prompt is cancelled."
+        ]
+      },
+      "used_by_workflows": [
+        "analyze-jira-issues"
+      ]
+    },
+    {
+      "name": "review_issue_description",
+      "group": "Issue Creation",
+      "module": "titan_plugin_jira.steps.review_issue_description_step",
+      "function": "review_issue_description",
+      "summary": "Review and optionally edit the enhanced description.",
+      "docstring_sections": {
+        "Requires": [
+          "- ctx.data[\"enhanced_description\"]",
+          "Stores in:",
+          "- ctx.data[\"final_description\"] = str"
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    WorkflowResult"
+        ]
+      },
+      "used_by_workflows": [
+        "create-generic-issue"
+      ]
+    },
+    {
+      "name": "search_jql",
+      "group": "Search and Selection",
+      "module": "titan_plugin_jira.steps.search_jql_step",
+      "function": "search_jql_step",
+      "summary": "Search JIRA issues using a custom JQL query.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    jql (str): JQL query string (supports variable substitution with ${var_name})",
+          "    max_results (int, optional): Maximum number of results (default: 100)"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    jira_issues (list): List of JiraTicket objects",
+          "    jira_issue_count (int): Number of issues found"
+        ],
+        "Returns": [
+          "    Success: Issues found",
+          "    Error: Search failed or JQL not provided",
+          "Variable substitution:",
+          "    You can use ${variable_name} in the JQL and it will be replaced with values from ctx.data.",
+          "    Example: \"project = ${project_key} AND fixVersion = ${fix_version}\"",
+          "Example usage in workflow:",
+          "    ```yaml",
+          "    - id: search_issues",
+          "      plugin: jira",
+          "      step: search_jql",
+          "      params:",
+          "        jql: \"project = MYPROJECT AND status = 'In Progress' ORDER BY created DESC\"",
+          "        max_results: 50",
+          "    # With variable substitution:",
+          "    - id: search_release",
+          "      plugin: jira",
+          "      step: search_jql",
+          "      params:",
+          "        jql: \"project = ${project_key} AND fixVersion = ${fix_version} ORDER BY created DESC\"",
+          "    ```"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "search_saved_query",
+      "group": "Search and Selection",
+      "module": "titan_plugin_jira.steps.search_saved_query_step",
+      "function": "search_saved_query_step",
+      "summary": "Search JIRA issues using a saved query.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    query_name (str): Name of saved query (e.g., \"my_bugs\", \"team_bugs\")",
+          "    project (str, optional): Project key for parameterized queries (e.g., \"ECAPP\")",
+          "    max_results (int, optional): Maximum number of results (default: 50)"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    jira_issues (list): List of JiraTicket objects",
+          "    jira_issue_count (int): Number of issues found",
+          "    used_query_name (str): Name of the query that was used"
+        ],
+        "Returns": [
+          "    Success: Issues found",
+          "    Error: Query not found or search failed",
+          "Available predefined queries (from utils):",
+          "    Personal: my_open_issues, my_bugs, my_in_review, my_in_progress",
+          "    Team: current_sprint, team_open, team_bugs, team_in_review",
+          "    Priority: critical_issues, high_priority, blocked_issues",
+          "    Time: updated_today, created_this_week, recent_bugs",
+          "    Status: todo_issues, in_progress_all, done_recently",
+          "Example usage in workflow:",
+          "    ```yaml",
+          "    - id: search",
+          "      plugin: jira",
+          "      step: search_saved_query",
+          "      params:",
+          "        query_name: \"my_bugs\"",
+          "    # For queries with {project} parameter:",
+          "    - id: search_team",
+          "      plugin: jira",
+          "      step: search_saved_query",
+          "      params:",
+          "        query_name: \"team_bugs\"",
+          "        project: \"ECAPP\"",
+          "    ```"
+        ]
+      },
+      "used_by_workflows": [
+        "analyze-jira-issues"
+      ]
+    },
+    {
+      "name": "select_issue_priority",
+      "group": "Issue Creation",
+      "module": "titan_plugin_jira.steps.select_issue_priority_step",
+      "function": "select_issue_priority",
+      "summary": "Select priority for the new issue from available priorities in Jira.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    WorkflowResult"
+        ]
+      },
+      "used_by_workflows": [
+        "create-generic-issue"
+      ]
+    },
+    {
+      "name": "select_issue_type",
+      "group": "Issue Creation",
+      "module": "titan_plugin_jira.steps.select_issue_type_step",
+      "function": "select_issue_type",
+      "summary": "Select issue type for the new issue.",
+      "docstring_sections": {
+        "Requires": [
+          "- ctx.jira.project_key (from client config)",
+          "Stores in:",
+          "- ctx.data[\"issue_type\"] = str (e.g., \"Story\", \"Bug\", \"Task\")",
+          "- ctx.data[\"issue_type_id\"] = str (e.g., \"10001\")"
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    WorkflowResult"
+        ]
+      },
+      "used_by_workflows": [
+        "create-generic-issue"
+      ]
+    },
+    {
+      "name": "select_jira_issue",
+      "group": "Search and Selection",
+      "module": "titan_plugin_jira.steps.select_jira_issue_step",
+      "function": "select_jira_issue_step",
+      "summary": "Resolve a JIRA issue key from user input: a plain number, a full key, or a board search.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.jira: An initialized JiraClient."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    jira_issue_key (str): The resolved JIRA issue key",
+          "    selected_issue (UIJiraIssue, optional): Set only when resolved via the Ready to Dev list"
+        ],
+        "Returns": [
+          "    Success: An issue key was resolved",
+          "    Error: JIRA client not available, invalid input, search failed, or no selection made"
+        ]
+      },
+      "used_by_workflows": [
+        "plan-jira-issue"
+      ]
+    },
+    {
+      "name": "transition_issue",
+      "group": "Transitions and Fix Versions",
+      "module": "titan_plugin_jira.steps.issue_management_steps",
+      "function": "transition_issue_step",
+      "summary": "Transition a Jira issue to a target status.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the issue transitions successfully.",
+          "    Error: If required context is missing or the Jira call fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "verify_issue_has_fix_version",
+      "group": "Transitions and Fix Versions",
+      "module": "titan_plugin_jira.steps.issue_management_steps",
+      "function": "verify_issue_has_fix_version_step",
+      "summary": "Verify a Jira issue has the expected fixVersion.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the issue has the expected fix version.",
+          "    Error: If required context is missing, verification fails, or the Jira call fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "verify_issue_state",
+      "group": "Transitions and Fix Versions",
+      "module": "titan_plugin_jira.steps.issue_management_steps",
+      "function": "verify_issue_state_step",
+      "summary": "Verify that a Jira issue is currently in the expected status.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the issue is in the expected status.",
+          "    Error: If required context is missing, verification fails, or the Jira call fails."
+        ]
+      },
+      "used_by_workflows": []
+    }
+  ]
+}

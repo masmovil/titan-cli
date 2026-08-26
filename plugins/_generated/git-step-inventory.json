@@ -1,0 +1,629 @@
+{
+  "plugin": "git",
+  "groups": [
+    {
+      "name": "Status and Inspection",
+      "steps": [
+        {
+          "name": "get_status",
+          "summary": "Retrieve repository status and expose `git_status` to the workflow context."
+        },
+        {
+          "name": "get_current_branch",
+          "summary": "Resolve the currently checked out branch name."
+        },
+        {
+          "name": "get_base_branch",
+          "summary": "Resolve the base branch used by Git workflows."
+        }
+      ]
+    },
+    {
+      "name": "Commits",
+      "steps": [
+        {
+          "name": "create_commit",
+          "summary": "Create a commit from context-provided commit message data."
+        },
+        {
+          "name": "push",
+          "summary": "Push the current branch to the configured remote."
+        },
+        {
+          "name": "ai_generate_commit_message",
+          "summary": "Generate a commit message from current uncommitted changes using AI."
+        }
+      ]
+    },
+    {
+      "name": "Branching",
+      "steps": [
+        {
+          "name": "save_current_branch",
+          "summary": "Store the current branch in workflow context for later restore."
+        },
+        {
+          "name": "restore_original_branch",
+          "summary": "Return to the branch saved earlier in workflow context."
+        },
+        {
+          "name": "checkout",
+          "summary": "Checkout a specific branch from workflow context."
+        },
+        {
+          "name": "pull",
+          "summary": "Update the current branch from the configured remote."
+        },
+        {
+          "name": "create_branch",
+          "summary": "Create a new branch from workflow-provided branch data."
+        }
+      ]
+    },
+    {
+      "name": "Merging",
+      "steps": [
+        {
+          "name": "resolve_merge_target",
+          "summary": "Resolve which branch is merged and verify the repository is ready for it."
+        },
+        {
+          "name": "fetch_merge_source",
+          "summary": "Fetch the source branch from the remote without moving HEAD."
+        },
+        {
+          "name": "merge_source_branch",
+          "summary": "Merge the fetched ref into the current branch and report conflicts."
+        },
+        {
+          "name": "complete_merge",
+          "summary": "Stage resolved conflicts and commit the merge with git's suggested message."
+        }
+      ]
+    },
+    {
+      "name": "Diff Summaries",
+      "steps": [
+        {
+          "name": "show_uncommitted_diff_summary",
+          "summary": "Summarize local uncommitted changes for humans and downstream AI steps."
+        },
+        {
+          "name": "show_branch_diff_summary",
+          "summary": "Summarize branch-level changes relative to the base branch."
+        }
+      ]
+    },
+    {
+      "name": "Worktrees",
+      "steps": [
+        {
+          "name": "create_worktree",
+          "summary": "Create a worktree for isolated branch work."
+        },
+        {
+          "name": "remove_worktree",
+          "summary": "Remove a previously created worktree."
+        },
+        {
+          "name": "worktree_commit",
+          "summary": "Create a commit inside a specific worktree."
+        },
+        {
+          "name": "worktree_push",
+          "summary": "Push a branch from a specific worktree."
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "name": "ai_generate_commit_message",
+      "group": "Commits",
+      "module": "titan_plugin_git.steps.ai_commit_message_step",
+      "function": "ai_generate_commit_message",
+      "summary": "Generate a commit message using AI based on the current changes.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.ai: An initialized AIClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    git_status: Current git status with changes."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    commit_message (str): AI-generated commit message."
+        ],
+        "Returns": [
+          "    Success: If the commit message was generated successfully.",
+          "    Error: If the operation fails.",
+          "    Skip: If no changes, AI not configured, or user declined."
+        ]
+      },
+      "used_by_workflows": [
+        "commit-ai"
+      ]
+    },
+    {
+      "name": "checkout",
+      "group": "Branching",
+      "module": "titan_plugin_git.steps.checkout_step",
+      "function": "checkout_branch_step",
+      "summary": "Checkout a Git branch.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    branch (str): Branch name to checkout"
+        ],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Branch checked out successfully",
+          "    Error: Git operation failed"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "complete_merge",
+      "group": "Merging",
+      "module": "titan_plugin_git.steps.merge_steps",
+      "function": "complete_merge",
+      "summary": "Finish a conflicted merge after the user resolved the conflicts.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.textual: The Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    merge_status (str): Status published by merge_source_branch",
+          "    merge_commit_no_verify (bool, optional): Skip pre-commit and commit-msg hooks on the merge commit (default: True)"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    merge_commit_sha (str): SHA of the merge commit"
+        ],
+        "Returns": [
+          "    Success: Merge committed",
+          "    Skip: Merge was already complete, nothing to do",
+          "    Exit: User aborted the merge",
+          "    Error: Staging or committing failed"
+        ]
+      },
+      "used_by_workflows": [
+        "merge-branch"
+      ]
+    },
+    {
+      "name": "create_branch",
+      "group": "Branching",
+      "module": "titan_plugin_git.steps.create_branch_step",
+      "function": "create_branch_step",
+      "summary": "Create a new Git branch.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    new_branch (str): Name of the branch to create",
+          "    start_point (str, optional): Starting point for the branch (defaults to HEAD)",
+          "    delete_if_exists (bool, optional): Delete the branch if it already exists (default: False)",
+          "    checkout (bool, optional): Checkout the new branch after creation (default: True)"
+        ],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Branch created successfully",
+          "    Error: Git operation failed"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "create_commit",
+      "group": "Commits",
+      "module": "titan_plugin_git.steps.commit_step",
+      "function": "create_git_commit_step",
+      "summary": "Creates a git commit.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    git_status (GitStatus): The git status object, used to check if the working directory is clean.",
+          "    commit_message (str): The message for the commit.",
+          "    all_files (bool, optional): Whether to commit all modified and new files. Defaults to True.",
+          "    no_verify (bool, optional): Skip pre-commit and commit-msg hooks. Defaults to False.",
+          "    commit_hash (str, optional): If present, indicates a commit was already created."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    commit_hash (str): The hash of the created commit."
+        ],
+        "Returns": [
+          "    Success: If the commit was created successfully.",
+          "    Error: If the GitClient is not available, or the commit operation fails.",
+          "    Skip: If there are no changes to commit or a commit was already created."
+        ]
+      },
+      "used_by_workflows": [
+        "commit-ai"
+      ]
+    },
+    {
+      "name": "create_worktree",
+      "group": "Worktrees",
+      "module": "titan_plugin_git.steps.create_worktree_step",
+      "function": "create_worktree",
+      "summary": "Create a temporary git worktree in detached HEAD mode from a remote base branch.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    base_branch (str, optional): Base branch to create the worktree from. Defaults to the git plugin's configured main branch.",
+          "    path (str, optional): Custom path for the worktree. Defaults to a temporary directory."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    worktree_path (str): Path to the created worktree.",
+          "    base_branch (str): Base branch name (e.g., \"develop\", \"main\" or \"rc/26.18.2\")."
+        ],
+        "Returns": [
+          "    Success: If the worktree is created successfully.",
+          "    Error: If the Git client is unavailable, no base branch can be resolved, or worktree creation fails.",
+          "Example:",
+          "    ```yaml",
+          "    - name: \"Create Worktree\"",
+          "      plugin: git",
+          "      step: create_worktree",
+          "      params:",
+          "        base_branch: \"${base_branch}\"",
+          "    ```"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "fetch_merge_source",
+      "group": "Merging",
+      "module": "titan_plugin_git.steps.merge_steps",
+      "function": "fetch_merge_source",
+      "summary": "Fetch the source branch from the remote without moving HEAD.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.textual: The Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    source_branch (str): Branch to fetch",
+          "    remote (str): Remote name"
+        ],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Remote-tracking ref updated",
+          "    Error: Fetch failed or required inputs are missing"
+        ]
+      },
+      "used_by_workflows": [
+        "merge-branch"
+      ]
+    },
+    {
+      "name": "get_base_branch",
+      "group": "Status and Inspection",
+      "module": "titan_plugin_git.steps.branch_steps",
+      "function": "get_base_branch_step",
+      "summary": "Retrieves the configured main/base branch name and saves it to the context.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    pr_base_branch (str): The name of the base branch, to be used as the base branch for a PR."
+        ],
+        "Returns": [
+          "    Success: If the base branch was retrieved successfully.",
+          "    Error: If the GitClient is not available or the git command fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "get_current_branch",
+      "group": "Status and Inspection",
+      "module": "titan_plugin_git.steps.branch_steps",
+      "function": "get_current_branch_step",
+      "summary": "Retrieves the current git branch name and saves it to the context.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    pr_head_branch (str): The name of the current branch, to be used as the head branch for a PR."
+        ],
+        "Returns": [
+          "    Success: If the current branch was retrieved successfully.",
+          "    Error: If the GitClient is not available or the git command fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "get_status",
+      "group": "Status and Inspection",
+      "module": "titan_plugin_git.steps.status_step",
+      "function": "get_git_status_step",
+      "summary": "Retrieves the current git status and saves it to the context.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    git_status (GitStatus): The full git status object, which includes the `is_clean` flag."
+        ],
+        "Returns": [
+          "    Success: If there are changes to commit (workflow continues)",
+          "    Exit: If working directory is clean (stops commit workflow; parent continues)",
+          "    Error: If the GitClient is not available or the git command fails."
+        ]
+      },
+      "used_by_workflows": [
+        "commit-ai"
+      ]
+    },
+    {
+      "name": "merge_source_branch",
+      "group": "Merging",
+      "module": "titan_plugin_git.steps.merge_steps",
+      "function": "merge_source_branch",
+      "summary": "Merge the fetched ref into the current branch.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.textual: The Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    merge_ref (str): Ref to merge, e.g. \"origin/develop\"",
+          "    target_branch (str): Branch receiving the merge"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    merge_status (str): One of up_to_date / fast_forward / merged / conflicted",
+          "    merge_conflicts (list): Paths with unresolved conflicts (empty when clean)",
+          "    merge_conflict_context (str): Prompt for the AI CLI, only set on conflicts"
+        ],
+        "Returns": [
+          "    Success: Merge finished, cleanly or with conflicts to resolve",
+          "    Error: Git refused to start the merge"
+        ]
+      },
+      "used_by_workflows": [
+        "merge-branch"
+      ]
+    },
+    {
+      "name": "pull",
+      "group": "Branching",
+      "module": "titan_plugin_git.steps.pull_step",
+      "function": "pull_step",
+      "summary": "Pull from Git remote.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    remote (str, optional): Remote name (defaults to \"origin\")",
+          "    branch (str, optional): Branch name (defaults to current branch)"
+        ],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Pull completed successfully",
+          "    Error: Git operation failed"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "push",
+      "group": "Commits",
+      "module": "titan_plugin_git.steps.push_step",
+      "function": "create_git_push_step",
+      "summary": "Pushes changes to a remote repository.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient."
+        ],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    pr_head_branch (str): The name of the branch that was pushed."
+        ],
+        "Returns": [
+          "    Success: If the push was successful.",
+          "    Error: If the push operation fails."
+        ]
+      },
+      "used_by_workflows": [
+        "commit-ai"
+      ]
+    },
+    {
+      "name": "remove_worktree",
+      "group": "Worktrees",
+      "module": "titan_plugin_git.steps.remove_worktree_step",
+      "function": "remove_worktree",
+      "summary": "Remove a git worktree.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the worktree is removed successfully or is already gone.",
+          "    Error: If cleanup fails.",
+          "Example:",
+          "    ```yaml",
+          "    - name: \"Cleanup Worktree\"",
+          "      plugin: git",
+          "      step: remove_worktree",
+          "      params:",
+          "        path: \"{worktree_path}\"  # From previous create_worktree step",
+          "    ```"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "resolve_merge_target",
+      "group": "Merging",
+      "module": "titan_plugin_git.steps.merge_steps",
+      "function": "resolve_merge_target",
+      "summary": "Resolve which branch gets merged and verify the repo is ready for it.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: An initialized GitClient.",
+          "    ctx.textual: The Textual UI context."
+        ],
+        "Inputs (from ctx.data)": [
+          "    source_branch (str, optional): Branch to merge (defaults to the configured base branch)",
+          "    remote (str, optional): Remote name (default: \"origin\")"
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    source_branch (str): Resolved branch to merge",
+          "    target_branch (str): Branch receiving the merge",
+          "    remote (str): Remote name",
+          "    merge_ref (str): Ref that will be merged, e.g. \"origin/develop\""
+        ],
+        "Returns": [
+          "    Success: Target resolved",
+          "    Exit: Working tree is dirty, nothing was touched",
+          "    Error: Git client unavailable or the branch cannot be resolved"
+        ]
+      },
+      "used_by_workflows": [
+        "merge-branch"
+      ]
+    },
+    {
+      "name": "restore_original_branch",
+      "group": "Branching",
+      "module": "titan_plugin_git.steps.restore_original_branch_step",
+      "function": "restore_original_branch_step",
+      "summary": "Restore original branch and pop stashed changes.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    original_branch (str): Name of the branch to restore",
+          "    has_stashed_changes (bool): Whether to pop stashed changes"
+        ],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Branch restored and changes popped if needed",
+          "    Error: Git operation failed"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "save_current_branch",
+      "group": "Branching",
+      "module": "titan_plugin_git.steps.save_current_branch_step",
+      "function": "save_current_branch_step",
+      "summary": "Save current branch and stash uncommitted changes.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    original_branch (str): Name of the branch the user was on",
+          "    has_stashed_changes (bool): Whether changes were stashed"
+        ],
+        "Returns": [
+          "    Success: Branch saved and changes stashed if needed",
+          "    Error: Git operation failed"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "show_branch_diff_summary",
+      "group": "Diff Summaries",
+      "module": "titan_plugin_git.steps.diff_summary_step",
+      "function": "show_branch_diff_summary",
+      "summary": "Show summary of branch changes (git diff base...head --stat).",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    pr_head_branch (str): Head branch name"
+        ],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Always (even if no changes, for workflow continuity)"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "show_uncommitted_diff_summary",
+      "group": "Diff Summaries",
+      "module": "titan_plugin_git.steps.diff_summary_step",
+      "function": "show_uncommitted_diff_summary",
+      "summary": "Show uncommitted changes and let the user select which files to include",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: Files selected and saved to context",
+          "    Exit: No files selected by the user",
+          "    Skip: Could not retrieve diff stat"
+        ]
+      },
+      "used_by_workflows": [
+        "commit-ai"
+      ]
+    },
+    {
+      "name": "worktree_commit",
+      "group": "Worktrees",
+      "module": "titan_plugin_git.steps.worktree_command_step",
+      "function": "worktree_commit",
+      "summary": "Create a commit in a worktree.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the commit is created in the worktree.",
+          "    Error: If required context is missing or the git command fails.",
+          "Example:",
+          "    ```yaml",
+          "    - name: \"Commit in Worktree\"",
+          "      plugin: git",
+          "      step: worktree_commit",
+          "      params:",
+          "        worktree_path: \"{worktree_path}\"",
+          "        message: \"chore: add release notes\"",
+          "        add_all: true",
+          "    ```"
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
+      "name": "worktree_push",
+      "group": "Worktrees",
+      "module": "titan_plugin_git.steps.worktree_command_step",
+      "function": "worktree_push",
+      "summary": "Push from a worktree.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [],
+        "Returns": [
+          "    Success: If the branch is pushed from the worktree.",
+          "    Error: If required context is missing or the git command fails.",
+          "Example:",
+          "    ```yaml",
+          "    - name: \"Push from Worktree\"",
+          "      plugin: git",
+          "      step: worktree_push",
+          "      params:",
+          "        worktree_path: \"{worktree_path}\"",
+          "        set_upstream: true",
+          "    ```"
+        ]
+      },
+      "used_by_workflows": []
+    }
+  ]
+}

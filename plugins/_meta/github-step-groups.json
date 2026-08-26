@@ -1,0 +1,88 @@
+{
+  "plugin": "github",
+  "groups": [
+    {
+      "name": "Pull Requests",
+      "steps": [
+        {"name": "create_pr", "summary": "Create a pull request from workflow context data."},
+        {"name": "get_pull_request", "summary": "Fetch a pull request and expose it to downstream steps."},
+        {"name": "merge_pull_request", "summary": "Merge a pull request with workflow-selected merge options."},
+        {"name": "verify_pull_request_state", "summary": "Validate PR state before continuing a workflow."},
+        {"name": "ai_suggest_pr_description", "summary": "Generate PR title and body from branch changes using AI."}
+      ]
+    },
+    {
+      "name": "Prompt and Selection",
+      "steps": [
+        {"name": "prompt_for_pr_title", "summary": "Prompt for a pull request title."},
+        {"name": "prompt_for_pr_body", "summary": "Prompt for a pull request body."},
+        {"name": "prompt_for_pr_draft", "summary": "Ask whether the pull request should be created as a draft."},
+        {"name": "prompt_for_issue_body_step", "summary": "Prompt for free-form issue input before AI expansion."},
+        {"name": "prompt_for_self_assign", "summary": "Ask whether the current user should be assigned."},
+        {"name": "prompt_for_labels", "summary": "Prompt for GitHub labels to attach to an issue or PR."}
+      ]
+    },
+    {
+      "name": "Issue Creation",
+      "steps": [
+        {"name": "ai_suggest_issue_title_and_body", "summary": "Generate issue content from user input and templates using AI."},
+        {"name": "preview_and_confirm_issue", "summary": "Preview generated issue content and confirm creation."},
+        {"name": "create_issue", "summary": "Create the GitHub issue from workflow context data."}
+      ]
+    },
+    {
+      "name": "Pull Request Review",
+      "steps": [
+        {"name": "select_pr_for_review", "summary": "Select a pull request that needs response or review."},
+        {"name": "fetch_pending_comments", "summary": "Load unresolved PR comments into workflow context."},
+        {"name": "check_clean_state", "summary": "Ensure the current branch state is safe before checkout."},
+        {"name": "checkout_pr_branch", "summary": "Switch to the PR branch while preserving original branch context."},
+        {"name": "review_comments", "summary": "Guide the user through comment resolution and local changes."},
+        {"name": "push_commits", "summary": "Push local follow-up commits back to the PR branch."},
+        {"name": "send_comment_replies", "summary": "Submit replies for the reviewed comments."},
+        {"name": "request_review", "summary": "Request another review after applying comment changes."},
+        {"name": "checkout_original_branch", "summary": "Restore the original branch after review work completes."}
+      ]
+    },
+    {
+      "name": "Code Review",
+      "steps": [
+        {"name": "select_pr_for_code_review", "summary": "Choose a PR to analyze in the advanced code review pipeline."},
+        {"name": "fetch_pr_review_bundle", "summary": "Collect the review bundle with PR, diff, files, and discussion context."},
+        {"name": "build_change_manifest", "summary": "Build a structured manifest of changed files and review targets."},
+        {"name": "build_existing_comments_index", "summary": "Index existing review comments to avoid duplicates."},
+        {"name": "classify_pr", "summary": "Classify PR size and composition before review planning."},
+        {"name": "score_review_candidates", "summary": "Rank changed files and exclude low-value review candidates."},
+        {"name": "build_review_checklist", "summary": "Prepare a review checklist from PR context."},
+        {"name": "select_review_strategy", "summary": "Choose the review execution strategy from deterministic PR signals."},
+        {"name": "ai_review_plan", "summary": "Ask AI to plan the directed review strategy."},
+        {"name": "validate_review_plan", "summary": "Validate the AI review plan before execution."},
+        {"name": "resolve_review_context", "summary": "Expand the precise review contexts needed for targeted analysis."},
+        {"name": "ai_review_findings", "summary": "Run targeted AI analysis and produce candidate findings."},
+        {"name": "normalize_findings", "summary": "Normalize raw AI findings into workflow-friendly structures."},
+        {"name": "dedupe_findings", "summary": "Remove duplicate or overlapping findings before submission."},
+        {"name": "build_new_comment_actions", "summary": "Translate validated findings into GitHub review actions."},
+        {"name": "validate_review_actions", "summary": "Validate review actions before posting comments."},
+        {"name": "submit_review_actions", "summary": "Submit review comments or review actions to GitHub."},
+        {"name": "build_thread_review_candidates", "summary": "Collect review threads that may need follow-up decisions."},
+        {"name": "build_thread_review_contexts", "summary": "Expand the context required to evaluate thread resolution."},
+        {"name": "ai_thread_resolution", "summary": "Ask AI whether open review threads should be resolved or reopened."},
+        {"name": "normalize_thread_decisions", "summary": "Normalize thread resolution decisions for workflow execution."},
+        {"name": "build_thread_actions", "summary": "Build GitHub actions for thread resolution decisions."}
+      ]
+    },
+    {
+      "name": "Worktree Support",
+      "steps": [
+        {"name": "create_worktree", "summary": "Create an isolated worktree for GitHub-focused workflow tasks."},
+        {"name": "cleanup_worktree", "summary": "Remove a worktree created during workflow execution."}
+      ]
+    },
+    {
+      "name": "Releases",
+      "steps": [
+        {"name": "select_release", "summary": "List published GitHub releases and select one to use as a notes source."}
+      ]
+    }
+  ]
+}

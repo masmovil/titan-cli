@@ -1,0 +1,4520 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Modular development tools orchestrator — Automate Git, GitHub, Jira workflows with AI assistance">
+      
+      
+      
+        <link rel="canonical" href="https://masorange.github.io/titan-cli/plugins/git/client-api/">
+      
+      
+        <link rel="prev" href="../overview/">
+      
+      
+        <link rel="next" href="../workflow-steps/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Client API - Titan CLI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#git-client-api" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Titan CLI" class="md-header__button md-logo" aria-label="Titan CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Titan CLI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Client API
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/masorange/titan-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    masorange/titan-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../concepts/workflows/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../contributing/development-setup/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Titan CLI" class="md-nav__button md-logo" aria-label="Titan CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Titan CLI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/masorange/titan-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    masorange/titan-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/your-first-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Your First Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/your-first-textual-step/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Your First Textual Step
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/textual-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Textual in Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/ai-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Git
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accessing-the-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessing the client
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#branch-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branch operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Branch operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-the-current-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the current branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-branch-safely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a branch safely
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkout-a-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkout a branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-branch-exists-on-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a branch exists on remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-a-branch-from-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update a branch from remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-from-the-configured-main-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update from the configured main branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkout-safely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkout safely
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#return-to-the-original-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Return to the original branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-branch-is-protected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a branch is protected
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commit-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commit operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Commit operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a commit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-commit-for-specific-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a commit for specific files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-current-commit-sha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the current commit SHA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-commit-sha-for-a-ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the commit SHA for a ref
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-commits-versus-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get commits versus base
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-commits-in-a-branch-compared-to-another-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get commits in a branch compared to another branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-commits-between-refs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get commits between refs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#count-commits-ahead-of-a-base-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count commits ahead of a base branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#count-unpushed-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count unpushed commits
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-repository-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get repository status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-for-uncommitted-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check for uncommitted changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#diff-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Diff operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-a-diff-between-refs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a diff between refs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-full-uncommitted-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the full uncommitted diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-staged-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the staged diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-unstaged-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the unstaged diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-diff-for-one-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the diff for one file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-diff-between-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the diff between branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-per-file-change-counters-between-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get per-file change counters between branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-files-changed-between-two-refs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List files changed between two refs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-diff-stat-between-refs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a diff stat between refs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-diff-stat-for-uncommitted-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the diff stat for uncommitted changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-diff-stat-between-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the diff stat between branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merge-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Merge operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merge-a-ref-into-the-current-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge a ref into the current branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-conflicted-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List conflicted files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-unresolved-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List unresolved conflicts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-merge-is-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a merge is in progress
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-every-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage every change
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#complete-an-in-progress-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete an in-progress merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#abort-an-in-progress-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Abort an in-progress merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remote-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remote operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Remote operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#push-to-a-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push to a remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#push-a-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push a tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pull-from-a-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pull from a remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch-from-a-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fetch from a remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extract-github-repository-info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extract GitHub repository info
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stash-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stash operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stash operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-stash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a stash
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pop-a-stash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pop a stash
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#find-a-stash-by-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find a stash by message
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restore-a-stash-by-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restore a stash by message
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tag-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tag operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tag operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-tag-exists-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a tag exists locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-tag-exists-on-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a tag exists on remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-tags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List tags
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worktree-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktree operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Worktree operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remove-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prune-stale-worktree-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prune stale worktree metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-worktrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List worktrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-a-git-command-in-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run a Git command in a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-recent-commits-from-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get recent commits from a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-worktree-diff-stat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the worktree diff stat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkout-a-branch-in-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkout a branch in a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#commit-changes-in-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commit changes in a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#push-from-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push from a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GitHub
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jira
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Jira
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Slack
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Docker
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/development-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accessing-the-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessing the client
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#branch-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branch operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Branch operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-the-current-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the current branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-branch-safely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a branch safely
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkout-a-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkout a branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-branch-exists-on-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a branch exists on remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-a-branch-from-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update a branch from remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-from-the-configured-main-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update from the configured main branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkout-safely" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkout safely
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#return-to-the-original-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Return to the original branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-branch-is-protected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a branch is protected
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commit-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commit operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Commit operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a commit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-commit-for-specific-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a commit for specific files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-current-commit-sha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the current commit SHA
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-commit-sha-for-a-ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the commit SHA for a ref
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-commits-versus-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get commits versus base
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-commits-in-a-branch-compared-to-another-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get commits in a branch compared to another branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-commits-between-refs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get commits between refs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#count-commits-ahead-of-a-base-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count commits ahead of a base branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#count-unpushed-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count unpushed commits
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-repository-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get repository status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-for-uncommitted-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check for uncommitted changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#diff-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Diff operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-a-diff-between-refs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a diff between refs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-full-uncommitted-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the full uncommitted diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-staged-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the staged diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-unstaged-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the unstaged diff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-diff-for-one-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the diff for one file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-diff-between-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the diff between branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-per-file-change-counters-between-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get per-file change counters between branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-files-changed-between-two-refs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List files changed between two refs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-diff-stat-between-refs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a diff stat between refs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-diff-stat-for-uncommitted-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the diff stat for uncommitted changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-diff-stat-between-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the diff stat between branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merge-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Merge operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merge-a-ref-into-the-current-branch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge a ref into the current branch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-conflicted-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List conflicted files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-unresolved-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List unresolved conflicts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-merge-is-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a merge is in progress
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stage-every-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stage every change
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#complete-an-in-progress-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete an in-progress merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#abort-an-in-progress-merge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Abort an in-progress merge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remote-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remote operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Remote operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#push-to-a-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push to a remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#push-a-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push a tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pull-from-a-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pull from a remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch-from-a-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fetch from a remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extract-github-repository-info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extract GitHub repository info
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stash-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stash operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stash operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-stash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a stash
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pop-a-stash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pop a stash
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#find-a-stash-by-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find a stash by message
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restore-a-stash-by-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restore a stash by message
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tag-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tag operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tag operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-a-tag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delete a tag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-tag-exists-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a tag exists locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check-whether-a-tag-exists-on-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check whether a tag exists on remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-tags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List tags
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worktree-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktree operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Worktree operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remove-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remove a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prune-stale-worktree-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prune stale worktree metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-worktrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List worktrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-a-git-command-in-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run a Git command in a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-recent-commits-from-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get recent commits from a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-the-worktree-diff-stat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get the worktree diff stat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#checkout-a-branch-in-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkout a branch in a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#commit-changes-in-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commit changes in a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#push-from-a-worktree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Push from a worktree
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="git-client-api">Git Client API<a class="headerlink" href="#git-client-api" title="Permanent link">&para;</a></h1>
+<p>The Git plugin adds core Git operations to Titan through a high-level client and reusable workflows. It covers branches, commits, status inspection, diffs, remotes, stashes, tags, and worktrees.</p>
+<p>This page documents the plugin from a functional point of view, while also showing how each capability is called and which parameters it needs.</p>
+<hr />
+<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
+<p>To use the Git plugin in a project:</p>
+<ul>
+<li>Enable the <code>git</code> plugin in <code>.titan/config.toml</code></li>
+<li>Install the <code>git</code> CLI and make sure it is available in <code>PATH</code></li>
+<li>Run Titan inside a Git repository</li>
+</ul>
+<p>Example project configuration:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">[plugins.git]</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">[plugins.git.config]</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">main_branch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;main&quot;</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">default_remote</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;origin&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="accessing-the-client">Accessing the client<a class="headerlink" href="#accessing-the-client" title="Permanent link">&para;</a></h2>
+<p>In Titan code, the public entry point is the Git plugin client:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">git_plugin</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">registry</span><span class="o">.</span><span class="n">get_plugin</span><span class="p">(</span><span class="s2">&quot;git&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">client</span> <span class="o">=</span> <span class="n">git_plugin</span><span class="o">.</span><span class="n">get_client</span><span class="p">()</span>
+</code></pre></div>
+<p>The client returns <code>ClientResult[...]</code> values. In practice, this means each call can succeed with data or return an error result.</p>
+<hr />
+<h2 id="branch-operations">Branch operations<a class="headerlink" href="#branch-operations" title="Permanent link">&para;</a></h2>
+<h3 id="get-the-current-branch">Get the current branch<a class="headerlink" href="#get-the-current-branch" title="Permanent link">&para;</a></h3>
+<p>Returns the currently checked out branch name.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_current_branch</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="list-branches">List branches<a class="headerlink" href="#list-branches" title="Permanent link">&para;</a></h3>
+<p>Returns local branches, or remote branches when requested.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_branches</span><span class="p">(</span><span class="n">remote</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>remote</code>: Optional. Set to <code>True</code> to list remote branches instead of local ones.</li>
+</ul>
+<h3 id="create-a-branch">Create a branch<a class="headerlink" href="#create-a-branch" title="Permanent link">&para;</a></h3>
+<p>Creates a new branch from a starting point.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">client</span><span class="o">.</span><span class="n">create_branch</span><span class="p">(</span><span class="n">branch_name</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span> <span class="n">start_point</span><span class="o">=</span><span class="s2">&quot;HEAD&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch_name</code>: Required. New branch name.</li>
+<li><code>start_point</code>: Optional. Git ref to branch from.</li>
+</ul>
+<h3 id="delete-a-branch">Delete a branch<a class="headerlink" href="#delete-a-branch" title="Permanent link">&para;</a></h3>
+<p>Deletes a branch directly.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">client</span><span class="o">.</span><span class="n">delete_branch</span><span class="p">(</span><span class="n">branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch</code>: Required. Branch name to delete.</li>
+<li><code>force</code>: Optional. Force deletion.</li>
+</ul>
+<h3 id="delete-a-branch-safely">Delete a branch safely<a class="headerlink" href="#delete-a-branch-safely" title="Permanent link">&para;</a></h3>
+<p>Deletes a branch only if it is not considered protected.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">client</span><span class="o">.</span><span class="n">safe_delete_branch</span><span class="p">(</span><span class="n">branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch</code>: Required. Branch name to delete.</li>
+<li><code>force</code>: Optional. Force deletion.</li>
+</ul>
+<h3 id="checkout-a-branch">Checkout a branch<a class="headerlink" href="#checkout-a-branch" title="Permanent link">&para;</a></h3>
+<p>Switches the repository to another branch.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">client</span><span class="o">.</span><span class="n">checkout</span><span class="p">(</span><span class="s2">&quot;feature/search&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch</code>: Required. Branch name to checkout.</li>
+</ul>
+<h3 id="check-whether-a-branch-exists-on-remote">Check whether a branch exists on remote<a class="headerlink" href="#check-whether-a-branch-exists-on-remote" title="Permanent link">&para;</a></h3>
+<p>Checks if a branch already exists in a remote repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">client</span><span class="o">.</span><span class="n">branch_exists_on_remote</span><span class="p">(</span><span class="n">branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span> <span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch</code>: Required. Branch name.</li>
+<li><code>remote</code>: Optional. Remote name.</li>
+</ul>
+<h3 id="update-a-branch-from-remote">Update a branch from remote<a class="headerlink" href="#update-a-branch-from-remote" title="Permanent link">&para;</a></h3>
+<p>Fetches and fast-forwards a branch from the remote.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">client</span><span class="o">.</span><span class="n">update_branch</span><span class="p">(</span><span class="n">branch</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span> <span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch</code>: Required. Branch to update.</li>
+<li><code>remote</code>: Optional. Remote name. Defaults to the configured default remote.</li>
+</ul>
+<h3 id="update-from-the-configured-main-branch">Update from the configured main branch<a class="headerlink" href="#update-from-the-configured-main-branch" title="Permanent link">&para;</a></h3>
+<p>Updates the current branch from the configured main branch.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">client</span><span class="o">.</span><span class="n">update_from_main</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="checkout-safely">Checkout safely<a class="headerlink" href="#checkout-safely" title="Permanent link">&para;</a></h3>
+<p>Stores the current branch, optionally stashes local changes, and then switches branches.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">client</span><span class="o">.</span><span class="n">safe_checkout</span><span class="p">(</span><span class="n">branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span> <span class="n">auto_stash</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch</code>: Required. Branch to checkout.</li>
+<li><code>auto_stash</code>: Optional. Automatically stash uncommitted changes first.</li>
+</ul>
+<h3 id="return-to-the-original-branch">Return to the original branch<a class="headerlink" href="#return-to-the-original-branch" title="Permanent link">&para;</a></h3>
+<p>Returns to the branch previously saved by <code>safe_checkout</code>.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">client</span><span class="o">.</span><span class="n">return_to_original_branch</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="check-whether-a-branch-is-protected">Check whether a branch is protected<a class="headerlink" href="#check-whether-a-branch-is-protected" title="Permanent link">&para;</a></h3>
+<p>Checks if a branch name is treated as protected by the client.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">client</span><span class="o">.</span><span class="n">is_protected_branch</span><span class="p">(</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch</code>: Required. Branch name.</li>
+</ul>
+<hr />
+<h2 id="commit-operations">Commit operations<a class="headerlink" href="#commit-operations" title="Permanent link">&para;</a></h2>
+<h3 id="create-a-commit">Create a commit<a class="headerlink" href="#create-a-commit" title="Permanent link">&para;</a></h3>
+<p>Creates a commit from the current working tree.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">client</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">message</span><span class="o">=</span><span class="s2">&quot;feat: add search filters&quot;</span><span class="p">,</span> <span class="nb">all</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">no_verify</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>message</code>: Required. Commit message.</li>
+<li><code>all</code>: Optional. Include tracked modified files automatically.</li>
+<li><code>no_verify</code>: Optional. Skip Git hooks.</li>
+</ul>
+<h3 id="create-a-commit-for-specific-files">Create a commit for specific files<a class="headerlink" href="#create-a-commit-for-specific-files" title="Permanent link">&para;</a></h3>
+<p>Creates a commit only for the files passed in the call.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">client</span><span class="o">.</span><span class="n">commit_files</span><span class="p">(</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">files</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;src/search.py&quot;</span><span class="p">,</span> <span class="s2">&quot;tests/test_search.py&quot;</span><span class="p">],</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="n">message</span><span class="o">=</span><span class="s2">&quot;test: cover search filters&quot;</span><span class="p">,</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">no_verify</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>files</code>: Required. Files to include in the commit.</li>
+<li><code>message</code>: Required. Commit message.</li>
+<li><code>no_verify</code>: Optional. Skip Git hooks.</li>
+</ul>
+<h3 id="get-the-current-commit-sha">Get the current commit SHA<a class="headerlink" href="#get-the-current-commit-sha" title="Permanent link">&para;</a></h3>
+<p>Returns the SHA of <code>HEAD</code>.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_current_commit</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-the-commit-sha-for-a-ref">Get the commit SHA for a ref<a class="headerlink" href="#get-the-commit-sha-for-a-ref" title="Permanent link">&para;</a></h3>
+<p>Resolves any Git ref to its commit SHA.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_commit_sha</span><span class="p">(</span><span class="s2">&quot;HEAD~1&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>ref</code>: Required. Any Git ref.</li>
+</ul>
+<h3 id="get-commits-versus-base">Get commits versus base<a class="headerlink" href="#get-commits-versus-base" title="Permanent link">&para;</a></h3>
+<p>Returns commit messages from the base branch up to <code>HEAD</code>.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_commits_vs_base</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-commits-in-a-branch-compared-to-another-branch">Get commits in a branch compared to another branch<a class="headerlink" href="#get-commits-in-a-branch-compared-to-another-branch" title="Permanent link">&para;</a></h3>
+<p>Returns the commits present in the head branch but not in the base branch.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_branch_commits</span><span class="p">(</span><span class="n">base_branch</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span> <span class="n">head_branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_branch</code>: Required. Base branch.</li>
+<li><code>head_branch</code>: Required. Head branch.</li>
+</ul>
+<h3 id="get-commits-between-refs">Get commits between refs<a class="headerlink" href="#get-commits-between-refs" title="Permanent link">&para;</a></h3>
+<p>Returns commits reachable from one ref but not another.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_commits_between_refs</span><span class="p">(</span><span class="n">base_ref</span><span class="o">=</span><span class="s2">&quot;origin/main&quot;</span><span class="p">,</span> <span class="n">head_ref</span><span class="o">=</span><span class="s2">&quot;HEAD&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_ref</code>: Required. Base ref.</li>
+<li><code>head_ref</code>: Optional. Head ref.</li>
+</ul>
+<h3 id="count-commits-ahead-of-a-base-branch">Count commits ahead of a base branch<a class="headerlink" href="#count-commits-ahead-of-a-base-branch" title="Permanent link">&para;</a></h3>
+<p>Counts how many commits the current branch is ahead of another branch.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">client</span><span class="o">.</span><span class="n">count_commits_ahead</span><span class="p">(</span><span class="n">base_branch</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_branch</code>: Optional. Base branch to compare against.</li>
+</ul>
+<h3 id="count-unpushed-commits">Count unpushed commits<a class="headerlink" href="#count-unpushed-commits" title="Permanent link">&para;</a></h3>
+<p>Counts how many commits have not been pushed to the remote yet.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="n">client</span><span class="o">.</span><span class="n">count_unpushed_commits</span><span class="p">(</span><span class="n">branch</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>branch</code>: Optional. Branch to inspect. Uses the current branch when omitted.</li>
+<li><code>remote</code>: Optional. Remote name.</li>
+</ul>
+<hr />
+<h2 id="status-operations">Status operations<a class="headerlink" href="#status-operations" title="Permanent link">&para;</a></h2>
+<h3 id="get-repository-status">Get repository status<a class="headerlink" href="#get-repository-status" title="Permanent link">&para;</a></h3>
+<p>Returns a structured view of the current repository state.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_status</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="check-for-uncommitted-changes">Check for uncommitted changes<a class="headerlink" href="#check-for-uncommitted-changes" title="Permanent link">&para;</a></h3>
+<p>Returns whether the repository has local changes not yet committed.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">client</span><span class="o">.</span><span class="n">has_uncommitted_changes</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<hr />
+<h2 id="diff-operations">Diff operations<a class="headerlink" href="#diff-operations" title="Permanent link">&para;</a></h2>
+<h3 id="get-a-diff-between-refs">Get a diff between refs<a class="headerlink" href="#get-a-diff-between-refs" title="Permanent link">&para;</a></h3>
+<p>Returns the diff between two refs.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_diff</span><span class="p">(</span><span class="n">base_ref</span><span class="o">=</span><span class="s2">&quot;origin/main&quot;</span><span class="p">,</span> <span class="n">head_ref</span><span class="o">=</span><span class="s2">&quot;HEAD&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_ref</code>: Required. Base ref.</li>
+<li><code>head_ref</code>: Optional. Head ref.</li>
+</ul>
+<h3 id="get-the-full-uncommitted-diff">Get the full uncommitted diff<a class="headerlink" href="#get-the-full-uncommitted-diff" title="Permanent link">&para;</a></h3>
+<p>Returns the diff of all local changes.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_uncommitted_diff</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-the-staged-diff">Get the staged diff<a class="headerlink" href="#get-the-staged-diff" title="Permanent link">&para;</a></h3>
+<p>Returns only the staged changes.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_staged_diff</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-the-unstaged-diff">Get the unstaged diff<a class="headerlink" href="#get-the-unstaged-diff" title="Permanent link">&para;</a></h3>
+<p>Returns only the unstaged changes.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_unstaged_diff</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-the-diff-for-one-file">Get the diff for one file<a class="headerlink" href="#get-the-diff-for-one-file" title="Permanent link">&para;</a></h3>
+<p>Returns the diff for a single file path.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_file_diff</span><span class="p">(</span><span class="s2">&quot;src/search.py&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>file_path</code>: Required. File path to inspect.</li>
+</ul>
+<h3 id="get-the-diff-between-branches">Get the diff between branches<a class="headerlink" href="#get-the-diff-between-branches" title="Permanent link">&para;</a></h3>
+<p>Returns the diff between two branches, with configurable context lines.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_branch_diff</span><span class="p">(</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>    <span class="n">base_branch</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>    <span class="n">head_branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a>    <span class="n">context_lines</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>    <span class="n">use_remote</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_branch</code>: Required. Base branch.</li>
+<li><code>head_branch</code>: Required. Head branch.</li>
+<li><code>context_lines</code>: Optional. Number of diff context lines.</li>
+<li><code>use_remote</code>: Optional. Treat both branches as remote refs.</li>
+</ul>
+<h3 id="get-per-file-change-counters-between-branches">Get per-file change counters between branches<a class="headerlink" href="#get-per-file-change-counters-between-branches" title="Permanent link">&para;</a></h3>
+<p>Returns a <code>UIFileChurn</code> list with exact additions/deletions per changed file
+(<code>git diff --numstat</code>). Binary files are included with <code>is_binary=True</code> and zero
+counters. Useful when an API source reports zeroed counters for files whose diff
+it cannot render.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_branch_numstat</span><span class="p">(</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>    <span class="n">base_branch</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>    <span class="n">head_branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>    <span class="n">use_remote</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_branch</code>: Required. Base branch.</li>
+<li><code>head_branch</code>: Required. Head branch.</li>
+<li><code>use_remote</code>: Optional. Treat both branches as remote refs.</li>
+</ul>
+<h3 id="list-files-changed-between-two-refs">List files changed between two refs<a class="headerlink" href="#list-files-changed-between-two-refs" title="Permanent link">&para;</a></h3>
+<p>Returns the paths that differ between two refs (commits, branches or tags),
+one entry per path. Renames report both the old and the new path.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_changed_files</span><span class="p">(</span><span class="n">base_ref</span><span class="o">=</span><span class="s2">&quot;22aa7462&quot;</span><span class="p">,</span> <span class="n">head_ref</span><span class="o">=</span><span class="s2">&quot;4a999bc6&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_ref</code>: Required. Base ref, used verbatim (no remote prefixing).</li>
+<li><code>head_ref</code>: Required. Head ref, used verbatim.</li>
+</ul>
+<h3 id="get-a-diff-stat-between-refs">Get a diff stat between refs<a class="headerlink" href="#get-a-diff-stat-between-refs" title="Permanent link">&para;</a></h3>
+<p>Returns a summary of file-level changes between refs.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_diff_stat</span><span class="p">(</span><span class="n">base_ref</span><span class="o">=</span><span class="s2">&quot;origin/main&quot;</span><span class="p">,</span> <span class="n">head_ref</span><span class="o">=</span><span class="s2">&quot;HEAD&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_ref</code>: Required. Base ref.</li>
+<li><code>head_ref</code>: Optional. Head ref.</li>
+</ul>
+<h3 id="get-the-diff-stat-for-uncommitted-changes">Get the diff stat for uncommitted changes<a class="headerlink" href="#get-the-diff-stat-for-uncommitted-changes" title="Permanent link">&para;</a></h3>
+<p>Returns a compact summary of local changes.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_uncommitted_diff_stat</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="get-the-diff-stat-between-branches">Get the diff stat between branches<a class="headerlink" href="#get-the-diff-stat-between-branches" title="Permanent link">&para;</a></h3>
+<p>Returns a compact summary of changes between two branches.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_branch_diff_stat</span><span class="p">(</span><span class="n">base_branch</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span> <span class="n">head_branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>base_branch</code>: Required. Base branch.</li>
+<li><code>head_branch</code>: Required. Head branch.</li>
+</ul>
+<hr />
+<h2 id="merge-operations">Merge operations<a class="headerlink" href="#merge-operations" title="Permanent link">&para;</a></h2>
+<h3 id="merge-a-ref-into-the-current-branch">Merge a ref into the current branch<a class="headerlink" href="#merge-a-ref-into-the-current-branch" title="Permanent link">&para;</a></h3>
+<p>Merges a ref into the checked out branch without opening an editor. A conflicted merge is <strong>not</strong> an error: the call returns <code>ClientSuccess</code> with a <code>UIMergeResult</code> whose <code>status</code> is <code>MergeStatus.CONFLICTED</code> and whose <code>conflicted_files</code> lists the unmerged paths, so the caller can drive conflict resolution.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="n">client</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">ref</span><span class="o">=</span><span class="s2">&quot;origin/develop&quot;</span><span class="p">,</span> <span class="n">target_branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span> <span class="n">no_ff</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>ref</code>: Required. Ref to merge, usually a remote-tracking ref such as <code>origin/develop</code>.</li>
+<li><code>target_branch</code>: Optional. Branch receiving the merge. Used for display only.</li>
+<li><code>no_ff</code>: Optional. Force a merge commit even when a fast-forward is possible.</li>
+</ul>
+<p><strong>Returns:</strong> <code>ClientResult[UIMergeResult]</code> with <code>status</code> in <code>up_to_date</code>, <code>fast_forward</code>, <code>merged</code>, <code>conflicted</code>.</p>
+<h3 id="list-conflicted-files">List conflicted files<a class="headerlink" href="#list-conflicted-files" title="Permanent link">&para;</a></h3>
+<p>Returns the paths git reports as unmerged in the index. Empty when the tree is clean.</p>
+<p>Note that git keeps a path unmerged until it is staged, so a file whose conflict was already fixed in the editor still shows up here. Use <em>List unresolved conflicts</em> when you need to know whether the conflicts are actually gone.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_conflicted_files</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong> none.</p>
+<h3 id="list-unresolved-conflicts">List unresolved conflicts<a class="headerlink" href="#list-unresolved-conflicts" title="Permanent link">&para;</a></h3>
+<p>Returns only the unmerged paths whose working-tree content still contains conflict markers (<code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> … <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code>). Files that were resolved but not staged are excluded; paths that cannot be read (deleted or binary) are kept in the list so the caller can decide.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_unresolved_conflict_files</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong> none.</p>
+<h3 id="check-whether-a-merge-is-in-progress">Check whether a merge is in progress<a class="headerlink" href="#check-whether-a-merge-is-in-progress" title="Permanent link">&para;</a></h3>
+<p>Returns <code>True</code> while <code>MERGE_HEAD</code> exists, that is, while a merge is stopped and waiting to be completed or aborted.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="n">client</span><span class="o">.</span><span class="n">is_merge_in_progress</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong> none.</p>
+<h3 id="stage-every-change">Stage every change<a class="headerlink" href="#stage-every-change" title="Permanent link">&para;</a></h3>
+<p>Stages the whole working tree, including untracked files. Used to mark conflicts as resolved before completing a merge.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="n">client</span><span class="o">.</span><span class="n">stage_all</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong> none.</p>
+<h3 id="complete-an-in-progress-merge">Complete an in-progress merge<a class="headerlink" href="#complete-an-in-progress-merge" title="Permanent link">&para;</a></h3>
+<p>Commits the staged merge using the message git prepared, without opening an editor.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="n">client</span><span class="o">.</span><span class="n">continue_merge</span><span class="p">()</span>
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a><span class="n">client</span><span class="o">.</span><span class="n">continue_merge</span><span class="p">(</span><span class="n">no_verify</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>no_verify</code></td>
+<td>No</td>
+<td><code>True</code></td>
+<td>Skip pre-commit and commit-msg hooks. Skipping is the default because the commit only carries git's own merge message, and a hook that fails here leaves the merge stopped with everything staged.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>ClientResult[str]</code> with the merge commit SHA.</p>
+<h3 id="abort-an-in-progress-merge">Abort an in-progress merge<a class="headerlink" href="#abort-an-in-progress-merge" title="Permanent link">&para;</a></h3>
+<p>Restores the state from before the merge started.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a><span class="n">client</span><span class="o">.</span><span class="n">abort_merge</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong> none.</p>
+<h2 id="remote-operations">Remote operations<a class="headerlink" href="#remote-operations" title="Permanent link">&para;</a></h2>
+<h3 id="push-to-a-remote">Push to a remote<a class="headerlink" href="#push-to-a-remote" title="Permanent link">&para;</a></h3>
+<p>Pushes commits to a remote branch.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="n">client</span><span class="o">.</span><span class="n">push</span><span class="p">(</span><span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">,</span> <span class="n">branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span> <span class="n">set_upstream</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>remote</code>: Optional. Remote name.</li>
+<li><code>branch</code>: Optional. Branch to push. Uses the current branch when omitted.</li>
+<li><code>set_upstream</code>: Optional. Set the upstream tracking branch.</li>
+<li><code>tags</code>: Optional. Push tags too.</li>
+</ul>
+<h3 id="push-a-tag">Push a tag<a class="headerlink" href="#push-a-tag" title="Permanent link">&para;</a></h3>
+<p>Pushes a single tag to a remote.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a><span class="n">client</span><span class="o">.</span><span class="n">push_tag</span><span class="p">(</span><span class="n">tag_name</span><span class="o">=</span><span class="s2">&quot;v1.2.0&quot;</span><span class="p">,</span> <span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>tag_name</code>: Required. Tag name.</li>
+<li><code>remote</code>: Optional. Remote name.</li>
+</ul>
+<h3 id="pull-from-a-remote">Pull from a remote<a class="headerlink" href="#pull-from-a-remote" title="Permanent link">&para;</a></h3>
+<p>Pulls changes from a remote branch.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a><span class="n">client</span><span class="o">.</span><span class="n">pull</span><span class="p">(</span><span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">,</span> <span class="n">branch</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>remote</code>: Optional. Remote name.</li>
+<li><code>branch</code>: Optional. Branch to pull.</li>
+</ul>
+<h3 id="fetch-from-a-remote">Fetch from a remote<a class="headerlink" href="#fetch-from-a-remote" title="Permanent link">&para;</a></h3>
+<p>Fetches changes without merging them.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a><span class="n">client</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">,</span> <span class="n">branch</span><span class="o">=</span><span class="s2">&quot;main&quot;</span><span class="p">,</span> <span class="nb">all</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>remote</code>: Optional. Remote name.</li>
+<li><code>branch</code>: Optional. Branch to fetch.</li>
+<li><code>all</code>: Optional. Fetch all remotes.</li>
+</ul>
+<h3 id="extract-github-repository-info">Extract GitHub repository info<a class="headerlink" href="#extract-github-repository-info" title="Permanent link">&para;</a></h3>
+<p>Parses the remote URL and returns the GitHub owner and repository name when available.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_github_repo_info</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<hr />
+<h2 id="stash-operations">Stash operations<a class="headerlink" href="#stash-operations" title="Permanent link">&para;</a></h2>
+<h3 id="create-a-stash">Create a stash<a class="headerlink" href="#create-a-stash" title="Permanent link">&para;</a></h3>
+<p>Stashes current local changes.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a><span class="n">client</span><span class="o">.</span><span class="n">stash_push</span><span class="p">(</span><span class="n">message</span><span class="o">=</span><span class="s2">&quot;temporary local changes&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>message</code>: Optional. Stash message.</li>
+</ul>
+<h3 id="pop-a-stash">Pop a stash<a class="headerlink" href="#pop-a-stash" title="Permanent link">&para;</a></h3>
+<p>Applies and removes a stash.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a><span class="n">client</span><span class="o">.</span><span class="n">stash_pop</span><span class="p">(</span><span class="n">stash_ref</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>stash_ref</code>: Optional. Specific stash reference.</li>
+</ul>
+<h3 id="find-a-stash-by-message">Find a stash by message<a class="headerlink" href="#find-a-stash-by-message" title="Permanent link">&para;</a></h3>
+<p>Looks up a stash using its message.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a><span class="n">client</span><span class="o">.</span><span class="n">find_stash_by_message</span><span class="p">(</span><span class="s2">&quot;temporary local changes&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>message</code>: Required. Stash message to search for.</li>
+</ul>
+<h3 id="restore-a-stash-by-message">Restore a stash by message<a class="headerlink" href="#restore-a-stash-by-message" title="Permanent link">&para;</a></h3>
+<p>Finds a stash by message and restores it.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="n">client</span><span class="o">.</span><span class="n">restore_stash</span><span class="p">(</span><span class="s2">&quot;temporary local changes&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>message</code>: Required. Stash message to restore.</li>
+</ul>
+<hr />
+<h2 id="tag-operations">Tag operations<a class="headerlink" href="#tag-operations" title="Permanent link">&para;</a></h2>
+<h3 id="create-a-tag">Create a tag<a class="headerlink" href="#create-a-tag" title="Permanent link">&para;</a></h3>
+<p>Creates an annotated tag.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="n">client</span><span class="o">.</span><span class="n">create_tag</span><span class="p">(</span><span class="n">tag_name</span><span class="o">=</span><span class="s2">&quot;v1.2.0&quot;</span><span class="p">,</span> <span class="n">message</span><span class="o">=</span><span class="s2">&quot;Release 1.2.0&quot;</span><span class="p">,</span> <span class="n">ref</span><span class="o">=</span><span class="s2">&quot;HEAD&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>tag_name</code>: Required. Tag name.</li>
+<li><code>message</code>: Required. Tag annotation message.</li>
+<li><code>ref</code>: Optional. Ref to tag.</li>
+</ul>
+<h3 id="delete-a-tag">Delete a tag<a class="headerlink" href="#delete-a-tag" title="Permanent link">&para;</a></h3>
+<p>Deletes a local tag.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a><span class="n">client</span><span class="o">.</span><span class="n">delete_tag</span><span class="p">(</span><span class="s2">&quot;v1.2.0&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>tag_name</code>: Required. Tag name.</li>
+</ul>
+<h3 id="check-whether-a-tag-exists-locally">Check whether a tag exists locally<a class="headerlink" href="#check-whether-a-tag-exists-locally" title="Permanent link">&para;</a></h3>
+<p>Checks if a tag is present in the local repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a><span class="n">client</span><span class="o">.</span><span class="n">tag_exists</span><span class="p">(</span><span class="s2">&quot;v1.2.0&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>tag_name</code>: Required. Tag name.</li>
+</ul>
+<h3 id="check-whether-a-tag-exists-on-remote">Check whether a tag exists on remote<a class="headerlink" href="#check-whether-a-tag-exists-on-remote" title="Permanent link">&para;</a></h3>
+<p>Checks if a tag exists in a remote repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a><span class="n">client</span><span class="o">.</span><span class="n">remote_tag_exists</span><span class="p">(</span><span class="n">tag_name</span><span class="o">=</span><span class="s2">&quot;v1.2.0&quot;</span><span class="p">,</span> <span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>tag_name</code>: Required. Tag name.</li>
+<li><code>remote</code>: Optional. Remote name.</li>
+</ul>
+<h3 id="list-tags">List tags<a class="headerlink" href="#list-tags" title="Permanent link">&para;</a></h3>
+<p>Returns the tags available in the repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_tags</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<hr />
+<h2 id="worktree-operations">Worktree operations<a class="headerlink" href="#worktree-operations" title="Permanent link">&para;</a></h2>
+<h3 id="create-a-worktree">Create a worktree<a class="headerlink" href="#create-a-worktree" title="Permanent link">&para;</a></h3>
+<p>Creates a new Git worktree.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a><span class="n">client</span><span class="o">.</span><span class="n">create_worktree</span><span class="p">(</span>
+<a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>    <span class="n">path</span><span class="o">=</span><span class="s2">&quot;../repo-search-worktree&quot;</span><span class="p">,</span>
+<a id="__codelineno-57-3" name="__codelineno-57-3" href="#__codelineno-57-3"></a>    <span class="n">branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span>
+<a id="__codelineno-57-4" name="__codelineno-57-4" href="#__codelineno-57-4"></a>    <span class="n">create_branch</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-57-5" name="__codelineno-57-5" href="#__codelineno-57-5"></a>    <span class="n">detached</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-57-6" name="__codelineno-57-6" href="#__codelineno-57-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>path</code>: Required. Filesystem path for the worktree.</li>
+<li><code>branch</code>: Required. Branch to attach to the worktree.</li>
+<li><code>create_branch</code>: Optional. Create the branch if needed.</li>
+<li><code>detached</code>: Optional. Create the worktree in detached mode.</li>
+</ul>
+<h3 id="remove-a-worktree">Remove a worktree<a class="headerlink" href="#remove-a-worktree" title="Permanent link">&para;</a></h3>
+<p>Removes an existing worktree.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a><span class="n">client</span><span class="o">.</span><span class="n">remove_worktree</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="s2">&quot;../repo-search-worktree&quot;</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>path</code>: Required. Worktree path.</li>
+<li><code>force</code>: Optional. Force removal.</li>
+</ul>
+<h3 id="prune-stale-worktree-metadata">Prune stale worktree metadata<a class="headerlink" href="#prune-stale-worktree-metadata" title="Permanent link">&para;</a></h3>
+<p>Clears Git's records for worktrees whose directories no longer exist.</p>
+<p>Git keeps administrative data under <code>.git/worktrees</code> for every registered worktree. If
+the directory is deleted by hand, or a removal is interrupted, that record survives and
+blocks the path: <code>create_worktree</code> reports it as already registered, while
+<code>remove_worktree</code> reports it as "not a working tree". Pruning is the only way to clear
+it, so call this before recreating a worktree at a path a previous run may have used.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a><span class="n">client</span><span class="o">.</span><span class="n">prune_worktrees</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="list-worktrees">List worktrees<a class="headerlink" href="#list-worktrees" title="Permanent link">&para;</a></h3>
+<p>Returns all worktrees for the repository.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a><span class="n">client</span><span class="o">.</span><span class="n">list_worktrees</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li>No parameters.</li>
+</ul>
+<h3 id="run-a-git-command-in-a-worktree">Run a Git command in a worktree<a class="headerlink" href="#run-a-git-command-in-a-worktree" title="Permanent link">&para;</a></h3>
+<p>Runs a Git command inside a specific worktree.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-61-1" name="__codelineno-61-1" href="#__codelineno-61-1"></a><span class="n">client</span><span class="o">.</span><span class="n">run_in_worktree</span><span class="p">(</span><span class="n">worktree_path</span><span class="o">=</span><span class="s2">&quot;../repo-search-worktree&quot;</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;status&quot;</span><span class="p">,</span> <span class="s2">&quot;--short&quot;</span><span class="p">])</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>worktree_path</code>: Required. Worktree path.</li>
+<li><code>args</code>: Required. Git arguments to execute.</li>
+</ul>
+<h3 id="get-recent-commits-from-a-worktree">Get recent commits from a worktree<a class="headerlink" href="#get-recent-commits-from-a-worktree" title="Permanent link">&para;</a></h3>
+<p>Returns recent commits from a specific worktree.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_commits</span><span class="p">(</span><span class="n">worktree_path</span><span class="o">=</span><span class="s2">&quot;../repo-search-worktree&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>worktree_path</code>: Required. Worktree path.</li>
+<li><code>limit</code>: Optional. Maximum number of commits.</li>
+</ul>
+<h3 id="get-the-worktree-diff-stat">Get the worktree diff stat<a class="headerlink" href="#get-the-worktree-diff-stat" title="Permanent link">&para;</a></h3>
+<p>Returns a diff summary for local changes in a worktree.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-63-1" name="__codelineno-63-1" href="#__codelineno-63-1"></a><span class="n">client</span><span class="o">.</span><span class="n">get_worktree_diff_stat</span><span class="p">(</span><span class="n">worktree_path</span><span class="o">=</span><span class="s2">&quot;../repo-search-worktree&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>worktree_path</code>: Required. Worktree path.</li>
+</ul>
+<h3 id="checkout-a-branch-in-a-worktree">Checkout a branch in a worktree<a class="headerlink" href="#checkout-a-branch-in-a-worktree" title="Permanent link">&para;</a></h3>
+<p>Checks out, or creates, a branch inside a specific worktree.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a><span class="n">client</span><span class="o">.</span><span class="n">checkout_branch_in_worktree</span><span class="p">(</span>
+<a id="__codelineno-64-2" name="__codelineno-64-2" href="#__codelineno-64-2"></a>    <span class="n">worktree_path</span><span class="o">=</span><span class="s2">&quot;../repo-search-worktree&quot;</span><span class="p">,</span>
+<a id="__codelineno-64-3" name="__codelineno-64-3" href="#__codelineno-64-3"></a>    <span class="n">branch_name</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span>
+<a id="__codelineno-64-4" name="__codelineno-64-4" href="#__codelineno-64-4"></a>    <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-64-5" name="__codelineno-64-5" href="#__codelineno-64-5"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>worktree_path</code>: Required. Worktree path.</li>
+<li><code>branch_name</code>: Required. Branch name.</li>
+<li><code>force</code>: Optional. Force the checkout.</li>
+</ul>
+<h3 id="commit-changes-in-a-worktree">Commit changes in a worktree<a class="headerlink" href="#commit-changes-in-a-worktree" title="Permanent link">&para;</a></h3>
+<p>Stages and commits changes inside a worktree.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a><span class="n">client</span><span class="o">.</span><span class="n">commit_in_worktree</span><span class="p">(</span>
+<a id="__codelineno-65-2" name="__codelineno-65-2" href="#__codelineno-65-2"></a>    <span class="n">worktree_path</span><span class="o">=</span><span class="s2">&quot;../repo-search-worktree&quot;</span><span class="p">,</span>
+<a id="__codelineno-65-3" name="__codelineno-65-3" href="#__codelineno-65-3"></a>    <span class="n">message</span><span class="o">=</span><span class="s2">&quot;feat: add search filters&quot;</span><span class="p">,</span>
+<a id="__codelineno-65-4" name="__codelineno-65-4" href="#__codelineno-65-4"></a>    <span class="n">add_all</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-65-5" name="__codelineno-65-5" href="#__codelineno-65-5"></a>    <span class="n">no_verify</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-65-6" name="__codelineno-65-6" href="#__codelineno-65-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>worktree_path</code>: Required. Worktree path.</li>
+<li><code>message</code>: Required. Commit message.</li>
+<li><code>add_all</code>: Optional. Stage all tracked changes before committing.</li>
+<li><code>no_verify</code>: Optional. Skip Git hooks.</li>
+</ul>
+<h3 id="push-from-a-worktree">Push from a worktree<a class="headerlink" href="#push-from-a-worktree" title="Permanent link">&para;</a></h3>
+<p>Pushes a branch from a specific worktree to a remote.</p>
+<p><strong>Call:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-66-1" name="__codelineno-66-1" href="#__codelineno-66-1"></a><span class="n">client</span><span class="o">.</span><span class="n">push_from_worktree</span><span class="p">(</span>
+<a id="__codelineno-66-2" name="__codelineno-66-2" href="#__codelineno-66-2"></a>    <span class="n">worktree_path</span><span class="o">=</span><span class="s2">&quot;../repo-search-worktree&quot;</span><span class="p">,</span>
+<a id="__codelineno-66-3" name="__codelineno-66-3" href="#__codelineno-66-3"></a>    <span class="n">branch</span><span class="o">=</span><span class="s2">&quot;feature/search&quot;</span><span class="p">,</span>
+<a id="__codelineno-66-4" name="__codelineno-66-4" href="#__codelineno-66-4"></a>    <span class="n">remote</span><span class="o">=</span><span class="s2">&quot;origin&quot;</span><span class="p">,</span>
+<a id="__codelineno-66-5" name="__codelineno-66-5" href="#__codelineno-66-5"></a><span class="p">)</span>
+</code></pre></div>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>worktree_path</code>: Required. Worktree path.</li>
+<li><code>branch</code>: Required. Branch to push.</li>
+<li><code>remote</code>: Optional. Remote name.</li>
+</ul>
+<hr />
+<h2 id="related-workflows">Related workflows<a class="headerlink" href="#related-workflows" title="Permanent link">&para;</a></h2>
+<p>The Git plugin ships with workflows that use these capabilities directly:</p>
+<ul>
+<li><code>commit-ai</code>: Checks repository status, shows a summary of local changes, generates a commit message with AI, creates the commit, and pushes it</li>
+</ul>
+<p>These workflows can be used as-is or extended from <code>.titan/workflows/</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

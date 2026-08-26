@@ -1,0 +1,3973 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Modular development tools orchestrator — Automate Git, GitHub, Jira workflows with AI assistance">
+      
+      
+      
+        <link rel="canonical" href="https://masorange.github.io/titan-cli/plugins/git/workflow-steps/">
+      
+      
+        <link rel="prev" href="../client-api/">
+      
+      
+        <link rel="next" href="../built-in-workflows/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Workflow Steps - Titan CLI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#git-workflow-steps" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Titan CLI" class="md-header__button md-logo" aria-label="Titan CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Titan CLI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Workflow Steps
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/masorange/titan-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    masorange/titan-cli
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../concepts/workflows/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../contributing/development-setup/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Titan CLI" class="md-nav__button md-logo" aria-label="Titan CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Titan CLI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/masorange/titan-cli" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    masorange/titan-cli
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/your-first-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Your First Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/your-first-textual-step/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Your First Textual Step
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/textual-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Textual in Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/ai-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Git
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#functional-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Functional groups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-and-inspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status and Inspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#branching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branching
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#diff-summaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff Summaries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worktrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktrees
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#detailed-step-contracts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detailed Step Contracts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Detailed Step Contracts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#status-and-inspection_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status and Inspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#commits_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#branching_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merging_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diff-summaries_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff Summaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#worktrees_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docstring-based-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docstring-based reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_3" id="__nav_4_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GitHub
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../github/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jira
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Jira
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../jira/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slack
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Slack
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../slack/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Docker
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/client-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Client API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/workflow-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow Steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker/built-in-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Built-in Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/development-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#functional-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Functional groups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-and-inspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status and Inspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#branching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branching
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#merging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#diff-summaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff Summaries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worktrees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktrees
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#detailed-step-contracts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detailed Step Contracts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Detailed Step Contracts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#status-and-inspection_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status and Inspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#commits_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#branching_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#merging_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diff-summaries_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diff Summaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#worktrees_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worktrees
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docstring-based-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docstring-based reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="git-workflow-steps">Git Workflow Steps<a class="headerlink" href="#git-workflow-steps" title="Permanent link">&para;</a></h1>
+<p>The Git plugin exposes reusable public workflow steps through <code>GitPlugin.get_steps()</code>. These steps are grouped here by workflow intent so authors can discover related building blocks more easily.</p>
+<p>For full contract details for every public step, including documented inputs, outputs, and return behavior, see the <a href="../../generated/git-step-reference/">detailed step reference</a>.</p>
+<h2 id="functional-groups">Functional groups<a class="headerlink" href="#functional-groups" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#status-and-inspection">Status and Inspection</a></li>
+<li><a href="#commits">Commits</a></li>
+<li><a href="#branching">Branching</a></li>
+<li><a href="#merging">Merging</a></li>
+<li><a href="#diff-summaries">Diff Summaries</a></li>
+<li><a href="#worktrees">Worktrees</a></li>
+</ul>
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Group</th>
+<th>Used by built-in workflows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_status</code></td>
+<td>Status and Inspection</td>
+<td><code>commit-ai</code></td>
+</tr>
+<tr>
+<td><code>get_current_branch</code></td>
+<td>Status and Inspection</td>
+<td><code>create-pr-ai</code></td>
+</tr>
+<tr>
+<td><code>get_base_branch</code></td>
+<td>Status and Inspection</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>create_commit</code></td>
+<td>Commits</td>
+<td><code>commit-ai</code></td>
+</tr>
+<tr>
+<td><code>push</code></td>
+<td>Commits</td>
+<td><code>commit-ai</code>, <code>create-pr-ai</code></td>
+</tr>
+<tr>
+<td><code>ai_generate_commit_message</code></td>
+<td>Commits</td>
+<td><code>commit-ai</code></td>
+</tr>
+<tr>
+<td><code>save_current_branch</code></td>
+<td>Branching</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>restore_original_branch</code></td>
+<td>Branching</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>checkout</code></td>
+<td>Branching</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>pull</code></td>
+<td>Branching</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>create_branch</code></td>
+<td>Branching</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>resolve_merge_target</code></td>
+<td>Merging</td>
+<td><code>merge-branch</code></td>
+</tr>
+<tr>
+<td><code>fetch_merge_source</code></td>
+<td>Merging</td>
+<td><code>merge-branch</code></td>
+</tr>
+<tr>
+<td><code>merge_source_branch</code></td>
+<td>Merging</td>
+<td><code>merge-branch</code></td>
+</tr>
+<tr>
+<td><code>complete_merge</code></td>
+<td>Merging</td>
+<td><code>merge-branch</code></td>
+</tr>
+<tr>
+<td><code>show_uncommitted_diff_summary</code></td>
+<td>Diff Summaries</td>
+<td><code>commit-ai</code></td>
+</tr>
+<tr>
+<td><code>show_branch_diff_summary</code></td>
+<td>Diff Summaries</td>
+<td><code>create-pr-ai</code></td>
+</tr>
+<tr>
+<td><code>create_worktree</code></td>
+<td>Worktrees</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>remove_worktree</code></td>
+<td>Worktrees</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>worktree_commit</code></td>
+<td>Worktrees</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>worktree_push</code></td>
+<td>Worktrees</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="status-and-inspection">Status and Inspection<a class="headerlink" href="#status-and-inspection" title="Permanent link">&para;</a></h2>
+<p>Use these steps to inspect repository state and expose branch metadata to later steps.</p>
+<ul>
+<li><code>get_status</code>: retrieve repository status and expose <code>git_status</code> to the workflow context</li>
+<li><code>get_current_branch</code>: resolve the currently checked out branch name</li>
+<li><code>get_base_branch</code>: resolve the base branch used by Git workflows</li>
+</ul>
+<h2 id="commits">Commits<a class="headerlink" href="#commits" title="Permanent link">&para;</a></h2>
+<p>Use these steps to prepare commit content and publish branch changes.</p>
+<ul>
+<li><code>create_commit</code>: create a commit from workflow commit message data</li>
+<li><code>push</code>: push the current branch to the configured remote</li>
+<li><code>ai_generate_commit_message</code>: generate a commit message from local changes using AI</li>
+</ul>
+<h2 id="branching">Branching<a class="headerlink" href="#branching" title="Permanent link">&para;</a></h2>
+<p>Use these steps to switch, create, and restore branches during a workflow.</p>
+<ul>
+<li><code>save_current_branch</code>: save the current branch in workflow context</li>
+<li><code>restore_original_branch</code>: restore the saved branch later in the workflow</li>
+<li><code>checkout</code>: switch to a branch from workflow context or params</li>
+<li><code>pull</code>: update the current branch from the configured remote</li>
+<li><code>create_branch</code>: create a new branch from workflow-provided branch data</li>
+</ul>
+<h2 id="merging">Merging<a class="headerlink" href="#merging" title="Permanent link">&para;</a></h2>
+<p>Use these steps to integrate another branch into the current one. HEAD never moves: the source branch is fetched and merged through its remote-tracking ref.</p>
+<ul>
+<li><code>resolve_merge_target</code>: resolve the branch to merge and verify the working tree is clean</li>
+<li><code>fetch_merge_source</code>: fetch the source branch from the remote</li>
+<li><code>merge_source_branch</code>: run the merge and report conflicts as workflow data</li>
+<li><code>complete_merge</code>: stage resolved conflicts and commit with git's suggested message</li>
+</ul>
+<h2 id="diff-summaries">Diff Summaries<a class="headerlink" href="#diff-summaries" title="Permanent link">&para;</a></h2>
+<p>Use these steps when a workflow needs human-readable or AI-friendly summaries of Git changes.</p>
+<ul>
+<li><code>show_uncommitted_diff_summary</code>: summarize local uncommitted changes</li>
+<li><code>show_branch_diff_summary</code>: summarize branch-level changes relative to the base branch</li>
+</ul>
+<h2 id="worktrees">Worktrees<a class="headerlink" href="#worktrees" title="Permanent link">&para;</a></h2>
+<p>Use these steps to isolate workflow work in dedicated worktrees.</p>
+<ul>
+<li><code>create_worktree</code>: create a worktree for isolated work</li>
+<li><code>remove_worktree</code>: remove a worktree when finished</li>
+<li><code>worktree_commit</code>: commit changes inside a specific worktree</li>
+<li><code>worktree_push</code>: push a branch from a specific worktree</li>
+</ul>
+<!-- BEGIN GENERATED STEP CONTRACTS -->
+<h2 id="detailed-step-contracts">Detailed Step Contracts<a class="headerlink" href="#detailed-step-contracts" title="Permanent link">&para;</a></h2>
+<p>The summaries above show what each git step is for. The sections below show the documented contract for each public step: what it expects from <code>ctx.data</code>, what it saves back, and what result types it may return.</p>
+<p>Expand a step to see its workflow usage, required context, inputs, outputs, and result behavior.</p>
+<p>How to read these contracts:</p>
+<ul>
+<li><code>Inputs (from ctx.data)</code> = values the step expects before it runs.</li>
+<li><code>Outputs (saved to ctx.data)</code> = metadata keys saved for later steps when the step returns <code>Success</code> or <code>Skip</code>.</li>
+<li><code>Returns</code> = the workflow result type (<code>Success</code>, <code>Skip</code>, <code>Error</code>, <code>Exit</code>), not a separate payload.</li>
+</ul>
+<h3 id="status-and-inspection_1">Status and Inspection<a class="headerlink" href="#status-and-inspection_1" title="Permanent link">&para;</a></h3>
+<details class="info">
+<summary><code>get_status</code></summary>
+<p>Retrieves the current git status and saves it to the context.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">get_status</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>commit-ai</code></p>
+<p><strong>Available to later steps:</strong> <code>git_status</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>git_status</code></td>
+<td>GitStatus</td>
+<td>The full git status object, which includes the <code>is_clean</code> flag.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>git_status</code></td>
+<td>If there are changes to commit (workflow continues)</td>
+</tr>
+<tr>
+<td><code>Exit</code></td>
+<td>-</td>
+<td>If working directory is clean (stops commit workflow; parent continues)</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If the GitClient is not available or the git command fails.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>get_current_branch</code></summary>
+<p>Retrieves the current git branch name and saves it to the context.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">get_current_branch</span>
+</code></pre></div>
+<p><strong>Available to later steps:</strong> <code>pr_head_branch</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pr_head_branch</code></td>
+<td>str</td>
+<td>The name of the current branch, to be used as the head branch for a PR.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>pr_head_branch</code></td>
+<td>If the current branch was retrieved successfully.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If the GitClient is not available or the git command fails.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>get_base_branch</code></summary>
+<p>Retrieves the configured main/base branch name and saves it to the context.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">get_base_branch</span>
+</code></pre></div>
+<p><strong>Available to later steps:</strong> <code>pr_base_branch</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pr_base_branch</code></td>
+<td>str</td>
+<td>The name of the base branch, to be used as the base branch for a PR.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>pr_base_branch</code></td>
+<td>If the base branch was retrieved successfully.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If the GitClient is not available or the git command fails.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<h3 id="commits_1">Commits<a class="headerlink" href="#commits_1" title="Permanent link">&para;</a></h3>
+<details class="info">
+<summary><code>create_commit</code></summary>
+<p>Creates a git commit.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">create_commit</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>commit-ai</code></p>
+<p><strong>Available to later steps:</strong> <code>commit_hash</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>git_status</code></td>
+<td>GitStatus</td>
+<td>The git status object, used to check if the working directory is clean.</td>
+</tr>
+<tr>
+<td><code>commit_message</code></td>
+<td>str</td>
+<td>The message for the commit.</td>
+</tr>
+<tr>
+<td><code>all_files</code></td>
+<td>bool, optional</td>
+<td>Whether to commit all modified and new files. Defaults to True.</td>
+</tr>
+<tr>
+<td><code>no_verify</code></td>
+<td>bool, optional</td>
+<td>Skip pre-commit and commit-msg hooks. Defaults to False.</td>
+</tr>
+<tr>
+<td><code>commit_hash</code></td>
+<td>str, optional</td>
+<td>If present, indicates a commit was already created.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commit_hash</code></td>
+<td>str</td>
+<td>The hash of the created commit.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>commit_hash</code></td>
+<td>If the commit was created successfully.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If the GitClient is not available, or the commit operation fails.</td>
+</tr>
+<tr>
+<td><code>Skip</code></td>
+<td><code>commit_hash</code></td>
+<td>If there are no changes to commit or a commit was already created.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>push</code></summary>
+<p>Pushes changes to a remote repository.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">push</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>commit-ai</code></p>
+<p><strong>Available to later steps:</strong> <code>pr_head_branch</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pr_head_branch</code></td>
+<td>str</td>
+<td>The name of the branch that was pushed.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>pr_head_branch</code></td>
+<td>If the push was successful.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If the push operation fails.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>ai_generate_commit_message</code></summary>
+<p>Generate a commit message using AI based on the current changes.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ai_generate_commit_message</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>commit-ai</code></p>
+<p><strong>Available to later steps:</strong> <code>commit_message</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+<tr>
+<td><code>ctx.ai</code></td>
+<td>-</td>
+<td>An initialized AIClient.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>git_status</code></td>
+<td>-</td>
+<td>Current git status with changes.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commit_message</code></td>
+<td>str</td>
+<td>AI-generated commit message.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>commit_message</code></td>
+<td>If the commit message was generated successfully.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If the operation fails.</td>
+</tr>
+<tr>
+<td><code>Skip</code></td>
+<td><code>commit_message</code></td>
+<td>If no changes, AI not configured, or user declined.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<h3 id="branching_1">Branching<a class="headerlink" href="#branching_1" title="Permanent link">&para;</a></h3>
+<details class="info">
+<summary><code>save_current_branch</code></summary>
+<p>Save current branch and stash uncommitted changes.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">save_current_branch</span>
+</code></pre></div>
+<p><strong>Available to later steps:</strong> <code>original_branch</code>, <code>has_stashed_changes</code></p>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>original_branch</code></td>
+<td>str</td>
+<td>Name of the branch the user was on</td>
+</tr>
+<tr>
+<td><code>has_stashed_changes</code></td>
+<td>bool</td>
+<td>Whether changes were stashed</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>original_branch</code>, <code>has_stashed_changes</code></td>
+<td>Branch saved and changes stashed if needed</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Git operation failed</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>restore_original_branch</code></summary>
+<p>Restore original branch and pop stashed changes.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">restore_original_branch</span>
+</code></pre></div>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>original_branch</code></td>
+<td>str</td>
+<td>Name of the branch to restore</td>
+</tr>
+<tr>
+<td><code>has_stashed_changes</code></td>
+<td>bool</td>
+<td>Whether to pop stashed changes</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>Branch restored and changes popped if needed</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Git operation failed</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>checkout</code></summary>
+<p>Checkout a Git branch.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">checkout</span>
+</code></pre></div>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>branch</code></td>
+<td>str</td>
+<td>Branch name to checkout</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>Branch checked out successfully</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Git operation failed</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>pull</code></summary>
+<p>Pull from Git remote.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pull</span>
+</code></pre></div>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>remote</code></td>
+<td>str, optional</td>
+<td>Remote name (defaults to "origin")</td>
+</tr>
+<tr>
+<td><code>branch</code></td>
+<td>str, optional</td>
+<td>Branch name (defaults to current branch)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>Pull completed successfully</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Git operation failed</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>create_branch</code></summary>
+<p>Create a new Git branch.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">create_branch</span>
+</code></pre></div>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>new_branch</code></td>
+<td>str</td>
+<td>Name of the branch to create</td>
+</tr>
+<tr>
+<td><code>start_point</code></td>
+<td>str, optional</td>
+<td>Starting point for the branch (defaults to HEAD)</td>
+</tr>
+<tr>
+<td><code>delete_if_exists</code></td>
+<td>bool, optional</td>
+<td>Delete the branch if it already exists (default: False)</td>
+</tr>
+<tr>
+<td><code>checkout</code></td>
+<td>bool, optional</td>
+<td>Checkout the new branch after creation (default: True)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>Branch created successfully</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Git operation failed</td>
+</tr>
+</tbody>
+</table>
+</details>
+<h3 id="merging_1">Merging<a class="headerlink" href="#merging_1" title="Permanent link">&para;</a></h3>
+<details class="info">
+<summary><code>resolve_merge_target</code></summary>
+<p>Resolve which branch gets merged and verify the repo is ready for it.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">resolve_merge_target</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>merge-branch</code></p>
+<p><strong>Available to later steps:</strong> <code>source_branch</code>, <code>target_branch</code>, <code>remote</code>, <code>merge_ref</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+<tr>
+<td><code>ctx.textual</code></td>
+<td>-</td>
+<td>The Textual UI context.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_branch</code></td>
+<td>str, optional</td>
+<td>Branch to merge (defaults to the configured base branch)</td>
+</tr>
+<tr>
+<td><code>remote</code></td>
+<td>str, optional</td>
+<td>Remote name (default: "origin")</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_branch</code></td>
+<td>str</td>
+<td>Resolved branch to merge</td>
+</tr>
+<tr>
+<td><code>target_branch</code></td>
+<td>str</td>
+<td>Branch receiving the merge</td>
+</tr>
+<tr>
+<td><code>remote</code></td>
+<td>str</td>
+<td>Remote name</td>
+</tr>
+<tr>
+<td><code>merge_ref</code></td>
+<td>str</td>
+<td>Ref that will be merged, e.g. "origin/develop"</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>source_branch</code>, <code>target_branch</code>, <code>remote</code>, <code>merge_ref</code></td>
+<td>Target resolved</td>
+</tr>
+<tr>
+<td><code>Exit</code></td>
+<td>-</td>
+<td>Working tree is dirty, nothing was touched</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Git client unavailable or the branch cannot be resolved</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>fetch_merge_source</code></summary>
+<p>Fetch the source branch from the remote without moving HEAD.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fetch_merge_source</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>merge-branch</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+<tr>
+<td><code>ctx.textual</code></td>
+<td>-</td>
+<td>The Textual UI context.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_branch</code></td>
+<td>str</td>
+<td>Branch to fetch</td>
+</tr>
+<tr>
+<td><code>remote</code></td>
+<td>str</td>
+<td>Remote name</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>Remote-tracking ref updated</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Fetch failed or required inputs are missing</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>merge_source_branch</code></summary>
+<p>Merge the fetched ref into the current branch.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">merge_source_branch</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>merge-branch</code></p>
+<p><strong>Available to later steps:</strong> <code>merge_status</code>, <code>merge_conflicts</code>, <code>merge_conflict_context</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+<tr>
+<td><code>ctx.textual</code></td>
+<td>-</td>
+<td>The Textual UI context.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>merge_ref</code></td>
+<td>str</td>
+<td>Ref to merge, e.g. "origin/develop"</td>
+</tr>
+<tr>
+<td><code>target_branch</code></td>
+<td>str</td>
+<td>Branch receiving the merge</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>merge_status</code></td>
+<td>str</td>
+<td>One of up_to_date / fast_forward / merged / conflicted</td>
+</tr>
+<tr>
+<td><code>merge_conflicts</code></td>
+<td>list</td>
+<td>Paths with unresolved conflicts (empty when clean)</td>
+</tr>
+<tr>
+<td><code>merge_conflict_context</code></td>
+<td>str</td>
+<td>Prompt for the AI CLI, only set on conflicts</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>merge_status</code>, <code>merge_conflicts</code>, <code>merge_conflict_context</code></td>
+<td>Merge finished, cleanly or with conflicts to resolve</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Git refused to start the merge</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>complete_merge</code></summary>
+<p>Finish a conflicted merge after the user resolved the conflicts.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">complete_merge</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>merge-branch</code></p>
+<p><strong>Available to later steps:</strong> <code>merge_commit_sha</code></p>
+<p><strong>Requires</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.git</code></td>
+<td>-</td>
+<td>An initialized GitClient.</td>
+</tr>
+<tr>
+<td><code>ctx.textual</code></td>
+<td>-</td>
+<td>The Textual UI context.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>merge_status</code></td>
+<td>str</td>
+<td>Status published by merge_source_branch</td>
+</tr>
+<tr>
+<td><code>merge_commit_no_verify</code></td>
+<td>bool, optional</td>
+<td>Skip pre-commit and commit-msg hooks on the merge commit. Defaults to True.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>merge_commit_sha</code></td>
+<td>str</td>
+<td>SHA of the merge commit</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>merge_commit_sha</code></td>
+<td>Merge committed</td>
+</tr>
+<tr>
+<td><code>Skip</code></td>
+<td><code>merge_commit_sha</code></td>
+<td>Merge was already complete, nothing to do</td>
+</tr>
+<tr>
+<td><code>Exit</code></td>
+<td>-</td>
+<td>User aborted the merge</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>Staging or committing failed</td>
+</tr>
+</tbody>
+</table>
+</details>
+<h3 id="diff-summaries_1">Diff Summaries<a class="headerlink" href="#diff-summaries_1" title="Permanent link">&para;</a></h3>
+<details class="info">
+<summary><code>show_uncommitted_diff_summary</code></summary>
+<p>Show uncommitted changes and let the user select which files to include</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">show_uncommitted_diff_summary</span>
+</code></pre></div>
+<p><strong>Used by built-in workflows:</strong> <code>commit-ai</code></p>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>Files selected and saved to context</td>
+</tr>
+<tr>
+<td><code>Exit</code></td>
+<td>-</td>
+<td>No files selected by the user</td>
+</tr>
+<tr>
+<td><code>Skip</code></td>
+<td>-</td>
+<td>Could not retrieve diff stat</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>show_branch_diff_summary</code></summary>
+<p>Show summary of branch changes (git diff base...head --stat).</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">show_branch_diff_summary</span>
+</code></pre></div>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pr_head_branch</code></td>
+<td>str</td>
+<td>Head branch name</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>Always (even if no changes, for workflow continuity)</td>
+</tr>
+</tbody>
+</table>
+</details>
+<h3 id="worktrees_1">Worktrees<a class="headerlink" href="#worktrees_1" title="Permanent link">&para;</a></h3>
+<details class="info">
+<summary><code>create_worktree</code></summary>
+<p>Create a temporary git worktree in detached HEAD mode from a remote base branch.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">create_worktree</span>
+</code></pre></div>
+<p><strong>Available to later steps:</strong> <code>worktree_path</code>, <code>base_branch</code></p>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base_branch</code></td>
+<td>str, optional</td>
+<td>Base branch to create the worktree from. Defaults to the git plugin's configured main branch.</td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>str, optional</td>
+<td>Custom path for the worktree. Defaults to a temporary directory.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>worktree_path</code></td>
+<td>str</td>
+<td>Path to the created worktree.</td>
+</tr>
+<tr>
+<td><code>base_branch</code></td>
+<td>str</td>
+<td>Base branch name (e.g., "develop", "main" or "rc/26.18.2").</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td><code>worktree_path</code>, <code>base_branch</code></td>
+<td>If the worktree is created successfully.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If the Git client is unavailable, no base branch can be resolved, or worktree creation fails.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>remove_worktree</code></summary>
+<p>Remove a git worktree.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">remove_worktree</span>
+</code></pre></div>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>If the worktree is removed successfully or is already gone.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If cleanup fails.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>worktree_commit</code></summary>
+<p>Create a commit in a worktree.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">worktree_commit</span>
+</code></pre></div>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>If the commit is created in the worktree.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If required context is missing or the git command fails.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<details class="info">
+<summary><code>worktree_push</code></summary>
+<p>Push from a worktree.</p>
+<p><strong>Workflow usage</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span><span class="nt">step</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">worktree_push</span>
+</code></pre></div>
+<p><strong>Inputs (from ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Outputs (saved to ctx.data)</strong></p>
+<p>None documented.</p>
+<p><strong>Returns</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Saved for later steps</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Success</code></td>
+<td>-</td>
+<td>If the branch is pushed from the worktree.</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>-</td>
+<td>If required context is missing or the git command fails.</td>
+</tr>
+</tbody>
+</table>
+</details>
+<!-- END GENERATED STEP CONTRACTS -->
+
+<h2 id="docstring-based-reference">Docstring-based reference<a class="headerlink" href="#docstring-based-reference" title="Permanent link">&para;</a></h2>
+<p>The semiautomated step inventory reads public step docstrings from code and validates that each exposed step documents:</p>
+<ul>
+<li><code>Requires</code></li>
+<li><code>Inputs (from ctx.data)</code> when applicable</li>
+<li><code>Outputs (saved to ctx.data)</code> when applicable</li>
+<li><code>Returns</code></li>
+</ul>
+<p>The generated machine-readable inventory lives under <code>docs/plugins/_generated/</code>.</p>
+<p>For this project, the inventory is maintained through:</p>
+<ul>
+<li><code>.titan/workflows/sync-plugin-docs.yaml</code></li>
+<li><code>.titan/workflows/validate-plugin-docs.yaml</code></li>
+<li><code>.titan/steps/sync_plugin_docs.py</code></li>
+<li><code>.titan/steps/validate_plugin_docs.py</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
