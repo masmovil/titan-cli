@@ -4,9 +4,14 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from ..errors import PluginLoadError, PluginInitializationError
+from ..errors import PluginIncompatibleError, PluginLoadError, PluginInitializationError
 from .plugin_base import TitanPlugin
-from .community_sources import PluginChannel, get_github_token, parse_plugin_metadata
+from .community_sources import (
+    PluginChannel,
+    get_github_token,
+    get_titan_incompatibility,
+    parse_plugin_metadata,
+)
 from .trust import PluginTrust, TrustFinding, classify_plugin, scan_plugin_source
 from .runtime import PluginRuntimeManager
 from titan_cli.core.logging import get_logger
@@ -28,6 +33,11 @@ def _load_local_plugin(
     metadata = parse_plugin_metadata(pyproject_path.read_text(encoding="utf-8"))
     if metadata.get("parse_error"):
         raise ValueError(f"Could not parse {pyproject_path}")
+
+    from titan_cli import __version__ as titan_version
+    incompatibility = get_titan_incompatibility(metadata, titan_version)
+    if incompatibility:
+        raise PluginIncompatibleError(plugin_name, incompatibility)
 
     entry_point = (metadata.get("titan_entry_points") or {}).get(plugin_name)
     if not entry_point:
@@ -53,7 +63,19 @@ def _load_local_plugin(
     for name in stale_modules:
         sys.modules.pop(name, None)
 
-    module = importlib.import_module(module_name)
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as e:
+        # A missing titan_cli.* module is a version mismatch, not a broken plugin:
+        # the plugin was built against an API this titan-cli no longer (or not yet) has.
+        if e.name == "titan_cli" or (e.name or "").startswith("titan_cli."):
+            from titan_cli import __version__ as titan_version
+            from titan_cli.messages import msg
+            raise PluginIncompatibleError(
+                plugin_name,
+                msg.Errors.PLUGIN_API_MISSING.format(current=titan_version, error=e),
+            ) from e
+        raise
     plugin_class = getattr(module, class_name)
     if not issubclass(plugin_class, TitanPlugin):
         raise TypeError("Plugin class must inherit from TitanPlugin")

@@ -24,6 +24,20 @@ class PluginLoadError(PluginError):
             error=str(self.original_exception)
         )
 
+class PluginIncompatibleError(PluginError):
+    """Raised when a plugin's declared or actual API needs a different titan-cli version."""
+
+    def __init__(self, plugin_name: str, detail: str):
+        self.plugin_name = plugin_name
+        self.detail = detail
+        # Do not call super().__init__ with message here, as it's formatted by __str__
+
+    def __str__(self) -> str:
+        return msg.Errors.PLUGIN_INCOMPATIBLE.format(
+            plugin_name=self.plugin_name,
+            detail=self.detail,
+        )
+
 class PluginInitializationError(PluginError):
     """Raised when a plugin fails to initialize."""
 

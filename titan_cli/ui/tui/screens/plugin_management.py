@@ -240,7 +240,9 @@ class PluginManagementScreen(BaseScreen):
 
         options = []
 
-        # Find plugins enabled in config but not installed
+        # Find plugins enabled in config but not loaded, separating real absences
+        # from plugins that were found but crashed while loading.
+        failed_plugins = self.config.registry.list_failed()
         missing_plugins = []
         if self.config.config and self.config.config.plugins:
             for plugin_name, plugin_cfg in self.config.config.plugins.items():
@@ -276,9 +278,10 @@ class PluginManagementScreen(BaseScreen):
 
         # Add missing plugin options
         for plugin_name in missing_plugins:
+            status = "Load failed" if plugin_name in failed_plugins else "Not installed"
             options.append(
                 Option(
-                    f"{Icons.WARNING} {plugin_name} - Not installed",
+                    f"{Icons.ERROR if plugin_name in failed_plugins else Icons.WARNING} {plugin_name} - {status}",
                     id=f"missing:{plugin_name}"
                 )
             )
@@ -354,27 +357,53 @@ class PluginManagementScreen(BaseScreen):
         details.mount(DimText("Plugins are automatically discovered from installed packages."))
 
     def _show_plugin_missing(self, plugin_name: str) -> None:
-        """Display details for a plugin enabled in config but not installed."""
+        """Display details for an enabled plugin that is absent or failed to load."""
         details = self.query_one("#details-content", Container)
         details.remove_children()
 
+        load_error = self.config.registry.list_failed().get(plugin_name)
+        record = self._build_stable_record(plugin_name)
+
         details.mount(BoldPrimaryText(plugin_name))
         details.mount(Text(""))
-        details.mount(WarningText(f"{Icons.WARNING} Not installed"))
-        details.mount(Text(""))
-        details.mount(DimText(
-            f"The plugin '{plugin_name}' is enabled in your project config "
-            "but is not installed in this Titan environment."
-        ))
-        details.mount(Text(""))
+
+        if load_error:
+            details.mount(Static(f"[bold red]{Icons.ERROR} Load failed[/bold red]"))
+            details.mount(Text(""))
+            details.mount(DimText(
+                f"The plugin '{plugin_name}' is installed but crashed while loading:"
+            ))
+            details.mount(Static(f"[red]{str(load_error)}[/red]"))
+            details.mount(Text(""))
+            if record:
+                details.mount(DimText(
+                    f"Pinned to {record.requested_ref}. A version incompatibility with this "
+                    "Titan CLI is the most common cause - updating the plugin usually fixes it."
+                ))
+                details.mount(Text(""))
+        else:
+            details.mount(WarningText(f"{Icons.WARNING} Not installed"))
+            details.mount(Text(""))
+            details.mount(DimText(
+                f"The plugin '{plugin_name}' is enabled in your project config "
+                "but is not installed in this Titan environment."
+            ))
+            details.mount(Text(""))
+
+        if record:
+            details.mount(DimText("Press U to update this plugin to the latest version."))
         details.mount(DimText("Press i to add it from a community plugin URL."))
         details.mount(DimText("Press r to remove it from this project's config."))
         details.mount(Text(""))
-        details.mount(Horizontal(
+
+        buttons = []
+        if record:
+            buttons.append(Button("Update", variant="warning", id="update-button"))
+        buttons.extend([
             Button("Install Plugin", variant="primary", id="install-plugin-button-details"),
             Button("Remove from Project", variant="error", id="remove-plugin-button-details"),
-            classes="button-container"
-        ))
+        ])
+        details.mount(Horizontal(*buttons, classes="button-container"))
 
     def _show_plugin_details(self, plugin_name: str) -> None:
         """Display details for the selected plugin."""
@@ -820,19 +849,20 @@ class PluginManagementScreen(BaseScreen):
             self.app.notify(f"Failed to remove plugin from project: {e}", severity="error")
 
     def action_update_plugin(self) -> None:
-        """Check for and apply an update to the selected stable community plugin."""
-        if not self.selected_plugin:
+        """Check for and apply an update to the selected stable community plugin.
+
+        Also available for plugins that failed to load: the stable pin lives in the
+        project config, so updating does not require the plugin to be loaded, and it
+        is the standard way out of a broken pinned version.
+        """
+        plugin_name = self.selected_plugin or self.selected_missing_plugin
+        if not plugin_name:
             self.app.notify("Please select a plugin", severity="warning")
             return
 
-        active_record = self._build_stable_record(self.selected_plugin)
-        if not active_record or active_record.channel != PluginChannel.STABLE:
+        record = self._build_stable_record(plugin_name)
+        if not record or record.channel != PluginChannel.STABLE:
             self.app.notify("Only plugins currently using the stable source can be updated", severity="warning")
-            return
-
-        record = self._build_stable_record(self.selected_plugin)
-        if not record:
-            self.app.notify("Only stable community plugins can be updated", severity="warning")
             return
 
         self.run_worker(self._run_update(record), exclusive=True)
@@ -871,6 +901,17 @@ class PluginManagementScreen(BaseScreen):
             )
             return
 
+        incompatibility = await asyncio.to_thread(
+            self._check_candidate_incompatibility, record.repo_url, resolved_sha, host, token
+        )
+        if incompatibility:
+            self.app.notify(
+                f"Not updating '{record.titan_plugin_name}' to {latest}: {incompatibility}",
+                severity="error",
+                timeout=15,
+            )
+            return
+
         try:
             await asyncio.to_thread(
                 self._update_project_stable_source,
@@ -894,6 +935,30 @@ class PluginManagementScreen(BaseScreen):
             f"'{record.titan_plugin_name}' updated to {latest}.",
             severity="information",
         )
+
+    def _check_candidate_incompatibility(
+        self, repo_url: str, resolved_sha: str, host, token: str | None
+    ) -> str | None:
+        """Check the candidate version's declared titan-cli requirement before pinning it.
+
+        Only a positively-detected incompatibility blocks the update: if the remote
+        pyproject cannot be fetched or parsed, the update proceeds as it always has.
+        """
+        from titan_cli import __version__ as titan_version
+        from titan_cli.core.plugins.community_sources import (
+            build_raw_pyproject_url,
+            fetch_pyproject_toml,
+            get_titan_incompatibility,
+            parse_plugin_metadata,
+        )
+
+        raw_url = build_raw_pyproject_url(repo_url, resolved_sha, host)
+        if raw_url is None:
+            return None
+        content, error = fetch_pyproject_toml(raw_url, token)
+        if error or not content:
+            return None
+        return get_titan_incompatibility(parse_plugin_metadata(content), titan_version)
 
     def action_uninstall_plugin(self) -> None:
         """Remove the selected project-pinned community plugin or dev override."""

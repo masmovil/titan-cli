@@ -93,6 +93,11 @@ class Messages:
         # Plugin / Core Errors
         PLUGIN_LOAD_FAILED = "Failed to load plugin '{plugin_name}': {error}"
         PLUGIN_INIT_FAILED = "Failed to initialize plugin '{plugin_name}': {error}"
+        PLUGIN_INCOMPATIBLE = "Plugin '{plugin_name}' is not compatible with this Titan CLI: {detail}"
+        PLUGIN_API_MISSING = (
+            "uses an API that does not exist in titan-cli {current} ({error}). "
+            "It was likely built for a different titan-cli version — update the plugin."
+        )
         CONFIG_PARSE_ERROR = "Failed to parse configuration file at {file_path}: {error}"
 
         # File system

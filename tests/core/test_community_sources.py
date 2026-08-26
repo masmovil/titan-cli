@@ -155,3 +155,91 @@ def test_check_for_update_compares_against_requested_ref(mocker):
     )
 
     assert check_for_update(record) == "v1.1.0"
+
+
+# ---------------------------------------------------------------------------
+# titan-cli compatibility contract
+# ---------------------------------------------------------------------------
+
+from titan_cli.core.plugins.community_sources import (  # noqa: E402
+    get_titan_incompatibility,
+    parse_plugin_metadata,
+)
+
+
+def test_parse_plugin_metadata_extracts_titan_requirement_pep621():
+    metadata = parse_plugin_metadata(
+        """
+[project]
+name = "example-plugin"
+version = "0.1.0"
+dependencies = ["requests>=2.0", "titan-cli>=0.8.0,<0.9"]
+""".strip()
+    )
+    assert set(metadata["titan_requirement"].split(",")) == {">=0.8.0", "<0.9"}
+
+
+def test_parse_plugin_metadata_extracts_titan_requirement_poetry_string():
+    metadata = parse_plugin_metadata(
+        """
+[tool.poetry]
+name = "example-plugin"
+version = "0.1.0"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+titan-cli = ">=0.6.0"
+""".strip()
+    )
+    assert metadata["titan_requirement"] == ">=0.6.0"
+
+
+def test_parse_plugin_metadata_translates_poetry_caret_and_dict():
+    caret = parse_plugin_metadata(
+        """
+[tool.poetry]
+name = "example-plugin"
+
+[tool.poetry.dependencies]
+titan-cli = "^0.8.0"
+""".strip()
+    )
+    assert caret["titan_requirement"] == ">=0.8.0,<0.9"
+
+    as_dict = parse_plugin_metadata(
+        """
+[tool.poetry]
+name = "example-plugin"
+
+[tool.poetry.dependencies]
+titan-cli = {version = "~1.2", extras = ["extra"]}
+""".strip()
+    )
+    assert as_dict["titan_requirement"] == ">=1.2,<1.3"
+
+
+def test_parse_plugin_metadata_without_titan_dependency():
+    metadata = parse_plugin_metadata(
+        """
+[project]
+name = "example-plugin"
+dependencies = ["requests>=2.0"]
+""".strip()
+    )
+    assert metadata["titan_requirement"] is None
+
+
+def test_get_titan_incompatibility_detects_version_outside_bounds():
+    metadata = {"titan_requirement": ">=0.8.0,<0.9"}
+
+    assert get_titan_incompatibility(metadata, "0.8.5") is None
+    message = get_titan_incompatibility(metadata, "0.7.2")
+    assert message is not None
+    assert ">=0.8.0,<0.9" in message
+    assert "0.7.2" in message
+
+
+def test_get_titan_incompatibility_never_blocks_on_missing_or_broken_specifier():
+    assert get_titan_incompatibility({"titan_requirement": None}, "0.8.0") is None
+    assert get_titan_incompatibility({}, "0.8.0") is None
+    assert get_titan_incompatibility({"titan_requirement": "not a specifier"}, "0.8.0") is None
