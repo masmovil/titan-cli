@@ -18,6 +18,7 @@ from titan_cli.core.plugins.community_sources import (
     detect_host,
     fetch_pyproject_toml,
     get_github_token,
+    get_titan_incompatibility,
     parse_plugin_metadata,
     parse_repo_url,
     resolve_ref_to_commit_sha,
@@ -372,6 +373,16 @@ class InstallPluginScreen(BaseScreen):
             return
 
         self._metadata = parse_plugin_metadata(content)
+
+        from titan_cli import __version__ as titan_version
+        incompatibility = get_titan_incompatibility(self._metadata, titan_version)
+        if incompatibility:
+            body.mount(Panel(
+                f"This version cannot be installed: it {incompatibility}",
+                panel_type="error",
+            ))
+            self._set_next_label("Next", disabled=True)
+            return
 
         if self._metadata.get("parse_error"):
             body.mount(Panel(

@@ -901,6 +901,17 @@ class PluginManagementScreen(BaseScreen):
             )
             return
 
+        incompatibility = await asyncio.to_thread(
+            self._check_candidate_incompatibility, record.repo_url, resolved_sha, host, token
+        )
+        if incompatibility:
+            self.app.notify(
+                f"Not updating '{record.titan_plugin_name}' to {latest}: {incompatibility}",
+                severity="error",
+                timeout=15,
+            )
+            return
+
         try:
             await asyncio.to_thread(
                 self._update_project_stable_source,
@@ -924,6 +935,30 @@ class PluginManagementScreen(BaseScreen):
             f"'{record.titan_plugin_name}' updated to {latest}.",
             severity="information",
         )
+
+    def _check_candidate_incompatibility(
+        self, repo_url: str, resolved_sha: str, host, token: str | None
+    ) -> str | None:
+        """Check the candidate version's declared titan-cli requirement before pinning it.
+
+        Only a positively-detected incompatibility blocks the update: if the remote
+        pyproject cannot be fetched or parsed, the update proceeds as it always has.
+        """
+        from titan_cli import __version__ as titan_version
+        from titan_cli.core.plugins.community_sources import (
+            build_raw_pyproject_url,
+            fetch_pyproject_toml,
+            get_titan_incompatibility,
+            parse_plugin_metadata,
+        )
+
+        raw_url = build_raw_pyproject_url(repo_url, resolved_sha, host)
+        if raw_url is None:
+            return None
+        content, error = fetch_pyproject_toml(raw_url, token)
+        if error or not content:
+            return None
+        return get_titan_incompatibility(parse_plugin_metadata(content), titan_version)
 
     def action_uninstall_plugin(self) -> None:
         """Remove the selected project-pinned community plugin or dev override."""

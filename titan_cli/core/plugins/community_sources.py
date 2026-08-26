@@ -337,7 +337,8 @@ def parse_plugin_metadata(toml_content: str) -> dict:
 
     Returns a dict with keys:
         name, version, description, authors,
-        titan_entry_points (dict), python_deps (list), parse_error (bool)
+        titan_entry_points (dict), python_deps (list),
+        titan_requirement (str | None), parse_error (bool)
     """
     try:
         data = tomli.loads(toml_content)
@@ -345,7 +346,7 @@ def parse_plugin_metadata(toml_content: str) -> dict:
         return {
             "name": None, "version": None, "description": None,
             "authors": [], "titan_entry_points": {}, "python_deps": [],
-            "parse_error": True,
+            "titan_requirement": None, "parse_error": True,
         }
 
     # Support both [project] (PEP 621) and [tool.poetry] layouts
@@ -384,8 +385,88 @@ def parse_plugin_metadata(toml_content: str) -> dict:
     return {
         "name": name, "version": version, "description": description,
         "authors": authors, "titan_entry_points": titan_entry_points,
-        "python_deps": python_deps, "parse_error": False,
+        "python_deps": python_deps,
+        "titan_requirement": _extract_titan_requirement(pep_deps, poetry.get("dependencies", {})),
+        "parse_error": False,
     }
+
+
+_TITAN_DIST_NAMES = ("titan-cli", "titan_cli")
+
+
+def _extract_titan_requirement(pep_deps: list, poetry_deps: dict) -> Optional[str]:
+    """Extract the version specifier a plugin declares on titan-cli, if any."""
+    for dep in pep_deps:
+        try:
+            from packaging.requirements import Requirement
+            req = Requirement(dep)
+        except Exception:
+            continue
+        if req.name.lower().replace("_", "-") == "titan-cli":
+            return str(req.specifier) or None
+
+    for dist_name in _TITAN_DIST_NAMES:
+        constraint = poetry_deps.get(dist_name)
+        if constraint is None:
+            continue
+        if isinstance(constraint, dict):
+            constraint = constraint.get("version")
+        if isinstance(constraint, str) and constraint.strip():
+            return _poetry_constraint_to_specifier(constraint.strip())
+    return None
+
+
+def _poetry_constraint_to_specifier(constraint: str) -> Optional[str]:
+    """Translate a Poetry constraint (^x.y, ~x.y, plain specifiers) to PEP 440."""
+    if constraint == "*":
+        return None
+    if constraint[0] in ("^", "~"):
+        base = constraint[1:].strip()
+        parts = base.split(".")
+        try:
+            numbers = [int(p) for p in parts]
+        except ValueError:
+            return None
+        if constraint[0] == "^":
+            # ^ bumps the leftmost non-zero component
+            upper = numbers.copy()
+            for i, n in enumerate(upper):
+                if n != 0 or i == len(upper) - 1:
+                    upper = upper[: i + 1]
+                    upper[i] += 1
+                    break
+        else:
+            # ~ allows patch-level changes when minor is given, minor-level otherwise
+            upper = numbers[:2] if len(numbers) >= 2 else numbers[:1]
+            upper[-1] += 1
+        return f">={base},<{'.'.join(str(n) for n in upper)}"
+    return constraint
+
+
+def get_titan_incompatibility(metadata: dict, current_version: str) -> Optional[str]:
+    """
+    Return a human-readable message when the plugin's declared titan-cli
+    requirement excludes the running version, or None when compatible.
+
+    Absent or unparseable requirements never block: plugins are not required
+    to declare bounds, and a broken specifier should not brick loading.
+    """
+    requirement = metadata.get("titan_requirement")
+    if not requirement:
+        return None
+    try:
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import Version
+        specifier = SpecifierSet(requirement)
+        version = Version(current_version)
+    except Exception:
+        return None
+    if version in specifier:
+        return None
+    return (
+        f"requires titan-cli {requirement}, but titan-cli {current_version} is running. "
+        "Update the plugin or Titan so the versions match."
+    )
 
 
 def is_running_in_pipx() -> bool:
