@@ -118,6 +118,7 @@ class CommitService:
             args = ["git", "commit", "-m", message]
             if no_verify:
                 args.append("--no-verify")
+            args.extend(["--"] + list(files))
             self.git.run_command(args)
 
             commit_hash = self.git.run_command(["git", "rev-parse", "HEAD"])

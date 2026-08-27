@@ -1,0 +1,33 @@
+name: "Post Slack Message"
+description: "Resolve a Slack target (preferred target, project default, or search) and post a message"
+
+steps:
+  - id: validate_connection
+    name: "Validate Slack Connection"
+    plugin: slack
+    step: validate_connection
+
+  - id: select_target
+    name: "Select Slack Target"
+    plugin: slack
+    step: select_default_or_search_channel_target
+
+  - id: prepare_destination
+    name: "Prepare Slack Destination"
+    plugin: slack
+    step: prepare_message_destination
+
+  - id: compose_message
+    name: "Compose Slack Message"
+    plugin: slack
+    step: prompt_message_body
+
+  - id: format_message
+    name: "Format Slack Message"
+    plugin: slack
+    step: format_markdown_message
+
+  - id: post_message
+    name: "Post Slack Message"
+    plugin: slack
+    step: post_message

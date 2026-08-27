@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+from titan_cli.core.security import SecretBrokerFactory
 from titan_cli.core.workflows import ParsedWorkflow
 from titan_cli.core.workflows.workflow_exceptions import WorkflowExecutionError
 from titan_cli.engine.context import WorkflowContext
@@ -24,9 +25,15 @@ class WorkflowExecutor:
         "ai_code_assistant": execute_ai_assistant_step,
     }
 
-    def __init__(self, plugin_registry: PluginRegistry, workflow_registry: WorkflowRegistry):
+    def __init__(
+        self,
+        plugin_registry: PluginRegistry,
+        workflow_registry: WorkflowRegistry,
+        broker_factory: Optional[SecretBrokerFactory] = None,
+    ):
         self._plugin_registry = plugin_registry
         self._workflow_registry = workflow_registry
+        self._broker_factory = broker_factory
 
     @staticmethod
     def _is_control_flow_exception(error: Exception) -> bool:
@@ -85,6 +92,8 @@ class WorkflowExecutor:
                     if step_config.command
                     else "plugin"
                 )
+                if self._broker_factory is not None:
+                    ctx.secret_broker = self._broker_factory.for_plugin(step_config.plugin)
 
                 try:
                     if step_config.workflow:

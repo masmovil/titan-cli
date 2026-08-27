@@ -38,6 +38,10 @@
           "summary": "Prompt for a pull request body."
         },
         {
+          "name": "prompt_for_pr_draft",
+          "summary": "Ask whether the pull request should be created as a draft."
+        },
+        {
           "name": "prompt_for_issue_body_step",
           "summary": "Prompt for free-form issue input before AI expansion."
         },
@@ -48,10 +52,6 @@
         {
           "name": "prompt_for_labels",
           "summary": "Prompt for GitHub labels to attach to an issue or PR."
-        },
-        {
-          "name": "select_cli",
-          "summary": "Select which external CLI should be used by a workflow."
         }
       ]
     },
@@ -218,6 +218,15 @@
           "summary": "Remove a worktree created during workflow execution."
         }
       ]
+    },
+    {
+      "name": "Releases",
+      "steps": [
+        {
+          "name": "select_release",
+          "summary": "List published GitHub releases and select one to use as a notes source."
+        }
+      ]
     }
   ],
   "steps": [
@@ -335,7 +344,9 @@
           "    Success or Error"
         ]
       },
-      "used_by_workflows": []
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
     },
     {
       "name": "build_change_manifest",
@@ -433,7 +444,9 @@
           "    Success, Skip (no actionable decisions), or Error"
         ]
       },
-      "used_by_workflows": []
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
     },
     {
       "name": "build_thread_review_candidates",
@@ -451,7 +464,9 @@
           "    Success, Skip (no candidates), or Error"
         ]
       },
-      "used_by_workflows": []
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
     },
     {
       "name": "build_thread_review_contexts",
@@ -460,7 +475,9 @@
       "function": "build_thread_review_contexts",
       "summary": "Enrich thread candidates with diff hunk context and full reply history.",
       "docstring_sections": {
-        "Requires": [],
+        "Requires": [
+          "    ctx.github: Optional GitHub client used to inspect referenced commits."
+        ],
         "Inputs (from ctx.data)": [],
         "Outputs (saved to ctx.data)": [
           "    thread_review_contexts (List[ThreadReviewContext])"
@@ -469,7 +486,9 @@
           "    Success, Skip (no candidates), or Error"
         ]
       },
-      "used_by_workflows": []
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
     },
     {
       "name": "check_clean_state",
@@ -621,6 +640,7 @@
           "    pr_title (str): The title of the pull request.",
           "    pr_body (str, optional): The body/description of the pull request.",
           "    pr_head_branch (str): The branch with the new changes.",
+          "    pr_base_branch (str, optional): The branch to merge into. Defaults to the git plugin's configured main branch.",
           "    pr_is_draft (bool, optional): Whether to create the PR as a draft. Defaults to False.",
           "    pr_reviewers (list, optional): List of GitHub usernames or team slugs to request review from.",
           "    pr_excluded_reviewers (list, optional): List of GitHub usernames to exclude from team expansion.",
@@ -729,7 +749,8 @@
         ]
       },
       "used_by_workflows": [
-        "review-pr"
+        "review-pr",
+        "review-pr-thread-resolution"
       ]
     },
     {
@@ -817,7 +838,9 @@
           "    Success or Error"
         ]
       },
-      "used_by_workflows": []
+      "used_by_workflows": [
+        "review-pr-thread-resolution"
+      ]
     },
     {
       "name": "preview_and_confirm_issue",
@@ -868,14 +891,18 @@
       "group": "Prompt and Selection",
       "module": "titan_plugin_github.steps.github_prompt_steps",
       "function": "prompt_for_labels_step",
-      "summary": "Prompts the user to select labels for the issue.",
+      "summary": "Prompt the user to select repository labels and save them to context.",
       "docstring_sections": {
         "Requires": [
           "    ctx.github: An initialized GitHubClient."
         ],
-        "Inputs (from ctx.data)": [],
+        "Inputs (from ctx.data)": [
+          "    output_key (str, optional): Context key where selected labels should be stored. Defaults to \"labels\".",
+          "    prompt (str, optional): Prompt text shown to the user. Defaults to \"Select labels:\".",
+          "    default_selected_key (str, optional): Context key used to preselect labels. Defaults to output_key."
+        ],
         "Outputs (saved to ctx.data)": [
-          "    labels (list[str]): Labels selected by the user."
+          "    <output_key> (list[str]): Labels selected by the user."
         ],
         "Returns": [
           "    Success: If label selection completes successfully.",
@@ -883,7 +910,9 @@
           "    Error: If the GitHub client is unavailable or the prompt fails."
         ]
       },
-      "used_by_workflows": []
+      "used_by_workflows": [
+        "create-pr-ai"
+      ]
     },
     {
       "name": "prompt_for_pr_body",
@@ -906,6 +935,31 @@
         ]
       },
       "used_by_workflows": []
+    },
+    {
+      "name": "prompt_for_pr_draft",
+      "group": "Prompt and Selection",
+      "module": "titan_plugin_github.steps.github_prompt_steps",
+      "function": "prompt_for_pr_draft_step",
+      "summary": "Ask whether the pull request should be created as a draft.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.textual: Textual UI components."
+        ],
+        "Inputs (from ctx.data)": [
+          "    draft (bool | None, optional): Draft mode from workflow params. Use True/False to skip the prompt, or None to ask interactively."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    pr_is_draft (bool): Whether the PR should be created as a draft."
+        ],
+        "Returns": [
+          "    Success: If the draft preference was resolved successfully.",
+          "    Error: If the user cancels or the prompt fails."
+        ]
+      },
+      "used_by_workflows": [
+        "create-pr-ai"
+      ]
     },
     {
       "name": "prompt_for_pr_title",
@@ -1062,24 +1116,6 @@
       ]
     },
     {
-      "name": "select_cli",
-      "group": "Prompt and Selection",
-      "module": "titan_plugin_github.steps.select_cli_step",
-      "function": "select_cli_step",
-      "summary": "Ask user to explicitly choose which AI CLI to use for PR analysis.",
-      "docstring_sections": {
-        "Requires": [],
-        "Inputs (from ctx.data)": [],
-        "Outputs (saved to ctx.data)": [],
-        "Returns": [
-          "    Success with the chosen CLI name stored in ctx.data"
-        ]
-      },
-      "used_by_workflows": [
-        "review-pr"
-      ]
-    },
-    {
       "name": "select_pr_for_code_review",
       "group": "Code Review",
       "module": "titan_plugin_github.steps.code_review_steps",
@@ -1099,7 +1135,8 @@
         ]
       },
       "used_by_workflows": [
-        "review-pr"
+        "review-pr",
+        "review-pr-thread-resolution"
       ]
     },
     {
@@ -1124,6 +1161,33 @@
       "used_by_workflows": [
         "respond-pr-comments"
       ]
+    },
+    {
+      "name": "select_release",
+      "group": "Releases",
+      "module": "titan_plugin_github.steps.release_steps",
+      "function": "select_release_step",
+      "summary": "List published GitHub releases and select one to use as a notes source.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    github_release_limit (int, optional): Maximum number of releases to list. Defaults to 15."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    selected_release (UIRelease): Selected GitHub release, including its notes body.",
+          "    selected_release_tag (str): Tag name of the selected release.",
+          "    selected_release_notes (str): Release notes body of the selected release.",
+          "    selected_release_url (str): URL of the selected release."
+        ],
+        "Returns": [
+          "    Success: If a release is selected successfully.",
+          "    Skip: If no published releases exist.",
+          "    Error: If the GitHub client is not available or the request fails."
+        ]
+      },
+      "used_by_workflows": []
     },
     {
       "name": "select_review_strategy",
@@ -1185,7 +1249,8 @@
         ]
       },
       "used_by_workflows": [
-        "review-pr"
+        "review-pr",
+        "review-pr-thread-resolution"
       ]
     },
     {
@@ -1205,7 +1270,8 @@
         ]
       },
       "used_by_workflows": [
-        "review-pr"
+        "review-pr",
+        "review-pr-thread-resolution"
       ]
     },
     {

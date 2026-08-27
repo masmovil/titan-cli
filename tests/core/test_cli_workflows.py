@@ -212,6 +212,7 @@ def test_headless_runs_start_passes_headless_request_and_outputs_event_stream(mo
             "runs",
             "start",
             "demo",
+            "--json",
             "--project-path",
             "/tmp/demo",
             "--params-json",

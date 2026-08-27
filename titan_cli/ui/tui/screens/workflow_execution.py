@@ -15,7 +15,11 @@ from textual.worker import Worker, WorkerState
 from titan_cli.ui.tui.widgets import HeaderWidget
 from titan_cli.ui.tui.icons import Icons
 
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.interrupt import (
+    WorkflowAborted,
+    clear_abort_check,
+    set_abort_check,
+)
 from titan_cli.core.workflows import ParsedWorkflow
 from titan_cli.engine.builder import WorkflowContextBuilder
 from titan_cli.core.workflows.workflow_exceptions import (
@@ -40,6 +44,7 @@ class WorkflowExecutionScreen(BaseScreen):
     BINDINGS = [
         ("escape", "cancel_execution", "Cancel"),
         ("q", "cancel_execution", "Cancel"),
+        ("f", "toggle_favorite", "Favorite"),
     ]
 
     CSS = """
@@ -92,6 +97,8 @@ class WorkflowExecutionScreen(BaseScreen):
             config,
             title=f"{Icons.WORKFLOW} Executing: {workflow_name}",
             show_back=True,
+            show_favorite=True,
+            is_favorite=config.is_favorite_workflow(workflow_name),
             **kwargs
         )
         self.workflow_name = workflow_name
@@ -160,23 +167,27 @@ class WorkflowExecutionScreen(BaseScreen):
 
     def _execute_workflow(self) -> None:
         """Execute the workflow in a background thread."""
+        # Let blocking calls made from this thread (AI requests, headless CLI
+        # subprocesses) notice when the app closes, so quitting mid-call doesn't
+        # leave this non-daemon thread hanging interpreter shutdown.
+        app = self.app
+        set_abort_check(lambda: not app.is_running)
         try:
             # We're already in the project directory (current working directory)
             # No need to change directory
-
-            # Create secret manager for current project
             from pathlib import Path
-            secrets = SecretManager(project_path=Path.cwd())
+            project_root = Path.cwd()
 
             # Build workflow context (without UI - executor handles messaging)
             ctx_builder = WorkflowContextBuilder(
                 plugin_registry=self.config.registry,
-                secrets=secrets,
                 ai_config=self.config.config.ai,
             )
 
             # Add AI if configured
             ctx_builder.with_ai()
+            ctx_builder.with_ai_router()
+            ctx_builder.with_titan_config(self.config)
 
             # Add registered plugins to context
             for plugin_name in self.config.registry.list_installed():
@@ -194,7 +205,7 @@ class WorkflowExecutionScreen(BaseScreen):
                         pass
 
                 try:
-                    managers = plugin.get_workflow_managers(project_root=secrets.project_path)
+                    managers = plugin.get_workflow_managers(project_root=project_root)
                     if managers is not None:
                         ctx_builder.with_plugin_managers(plugin_name, managers)
                 except Exception:
@@ -202,8 +213,7 @@ class WorkflowExecutionScreen(BaseScreen):
 
             # Build context and create executor
             execution_context = ctx_builder.build()
-            if secrets.project_path:
-                execution_context.data["project_root"] = str(secrets.project_path)
+            execution_context.data["project_root"] = str(project_root)
             executor = TextualWorkflowExecutor(
                 plugin_registry=self.config.registry,
                 workflow_registry=self.config.workflows,
@@ -213,6 +223,10 @@ class WorkflowExecutionScreen(BaseScreen):
             # Execute workflow (this is synchronous and may take time)
             executor.execute(self.workflow, execution_context)
 
+        except WorkflowAborted:
+            # The app closed while a step was blocked in an AI call or prompt.
+            # There is no UI left to report to; just let this thread die.
+            logger.info("workflow_aborted_on_app_exit", workflow_name=self.workflow_name)
         except (WorkflowNotFoundError, WorkflowExecutionError) as e:
             self._output(f"\n[red]{Icons.ERROR} Workflow failed: {e}[/red]")
             self._output("[dim]Press ESC or Q to return[/dim]")
@@ -220,6 +234,7 @@ class WorkflowExecutionScreen(BaseScreen):
             self._output(f"\n[red]{Icons.ERROR} Unexpected error: {type(e).__name__}: {e}[/red]")
             self._output("[dim]Press ESC or Q to return[/dim]")
         finally:
+            clear_abort_check()
             # Restore original working directory
             os.chdir(self._original_cwd)
 
@@ -230,6 +245,28 @@ class WorkflowExecutionScreen(BaseScreen):
             header.title = title
         except Exception:
             pass
+
+    def action_toggle_favorite(self) -> None:
+        """Toggle favorite status for this workflow and update the header."""
+        try:
+            new_state = self.config.toggle_favorite_workflow(self.workflow_name)
+        except Exception as exc:
+            self.notify(f"Could not save favorite: {exc}", severity="error")
+            return
+
+        self.is_favorite = new_state
+        try:
+            header = self.query_one(HeaderWidget)
+            header.is_favorite = new_state
+        except Exception:
+            pass
+
+        # Local import avoids a circular import (workflows.py imports this module).
+        from titan_cli.ui.tui.screens.workflows import WorkflowsScreen
+
+        for screen in self.app.screen_stack:
+            if isinstance(screen, WorkflowsScreen):
+                screen.refresh_favorites()
 
     def _update_description(self, description: str) -> None:
         """Update the workflow description."""

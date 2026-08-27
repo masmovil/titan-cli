@@ -36,6 +36,11 @@ from .issue_management_operations import (
     issue_has_fix_version,
 )
 
+from .plan_prompt_operations import (
+    format_jira_issue_context,
+    build_jira_plan_prompt,
+)
+
 __all__ = [
     # JQL operations
     "substitute_jql_variables",
@@ -56,4 +61,7 @@ __all__ = [
     "find_transition_by_name_contains",
     "find_version_by_name",
     "issue_has_fix_version",
+    # Plan prompt operations
+    "format_jira_issue_context",
+    "build_jira_plan_prompt",
 ]

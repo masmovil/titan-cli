@@ -12,17 +12,23 @@ from ..models.review_models import (
     ExistingCommentIndexEntry,
     PullRequestManifest,
 )
+from ..models.review_profile_models import ReviewProfile
 from ..models.view import UICommentThread, UIFileChange, UIPullRequest
+from .review_profile_operations import path_matches_any
 
 
 _TEST_PATH_PATTERNS = [
     r"(^|/)tests?/",
+    r"(^|/)[a-z]+Tests?/",
     r"(^|/)test_",
     r"_test\.py$",
     r"_spec\.py$",
     r"(^|/)spec/",
     r"\.test\.[jt]sx?$",
     r"\.spec\.[jt]sx?$",
+    r"_test\.go$",
+    r"Tests?\.(kt|java|cs|swift|scala)$",
+    r"Spec\.(kt|scala|groovy)$",
 ]
 _DOC_PATH_PATTERNS = [r"(^|/)docs?/", r"\.md$", r"\.rst$", r"\.adoc$"]
 _GENERATED_PATH_PATTERNS = [r"(^|/)dist/", r"(^|/)build/", r"(^|/)vendor/", r"(^|/)generated/"]
@@ -59,8 +65,18 @@ _DOC_REGEXES = [re.compile(p) for p in _DOC_PATH_PATTERNS]
 _GENERATED_REGEXES = [re.compile(p) for p in _GENERATED_PATH_PATTERNS]
 
 
-def is_test_file(path: str) -> bool:
-    return any(rx.search(path) for rx in _TEST_REGEXES)
+def is_test_file(path: str, review_profile: Optional[ReviewProfile] = None) -> bool:
+    """Detect test files, preferring the project's own declared test globs.
+
+    Built-in patterns only cover a handful of language conventions, so a project that
+    declares ``file_roles.tests`` knows better than they do. The union is intentional:
+    the profile adds its conventions without having to restate the built-in ones.
+    """
+    if any(rx.search(path) for rx in _TEST_REGEXES):
+        return True
+    if review_profile is None:
+        return False
+    return path_matches_any(path, review_profile.file_roles.get("tests", []))
 
 
 def is_docs_file(path: str) -> bool:
@@ -90,16 +106,35 @@ def is_rename_only(file_change: UIFileChange) -> bool:
     return file_change.status.value == "renamed" and file_change.additions == 0 and file_change.deletions == 0
 
 
-def build_change_manifest(pr: UIPullRequest, files: list[UIFileChange]) -> ChangeManifest:
+def build_change_manifest(
+    pr: UIPullRequest,
+    files: list[UIFileChange],
+    review_profile: Optional[ReviewProfile] = None,
+    churn_by_path: Optional[dict[str, tuple[int, int]]] = None,
+) -> ChangeManifest:
+    """Build the typed manifest of a PR's changed files.
+
+    ``churn_by_path`` maps path -> (additions, deletions) from a local git numstat.
+    GitHub's files API reports 0/0 for files whose diff it cannot render (too
+    large or binary); a zero entry here would score as "nothing changed", so the
+    local counters take over exactly in that case and only in that case.
+    """
+    churn_by_path = churn_by_path or {}
     entries: list[ChangedFileEntry] = []
     for f in files:
+        additions, deletions = f.additions, f.deletions
+        # A pure rename also reports 0/0, but that IS the real churn — and the
+        # numstat source uses --no-renames, which would report the new path as a
+        # full-file addition. Never override renames.
+        if additions == 0 and deletions == 0 and not is_rename_only(f) and f.path in churn_by_path:
+            additions, deletions = churn_by_path[f.path]
         entries.append(
             ChangedFileEntry(
                 path=f.path,
                 status=f.status,
-                additions=f.additions,
-                deletions=f.deletions,
-                is_test=is_test_file(f.path),
+                additions=additions,
+                deletions=deletions,
+                is_test=is_test_file(f.path, review_profile),
                 size_lines=0,
                 is_docs=is_docs_file(f.path),
                 is_generated=is_generated_file(f.path),
@@ -121,8 +156,8 @@ def build_change_manifest(pr: UIPullRequest, files: list[UIFileChange]) -> Chang
     return ChangeManifest(
         pr=pr_manifest,
         files=entries,
-        total_additions=sum(f.additions for f in files),
-        total_deletions=sum(f.deletions for f in files),
+        total_additions=sum(entry.additions for entry in entries),
+        total_deletions=sum(entry.deletions for entry in entries),
     )
 
 

@@ -136,6 +136,47 @@ Prompt user to select a JIRA issue from search results.
 | `Success` | `jira_issue_key`, `selected_issue` | If the user selects a valid issue. |
 | `Error` | - | If there are no issues, the selection is invalid, or the prompt is cancelled. |
 
+### `select_jira_issue`
+
+Resolve a JIRA issue key from user input: a plain number, a full key, or a board search.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: jira
+  step: select_jira_issue
+```
+
+**Used by built-in workflows:** `plan-jira-issue`
+
+**Available to later steps:** `jira_issue_key`, `selected_issue`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.jira` | - | An initialized JiraClient. |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `jira_issue_key` | str | The resolved JIRA issue key |
+| `selected_issue` | UIJiraIssue, optional | Set only when resolved via the Ready to Dev list |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `jira_issue_key`, `selected_issue` | An issue key was resolved |
+| `Error` | - | JIRA client not available, invalid input, search failed, or no selection made |
+
 ## Issue Retrieval and Analysis
 
 ### `get_issue`
@@ -154,6 +195,8 @@ Get JIRA issue details by key.
 - plugin: jira
   step: get_issue
 ```
+
+**Used by built-in workflows:** `plan-jira-issue`
 
 **Available to later steps:** `jira_issue`
 
@@ -176,6 +219,52 @@ Get JIRA issue details by key.
 |--------|-----------------------|-------------|
 | `Success` | `jira_issue` | Issue retrieved |
 | `Error` | - | Failed to get issue |
+
+### `get_comments`
+
+Get all comments for a JIRA issue.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: jira
+  step: get_comments
+```
+
+**Used by built-in workflows:** `plan-jira-issue`
+
+**Available to later steps:** `jira_comments`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.jira` | - | An initialized JiraClient. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `jira_issue_key` | str | JIRA issue key (e.g., "PROJ-123") |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `jira_comments` | list[UIJiraComment] | Comments for the issue, oldest first |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `jira_comments` | Comments retrieved (empty list if the issue has none) |
+| `Error` | - | JIRA client not available, issue key missing, or the request failed |
 
 ### `ai_analyze_issue_requirements`
 
@@ -219,6 +308,89 @@ Analyze JIRA issue requirements using AI.
 | `Success` | `ai_analysis`, `analysis_sections` | If the issue analysis completes successfully. |
 | `Skip` | `ai_analysis`, `analysis_sections` | If AI is not configured or not available. |
 | `Error` | - | If no issue is available to analyze. |
+
+## AI Planning Handoff
+
+### `build_jira_task_context`
+
+Build the full AI prompt for planning work on a JIRA issue.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: jira
+  step: build_jira_task_context
+```
+
+**Used by built-in workflows:** `plan-jira-issue`
+
+**Available to later steps:** `jira_task_context`
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `jira_issue` | UIJiraIssue | Issue details, from get_issue |
+| `jira_comments` | list[UIJiraComment], optional | Issue comments, from get_comments |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `jira_task_context` | str | Full prompt text (instructions + issue + comments) |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `jira_task_context` | Prompt built |
+| `Error` | - | jira_issue is missing |
+
+### `confirm_and_assign_issue`
+
+Ask the user if they want to assign the current JIRA issue to themselves, and do it.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: jira
+  step: confirm_and_assign_issue
+```
+
+**Used by built-in workflows:** `plan-jira-issue`
+
+**Available to later steps:** `issue_assigned_to_me`
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `jira_issue_key` | str | JIRA issue key to assign |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `issue_assigned_to_me` | bool | Whether the issue was assigned to the current user |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `issue_assigned_to_me` | Issue assigned, or user declined to assign it |
+| `Error` | - | JIRA client not available, issue key missing, or the assignment call failed |
 
 ## Transitions and Fix Versions
 
@@ -580,9 +752,9 @@ Review and optionally edit the enhanced description.
 |--------|-----------------------|-------------|
 | `WorkflowResult` | - | - |
 
-### `confirm_auto_assign`
+### `confirm_assignee_for_new_issue`
 
-Ask if user wants to auto-assign the issue.
+Ask if the issue about to be created should be self-assigned.
 
 **How to read this contract**
 
@@ -594,7 +766,7 @@ Ask if user wants to auto-assign the issue.
 
 ```yaml
 - plugin: jira
-  step: confirm_auto_assign
+  step: confirm_assignee_for_new_issue
 ```
 
 **Used by built-in workflows:** `create-generic-issue`

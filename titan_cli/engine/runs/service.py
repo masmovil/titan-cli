@@ -10,7 +10,7 @@ from queue import Queue
 from typing import Any, Optional
 
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import create_broker_factory
 from titan_cli.core.services.models import (
     WorkflowDetail,
     WorkflowStepSummary,
@@ -314,13 +314,12 @@ class WorkflowRunService:
     ) -> WorkflowContext:
         """Build execution context mirroring the current TUI flow."""
         workspace_path = Path(request.project_path) if request.project_path else config.project_root
-        secrets = SecretManager(project_path=workspace_path)
         ctx_builder = WorkflowContextBuilder(
             plugin_registry=config.registry,
-            secrets=secrets,
             ai_config=config.config.ai,
         )
         ctx_builder.with_ai()
+        ctx_builder.with_ai_router()
 
         for plugin_name in config.registry.list_installed():
             plugin = config.registry.get_plugin(plugin_name)
@@ -392,6 +391,8 @@ class WorkflowRunService:
         session.pending_prompt = None
         session.pending_interaction = None
         config = self._config_for_project_path(request.project_path)
+        workspace_path = Path(request.project_path) if request.project_path else config.project_root
+        broker_factory = create_broker_factory(project_path=workspace_path)
         workflow = config.workflows.get_workflow(request.workflow_name)
 
         session.status = (
@@ -432,6 +433,7 @@ class WorkflowRunService:
             executor = WorkflowExecutor(
                 plugin_registry=config.registry,
                 workflow_registry=config.workflows,
+                broker_factory=broker_factory,
             )
             result = executor.execute(
                 workflow,

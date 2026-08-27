@@ -37,6 +37,8 @@ from .view import (
     UIReviewSuggestion,
 )
 
+from .pr_enums import PRMergeableState, PRReviewDecision, PRState
+
 # Mappers
 from .mappers import (
     from_rest_pr,
@@ -70,6 +72,9 @@ __all__ = [
     "UIIssue",
     "UIRelease",
     "UIReviewSuggestion",
+    "PRState",
+    "PRMergeableState",
+    "PRReviewDecision",
     # Mappers
     "from_rest_pr",
     "from_rest_issue",

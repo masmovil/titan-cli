@@ -16,10 +16,10 @@
       "steps": [
         {"name": "prompt_for_pr_title", "summary": "Prompt for a pull request title."},
         {"name": "prompt_for_pr_body", "summary": "Prompt for a pull request body."},
+        {"name": "prompt_for_pr_draft", "summary": "Ask whether the pull request should be created as a draft."},
         {"name": "prompt_for_issue_body_step", "summary": "Prompt for free-form issue input before AI expansion."},
         {"name": "prompt_for_self_assign", "summary": "Ask whether the current user should be assigned."},
-        {"name": "prompt_for_labels", "summary": "Prompt for GitHub labels to attach to an issue or PR."},
-        {"name": "select_cli", "summary": "Select which external CLI should be used by a workflow."}
+        {"name": "prompt_for_labels", "summary": "Prompt for GitHub labels to attach to an issue or PR."}
       ]
     },
     {
@@ -76,6 +76,12 @@
       "steps": [
         {"name": "create_worktree", "summary": "Create an isolated worktree for GitHub-focused workflow tasks."},
         {"name": "cleanup_worktree", "summary": "Remove a worktree created during workflow execution."}
+      ]
+    },
+    {
+      "name": "Releases",
+      "steps": [
+        {"name": "select_release", "summary": "List published GitHub releases and select one to use as a notes source."}
       ]
     }
   ]

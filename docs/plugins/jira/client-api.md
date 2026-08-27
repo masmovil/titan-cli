@@ -360,6 +360,24 @@ client.assign_fix_version(
 - `version_name`: Optional. Version name. Required when `version_id` is not provided.
 - `project_key`: Optional. Project key used to resolve `version_name`. Uses the configured default project when omitted.
 
+### Assign an issue to a user
+
+Assigns an existing issue to a user by account ID.
+
+**Call:**
+
+```python
+client.assign_issue(
+    issue_key="APP-123",
+    account_id="5b10a2844c20165700ede21g",
+)
+```
+
+**Parameters:**
+
+- `issue_key`: Required. Issue key.
+- `account_id`: Required. Jira account ID of the user to assign (e.g. from `client.get_current_user()`).
+
 ### Get priorities
 
 Returns the priorities available in Jira.

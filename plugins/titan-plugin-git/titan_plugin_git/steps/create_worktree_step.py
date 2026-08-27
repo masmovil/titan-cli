@@ -11,34 +11,38 @@ import tempfile
 
 def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
     """
-    Create a temporary git worktree in detached HEAD mode from remote main branch.
+    Create a temporary git worktree in detached HEAD mode from a remote base branch.
 
     This step creates a worktree in a temporary directory in detached HEAD state,
-    pointing to the latest commit from the remote main branch. This allows creating
-    a clean workspace even if you're currently on the main branch or have uncommitted
-    changes.
+    pointing to the latest commit from the remote base branch. The base branch is
+    resolved from the `base_branch` context variable when present, falling back to
+    the git plugin's configured main branch. This allows creating a clean workspace
+    even if you're currently on the base branch or have uncommitted changes.
 
     The worktree is created in detached HEAD mode, which means:
     - It doesn't conflict with your current branch
-    - It works even if you're on the main branch with uncommitted changes
+    - It works even if you're on the base branch with uncommitted changes
     - It always uses the latest code from the remote
 
-    Params:
-        path: Custom path for worktree (optional, defaults to temp directory)
+    Inputs (from ctx.data):
+        base_branch (str, optional): Base branch to create the worktree from. Defaults to the git plugin's configured main branch.
+        path (str, optional): Custom path for the worktree. Defaults to a temporary directory.
 
-    Output variables:
-        worktree_path: Path to the created worktree
-        base_branch: Base branch name (e.g., "develop" or "main")
+    Outputs (saved to ctx.data):
+        worktree_path (str): Path to the created worktree.
+        base_branch (str): Base branch name (e.g., "develop", "main" or "rc/26.18.2").
 
     Returns:
         Success: If the worktree is created successfully.
-        Error: If the Git client is unavailable or worktree creation fails.
+        Error: If the Git client is unavailable, no base branch can be resolved, or worktree creation fails.
 
     Example:
         ```yaml
         - name: "Create Worktree"
           plugin: git
           step: create_worktree
+          params:
+            base_branch: "${base_branch}"
         ```
     """
     if not ctx.textual:
@@ -50,9 +54,18 @@ def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
     try:
         from titan_cli.core.result import ClientSuccess, ClientError as ResultClientError
 
-        # Get configuration
-        base_branch = ctx.git.main_branch
+        # Get configuration: explicit base branch from context, fallback to main branch
+        base_branch = ctx.get("base_branch") or ctx.git.main_branch
         remote = ctx.git.default_remote
+
+        if not base_branch:
+            error_msg = (
+                "No base branch available to create the worktree: "
+                "provide 'base_branch' in context or configure 'main_branch' in the git plugin."
+            )
+            ctx.textual.error_text(error_msg)
+            ctx.textual.end_step("error")
+            return Error(error_msg)
 
         custom_path = ctx.get("path")
 

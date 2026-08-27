@@ -4,6 +4,7 @@ Unit tests for Commit Service
 
 import pytest
 from unittest.mock import Mock
+from unittest.mock import patch
 from titan_cli.core.result import ClientSuccess, ClientError
 from titan_plugin_git.clients.services.commit_service import CommitService
 from titan_plugin_git.exceptions import GitCommandError
@@ -95,6 +96,52 @@ class TestCommitServiceGetCurrentCommit:
         mock_git_network.run_command.side_effect = GitCommandError("not a git repo")
 
         result = service.get_current_commit()
+
+        assert isinstance(result, ClientError)
+        assert result.error_code == "COMMIT_ERROR"
+
+
+@pytest.mark.unit
+class TestCommitServiceCommitFiles:
+    """Test CommitService.commit_files()"""
+
+    def test_commit_files_limits_commit_to_selected_paths(self, service, mock_git_network):
+        """Test git commit is constrained to the selected pathspec"""
+        mock_git_network.run_command.side_effect = ["", "", "abc123\n"]
+
+        with patch("titan_plugin_git.clients.services.commit_service.os.path.exists", return_value=True):
+            result = service.commit_files(["src/main.py"], "feat: Add feature", no_verify=True)
+
+        assert isinstance(result, ClientSuccess)
+        calls = [c.args[0] for c in mock_git_network.run_command.call_args_list]
+        assert ["git", "add", "--", "src/main.py"] in calls
+        assert [
+            "git", "commit", "-m", "feat: Add feature", "--no-verify", "--", "src/main.py"
+        ] in calls
+
+    def test_commit_files_handles_deleted_paths_with_pathspec(self, service, mock_git_network):
+        """Test deleted tracked files are staged with git rm and committed by pathspec"""
+        mock_git_network.run_command.side_effect = [
+            "tracked",
+            "",
+            "",
+            "deadbeef\n",
+        ]
+
+        with patch("titan_plugin_git.clients.services.commit_service.os.path.exists", return_value=False):
+            result = service.commit_files(["removed.py"], "fix: Remove file", no_verify=False)
+
+        assert isinstance(result, ClientSuccess)
+        calls = [c.args[0] for c in mock_git_network.run_command.call_args_list]
+        assert ["git", "ls-files", "--error-unmatch", "removed.py"] in calls
+        assert ["git", "rm", "--", "removed.py"] in calls
+        assert ["git", "commit", "-m", "fix: Remove file", "--", "removed.py"] in calls
+
+    def test_commit_files_error_returns_client_error(self, service, mock_git_network):
+        """Test git error returns ClientError"""
+        mock_git_network.run_command.side_effect = GitCommandError("commit failed")
+
+        result = service.commit_files(["src/main.py"], "feat: Add feature")
 
         assert isinstance(result, ClientError)
         assert result.error_code == "COMMIT_ERROR"

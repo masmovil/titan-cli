@@ -13,7 +13,7 @@ from .messages import (
     InfoMessages,
 )
 
-from .templates import AI_PROMPT_TEMPLATE, FALLBACK_ISSUE_TEMPLATE
+from .templates import AI_PROMPT_TEMPLATE, FALLBACK_ISSUE_TEMPLATE, JIRA_PLAN_PROMPT_TEMPLATE
 
 from .defaults import DEFAULT_PRIORITIES, DEFAULT_TITLE
 
@@ -28,6 +28,7 @@ __all__ = [
     # Templates
     "AI_PROMPT_TEMPLATE",
     "FALLBACK_ISSUE_TEMPLATE",
+    "JIRA_PLAN_PROMPT_TEMPLATE",
     # Defaults
     "DEFAULT_PRIORITIES",
     "DEFAULT_TITLE",

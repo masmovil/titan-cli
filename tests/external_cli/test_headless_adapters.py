@@ -2,12 +2,14 @@
 Tests for external_cli.adapters — HeadlessCliAdapter implementations and registry.
 """
 
+import json
 import subprocess
 import unittest
 from unittest.mock import MagicMock, patch
 
 from titan_cli.external_cli.adapters.base import HeadlessResponse, SupportedCLI
 from titan_cli.external_cli.adapters.claude import ClaudeHeadlessAdapter
+from titan_cli.external_cli.adapters.codex import CodexHeadlessAdapter
 from titan_cli.external_cli.adapters.gemini import GeminiHeadlessAdapter
 from titan_cli.external_cli.adapters.registry import (
     HEADLESS_ADAPTER_REGISTRY,
@@ -107,6 +109,163 @@ class TestClaudeHeadlessAdapter(unittest.TestCase):
         response = self.adapter.execute("prompt")
         self.assertEqual(response.stdout, "Green text")
 
+    def test_supports_structured_output(self):
+        self.assertTrue(self.adapter.supports_structured_output)
+
+    @patch("subprocess.run")
+    def test_execute_with_json_schema_adds_output_format_flags(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps({"structured_output": {"findings": []}}),
+            stderr="",
+            returncode=0,
+        )
+        schema = {"type": "object", "properties": {"findings": {"type": "array"}}}
+        self.adapter.execute("review this", cwd="/tmp", timeout=45, json_schema=schema)
+
+        mock_run.assert_called_once_with(
+            ["claude", "--print", "--output-format", "json", "--json-schema", json.dumps(schema), "review this"],
+            capture_output=True,
+            text=True,
+            cwd="/tmp",
+            timeout=45,
+        )
+
+    @patch("subprocess.run")
+    def test_execute_with_json_schema_unwraps_structured_output(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps({"structured_output": {"findings": [{"title": "Bug"}]}, "is_error": False}),
+            stderr="",
+            returncode=0,
+        )
+        response = self.adapter.execute("prompt", json_schema={"type": "object"})
+
+        self.assertEqual(json.loads(response.stdout), {"findings": [{"title": "Bug"}]})
+        self.assertTrue(response.succeeded)
+
+    @patch("subprocess.run")
+    def test_execute_with_json_schema_falls_back_to_result_text_when_tool_not_called(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps({"result": "I won't call that tool.", "is_error": False}),
+            stderr="",
+            returncode=0,
+        )
+        response = self.adapter.execute("prompt", json_schema={"type": "object"})
+
+        self.assertEqual(response.stdout, "I won't call that tool.")
+        self.assertTrue(response.succeeded)
+
+    @patch("subprocess.run")
+    def test_execute_with_json_schema_surfaces_cli_error(self, mock_run):
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps({"is_error": True, "result": "API Error: 400 bad schema"}),
+            stderr="",
+            returncode=1,
+        )
+        response = self.adapter.execute("prompt", json_schema={"type": "object"})
+
+        self.assertFalse(response.succeeded)
+        self.assertIn("bad schema", response.stderr)
+
+    @patch("subprocess.run")
+    def test_execute_with_json_schema_falls_back_on_unparseable_envelope(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="not json at all", stderr="", returncode=0)
+        response = self.adapter.execute("prompt", json_schema={"type": "object"})
+
+        self.assertEqual(response.stdout, "not json at all")
+        self.assertTrue(response.succeeded)
+
+    def test_supports_tool_restriction(self):
+        self.assertTrue(self.adapter.supports_tool_restriction)
+
+    @patch("subprocess.run")
+    def test_execute_with_disallowed_tools_adds_flag(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        self.adapter.execute(
+            "review this", cwd="/tmp", timeout=45, disallowed_tools=["Bash", "Agent"]
+        )
+
+        mock_run.assert_called_once_with(
+            ["claude", "--print", "--disallowedTools=Bash,Agent", "review this"],
+            capture_output=True,
+            text=True,
+            cwd="/tmp",
+            timeout=45,
+        )
+
+    @patch("subprocess.run")
+    def test_execute_without_disallowed_tools_omits_flag(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        self.adapter.execute("review this")
+
+        called_cmd = mock_run.call_args.args[0]
+        self.assertNotIn("--disallowedTools", called_cmd)
+
+    def test_supports_effort_control(self):
+        self.assertTrue(self.adapter.supports_effort_control)
+
+    @patch("subprocess.run")
+    def test_execute_with_effort_adds_flag(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        self.adapter.execute("review this", cwd="/tmp", timeout=45, effort="medium")
+
+        mock_run.assert_called_once_with(
+            ["claude", "--print", "--effort", "medium", "review this"],
+            capture_output=True,
+            text=True,
+            cwd="/tmp",
+            timeout=45,
+        )
+
+    @patch("subprocess.run")
+    def test_execute_without_effort_omits_flag(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        self.adapter.execute("review this")
+
+        called_cmd = mock_run.call_args.args[0]
+        self.assertNotIn("--effort", called_cmd)
+
+
+# ── CodexHeadlessAdapter ──────────────────────────────────────────────────────
+
+class TestCodexHeadlessAdapterStructuredOutput(unittest.TestCase):
+    """Codex has no structured-output support (yet) — json_schema must be a no-op."""
+
+    def setUp(self):
+        self.adapter = CodexHeadlessAdapter()
+
+    def test_supports_structured_output_is_false(self):
+        self.assertFalse(self.adapter.supports_structured_output)
+
+    @patch("subprocess.run")
+    def test_execute_ignores_json_schema(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+        self.adapter.execute("prompt", json_schema={"type": "object"})
+
+        called_cmd = mock_run.call_args.args[0]
+        self.assertNotIn("--json-schema", called_cmd)
+
+    def test_supports_tool_restriction_is_false(self):
+        self.assertFalse(self.adapter.supports_tool_restriction)
+
+    @patch("subprocess.run")
+    def test_execute_ignores_disallowed_tools(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+        self.adapter.execute("prompt", disallowed_tools=["Bash", "Agent"])
+
+        called_cmd = mock_run.call_args.args[0]
+        self.assertNotIn("--disallowedTools", called_cmd)
+
+    def test_supports_effort_control_is_false(self):
+        self.assertFalse(self.adapter.supports_effort_control)
+
+    @patch("subprocess.run")
+    def test_execute_ignores_effort(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+        self.adapter.execute("prompt", effort="medium")
+
+        called_cmd = mock_run.call_args.args[0]
+        self.assertNotIn("--effort", called_cmd)
+
 
 # ── GeminiHeadlessAdapter ─────────────────────────────────────────────────────
 
@@ -126,6 +285,9 @@ class TestGeminiHeadlessAdapter(unittest.TestCase):
     def test_is_available_false(self, _):
         self.assertFalse(self.adapter.is_available())
 
+    def test_supports_structured_output_is_false(self):
+        self.assertFalse(self.adapter.supports_structured_output)
+
     @patch("subprocess.run")
     def test_execute_passes_prompt_with_flag(self, mock_run):
         mock_run.return_value = MagicMock(stdout="response\n", stderr="", returncode=0)
@@ -139,6 +301,19 @@ class TestGeminiHeadlessAdapter(unittest.TestCase):
             timeout=45,
         )
 
+    @patch("subprocess.run")
+    def test_execute_ignores_json_schema(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="response\n", stderr="", returncode=0)
+        self.adapter.execute("my prompt", json_schema={"type": "object"})
+
+        mock_run.assert_called_once_with(
+            ["gemini", "--prompt", "my prompt"],
+            capture_output=True,
+            text=True,
+            cwd=None,
+            timeout=60,
+        )
+
     @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="gemini", timeout=60))
     def test_execute_timeout(self, _):
         response = self.adapter.execute("prompt", timeout=60)
@@ -148,6 +323,38 @@ class TestGeminiHeadlessAdapter(unittest.TestCase):
     def test_execute_cli_not_found(self, _):
         response = self.adapter.execute("prompt")
         self.assertEqual(response.exit_code, 127)
+
+    def test_supports_tool_restriction_is_false(self):
+        self.assertFalse(self.adapter.supports_tool_restriction)
+
+    @patch("subprocess.run")
+    def test_execute_ignores_disallowed_tools(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="response\n", stderr="", returncode=0)
+        self.adapter.execute("my prompt", disallowed_tools=["Bash", "Agent"])
+
+        mock_run.assert_called_once_with(
+            ["gemini", "--prompt", "my prompt"],
+            capture_output=True,
+            text=True,
+            cwd=None,
+            timeout=60,
+        )
+
+    def test_supports_effort_control_is_false(self):
+        self.assertFalse(self.adapter.supports_effort_control)
+
+    @patch("subprocess.run")
+    def test_execute_ignores_effort(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="response\n", stderr="", returncode=0)
+        self.adapter.execute("my prompt", effort="medium")
+
+        mock_run.assert_called_once_with(
+            ["gemini", "--prompt", "my prompt"],
+            capture_output=True,
+            text=True,
+            cwd=None,
+            timeout=60,
+        )
 
 
 # ── Registry ──────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import WorkflowResult, Success, Error, Skip
 from titan_cli.core.result import ClientSuccess, ClientError
+from titan_cli.ui.tui.widgets import SelectionOption
 from ..messages import msg
 from ..operations import add_assignee_if_missing, parse_comma_separated_list
 
@@ -88,6 +89,57 @@ def prompt_for_pr_body_step(ctx: WorkflowContext) -> WorkflowResult:
     except Exception as e:
         ctx.textual.end_step("error")
         return Error(f"Failed to prompt for PR body: {e}", exception=e)
+
+
+def prompt_for_pr_draft_step(ctx: WorkflowContext) -> WorkflowResult:
+    """
+    Ask whether the pull request should be created as a draft.
+
+    Requires:
+        ctx.textual: Textual UI components.
+
+    Inputs (from ctx.data):
+        draft (bool | None, optional): Draft mode from workflow params. Use True/False to skip the prompt, or None to ask interactively.
+
+    Outputs (saved to ctx.data):
+        pr_is_draft (bool): Whether the PR should be created as a draft.
+
+    Returns:
+        Success: If the draft preference was resolved successfully.
+        Error: If the user cancels or the prompt fails.
+    """
+    if not ctx.textual:
+        return Error("Textual UI context is not available for this step.")
+
+    ctx.textual.begin_step("Choose PR Draft Mode")
+
+    draft_mode = ctx.get("draft")
+
+    if draft_mode is True:
+        ctx.textual.dim_text("PR draft mode preset to draft, skipping prompt.")
+        ctx.textual.end_step("success")
+        return Success("PR draft preference preset", metadata={"pr_is_draft": True})
+
+    if draft_mode is False:
+        ctx.textual.dim_text("PR draft mode preset to ready for review, skipping prompt.")
+        ctx.textual.end_step("success")
+        return Success("PR draft preference preset", metadata={"pr_is_draft": False})
+
+    try:
+        is_draft = ctx.textual.ask_confirm(
+            msg.Prompts.CREATE_PR_AS_DRAFT,
+            default=False,
+        )
+        mode = "draft" if is_draft else "ready for review"
+        ctx.textual.success_text(f"PR will be created as {mode}.")
+        ctx.textual.end_step("success")
+        return Success("PR draft preference captured", metadata={"pr_is_draft": is_draft})
+    except (KeyboardInterrupt, EOFError):
+        ctx.textual.end_step("error")
+        return Error("User cancelled.")
+    except Exception as e:
+        ctx.textual.end_step("error")
+        return Error(f"Failed to prompt for PR draft mode: {e}", exception=e)
 
 
 def prompt_for_issue_body_step(ctx: WorkflowContext) -> WorkflowResult:
@@ -185,13 +237,18 @@ def prompt_for_self_assign_step(ctx: WorkflowContext) -> WorkflowResult:
 
 def prompt_for_labels_step(ctx: WorkflowContext) -> WorkflowResult:
     """
-    Prompts the user to select labels for the issue.
+    Prompt the user to select repository labels and save them to context.
 
     Requires:
         ctx.github: An initialized GitHubClient.
 
+    Inputs (from ctx.data):
+        output_key (str, optional): Context key where selected labels should be stored. Defaults to "labels".
+        prompt (str, optional): Prompt text shown to the user. Defaults to "Select labels:".
+        default_selected_key (str, optional): Context key used to preselect labels. Defaults to output_key.
+
     Outputs (saved to ctx.data):
-        labels (list[str]): Labels selected by the user.
+        <output_key> (list[str]): Labels selected by the user.
 
     Returns:
         Success: If label selection completes successfully.
@@ -209,6 +266,10 @@ def prompt_for_labels_step(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("error")
         return Error("GitHub client not available")
 
+    output_key = ctx.get("output_key", "labels")
+    prompt = ctx.get("prompt", msg.Prompts.SELECT_LABELS)
+    default_selected_key = ctx.get("default_selected_key", output_key)
+
     try:
         result = ctx.github.list_labels()
         match result:
@@ -218,29 +279,31 @@ def prompt_for_labels_step(ctx: WorkflowContext) -> WorkflowResult:
                     ctx.textual.end_step("skip")
                     return Skip("No labels found in the repository.")
 
-                # Show available labels
-                ctx.textual.dim_text(f"Available labels: {', '.join(available_labels)}")
+                existing_labels = ctx.get(default_selected_key, [])
+                if isinstance(existing_labels, str):
+                    existing_labels = parse_comma_separated_list(existing_labels)
+                if not isinstance(existing_labels, list):
+                    existing_labels = []
 
-                # Get default labels as comma-separated string
-                existing_labels = ctx.get("labels", [])
-                default_value = ",".join(existing_labels) if existing_labels else ""
+                selected_set = set(existing_labels)
+                options = [
+                    SelectionOption(
+                        value=label,
+                        label=label,
+                        selected=label in selected_set,
+                    )
+                    for label in available_labels
+                ]
 
-                # TODO: Implement multi-select in Textual - for now use comma-separated input
-                labels_input = ctx.textual.ask_text(
-                    f"{msg.Prompts.SELECT_LABELS} (comma-separated)",
-                    default=default_value
-                )
+                selected_labels = ctx.textual.ask_multiselect(prompt, options)
 
-                # Parse comma-separated labels
-                selected_labels = parse_comma_separated_list(labels_input)
-
-                ctx.set("labels", selected_labels)
+                ctx.set(output_key, selected_labels)
                 if selected_labels:
                     ctx.textual.success_text(f"Selected labels: {', '.join(selected_labels)}")
                 else:
                     ctx.textual.dim_text("No labels selected")
                 ctx.textual.end_step("success")
-                return Success("Labels selected")
+                return Success("Labels selected", metadata={output_key: selected_labels})
             case ClientError(error_message=err):
                 ctx.textual.error_text(f"Failed to get labels: {err}")
                 ctx.textual.end_step("error")

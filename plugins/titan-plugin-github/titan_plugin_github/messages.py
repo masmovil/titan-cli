@@ -5,8 +5,9 @@ class Messages:
         ENTER_PR_TITLE: str = "Enter Pull Request title:"
         ENTER_PR_BODY: str = "Enter PR body/description (press Meta+Enter or Esc then Enter to finish):"
         ENTER_ISSUE_BODY: str = "Enter issue body/description (press Meta+Enter or Esc then Enter to finish):"
+        CREATE_PR_AS_DRAFT: str = "Create this pull request as draft?"
         ASSIGN_TO_SELF: str = "Assign this issue to yourself?"
-        SELECT_LABELS: str = "Select labels for this issue:"
+        SELECT_LABELS: str = "Select labels:"
         ENTER_PR_BODY_INFO: str = "Enter a description for your pull request. When you are finished, press Meta+Enter (or Esc followed by Enter)."
 
     class GitHub:

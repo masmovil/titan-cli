@@ -4,6 +4,15 @@ Documentation for AI coding agents working on Titan CLI.
 
 ---
 
+## 🧭 Session Bootstrap
+
+Before doing any work in this repo, read [`harness/README.md`](harness/README.md) — it names
+the current-focus domain/task and points to that domain's own state files
+(`feature-list.json`, `progress.md`, `session-handoff.md`). Don't ask which task we're on;
+that file answers it.
+
+---
+
 ## 📋 Project Overview
 
 **Titan CLI** is a modular development tools orchestrator that streamlines workflows through plugins, configuration management, and an intuitive terminal UI.
@@ -853,7 +862,7 @@ CLI_REGISTRY = {
 The system is designed to be automatic. Once you add a CLI to the registry, it will automatically appear in two places:
 
 - **The main interactive menu:** The "Launch External CLI" submenu dynamically shows all available CLIs from the registry.
-- **The `ai_code_assistant` workflow step:** If `cli_preference` is set to `"auto"`, this step will detect all available CLIs from the registry and prompt the user to choose if more than one is found.
+- **AI Configuration:** the CLI becomes selectable as the interactive CLI, which is what `ai_code_assistant` launches. The step never asks mid-run and takes no CLI parameter: it resolves the route through `ctx.ai_router.resolve()`.
 
 If you want to add a direct top-level command for your new CLI (like `titan my-cool-cli`), you can add it to `titan_cli/commands/cli.py`:
 

@@ -2,7 +2,7 @@
 AI Client - Main facade for AI functionality
 """
 
-from typing import Optional, List
+from typing import Callable, List, Optional
 
 from titan_cli.core.models import (
     AIConfig,
@@ -10,8 +10,7 @@ from titan_cli.core.models import (
     AIDirectProvider,
     AIGatewayBackend,
 )
-from titan_cli.core.secrets import SecretManager
-from .dependencies import get_install_command
+from titan_cli.core.interrupt import run_interruptible
 from .exceptions import AIConfigurationError
 from .models import AIMessage, AIRequest, AIResponse
 from .providers import (
@@ -44,7 +43,8 @@ class AIClient:
 
     This facade simplifies AI usage by:
     - Reading configuration from AIConfig.
-    - Retrieving secrets from SecretManager.
+    - Delegating provider construction (and API-key handling) to the
+      injected provider factory.
     - Instantiating the correct AI source adapter.
     - Providing a simple `generate()` and `chat()` interface.
     """
@@ -52,7 +52,7 @@ class AIClient:
     def __init__(
         self,
         ai_config: AIConfig,
-        secrets: SecretManager,
+        provider_factory: Callable[[str, "object"], "AIProvider"],
         connection_id: Optional[str] = None,
     ):
         """
@@ -60,15 +60,28 @@ class AIClient:
 
         Args:
             ai_config: The AI configuration.
-            secrets: The SecretManager for handling API keys.
+            provider_factory: Builds the authenticated provider for
+                `(connection_id, connection_cfg)` — normally
+                `titan_cli.core.security.create_ai_provider`, which
+                dereferences the API key inside the security boundary. The
+                client never sees the key itself.
             connection_id: The specific AI connection ID to use. If None, uses the default.
         """
         self.ai_config = ai_config
-        self.secrets = secrets
+        self._provider_factory = provider_factory
 
         requested_id = connection_id or ai_config.default_connection
 
-        if requested_id and requested_id in ai_config.connections:
+        if requested_id and requested_id not in ai_config.connections:
+            # Naming a connection that is gone - typically a default left behind by a rename -
+            # is answered by saying so. Quietly using a different one would send the user's
+            # prompts somewhere they never chose, and they would have no way to notice.
+            raise AIConfigurationError(
+                f"AI connection '{requested_id}' does not exist. "
+                f"Pick one in AI Configuration (main menu)."
+            )
+
+        if requested_id:
             self.connection_id = requested_id
         elif ai_config.connections:
             self.connection_id = list(ai_config.connections.keys())[0]
@@ -97,52 +110,7 @@ class AIClient:
                 f"AI connection '{self.connection_id}' not found in configuration."
             )
 
-        if connection_config.connection_type == AIConnectionType.GATEWAY:
-            source_name = connection_config.gateway_backend.value
-            provider_class = get_gateway_classes().get(source_name)
-        else:
-            source_name = connection_config.provider.value
-            provider_class = get_provider_classes().get(source_name)
-
-        if not provider_class:
-            raise AIConfigurationError(f"Unknown AI source type: {source_name}")
-
-        api_key_name = f"{self.connection_id}_api_key"
-        api_key = self.secrets.get(api_key_name)
-
-        if (
-            not api_key
-            and connection_config.connection_type != AIConnectionType.GATEWAY
-        ):
-            raise AIConfigurationError(
-                f"API key for connection '{self.connection_id}' ({source_name}) not found."
-            )
-
-        kwargs = {"model": connection_config.default_model}
-
-        if api_key:
-            kwargs["api_key"] = api_key
-
-        if connection_config.base_url:
-            kwargs["base_url"] = connection_config.base_url
-
-        if (
-            connection_config.connection_type == AIConnectionType.GATEWAY
-            and not connection_config.base_url
-        ):
-            raise AIConfigurationError(
-                f"base_url is required for gateway connection '{self.connection_id}'"
-            )
-
-        try:
-            self._provider = provider_class(**kwargs)
-        except ImportError as exc:
-            install_command = get_install_command(source_name)
-            error_message = str(exc).strip()
-            install_command_str = " ".join(install_command) if install_command else None
-            if install_command_str and install_command_str not in error_message:
-                error_message = f"{error_message}\nInstall with: {install_command_str}"
-            raise AIConfigurationError(error_message) from exc
+        self._provider = self._provider_factory(self.connection_id, connection_config)
         return self._provider
 
     def generate(
@@ -150,6 +118,7 @@ class AIClient:
         messages: List[AIMessage],
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        json_schema: Optional[dict] = None,
     ) -> AIResponse:
         """
         Generate a response using the configured AI connection.
@@ -158,6 +127,10 @@ class AIClient:
             messages: List of conversation messages.
             max_tokens: Optional override for the maximum number of tokens.
             temperature: Optional override for the temperature.
+            json_schema: Accepted and ignored. Remote connections here do not
+                enforce a response shape, and the caller validates the answer
+                either way; the parameter exists so the same call works whether
+                the answer comes from a connection or a local CLI.
 
         Returns:
             AI response with generated content.
@@ -189,7 +162,10 @@ class AIClient:
                 )
             ),
         )
-        return self.provider.generate(request)
+        # The SDK's HTTP request blocks with no way to poll for app exit, so it
+        # runs interruptibly: if the TUI closes mid-request, the workflow thread
+        # aborts instead of hanging interpreter shutdown until the response lands.
+        return run_interruptible(lambda: self.provider.generate(request))
 
     def chat(
         self,

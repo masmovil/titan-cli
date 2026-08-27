@@ -1,0 +1,40 @@
+{
+  "plugin": "slack",
+  "groups": [
+    {
+      "name": "Validation and Discovery",
+      "steps": [
+        {"name": "validate_connection", "summary": "Validate the configured Slack token and expose identity metadata."},
+        {"name": "list_public_channels", "summary": "List public channels visible to the current Slack token."},
+        {"name": "list_users", "summary": "List users visible to the current Slack token."}
+      ]
+    },
+    {
+      "name": "Selection and Target Resolution",
+      "steps": [
+        {"name": "select_user_target", "summary": "Filter visible Slack users by query and select one canonical user target."},
+        {"name": "select_channel_target", "summary": "Filter visible Slack channels by query and select one canonical channel target."},
+        {"name": "select_default_or_search_channel_target", "summary": "Choose one configured default channel or fall back to a unified person/channel search."}
+      ]
+    },
+    {
+      "name": "Messaging",
+      "steps": [
+        {"name": "prepare_message_destination", "summary": "Resolve the selected Slack user or channel target into the destination conversation used for posting."},
+        {"name": "open_direct_message", "summary": "Open or reuse a direct message conversation for the selected user target."},
+        {"name": "prompt_message_body", "summary": "Capture a multiline Slack message for later formatting and posting."},
+        {"name": "format_markdown_message", "summary": "Convert a standard Markdown message into Slack mrkdwn, if provided."},
+        {"name": "post_message", "summary": "Post the prepared message to the selected Slack conversation."}
+      ]
+    },
+    {
+      "name": "Conversation Summaries",
+      "steps": [
+        {"name": "select_target", "summary": "Search both users and channels and select one unified Slack target."},
+        {"name": "ensure_target_conversation", "summary": "Resolve a Slack conversation from the selected target."},
+        {"name": "read_recent_messages", "summary": "Read the most recent messages from the resolved Slack conversation."},
+        {"name": "ai_summarize_messages", "summary": "Summarize the retrieved Slack messages with AI."}
+      ]
+    }
+  ]
+}

@@ -29,16 +29,14 @@ def github_client(mock_gh_network, mock_graphql_network):
     """Create a GitHubClient instance with mocked networks"""
     from titan_cli.core.plugins.models import GitHubPluginConfig
 
-    with patch('titan_plugin_github.clients.github_client.SecretManager'):
-        with patch('titan_plugin_github.clients.github_client.GitClient'):
-            config = GitHubPluginConfig(repo_owner="test-owner", repo_name="test-repo")
-            return GitHubClient(
-                config=config,
-                secrets=Mock(),
-                git_client=Mock(),
-                repo_owner="test-owner",
-                repo_name="test-repo"
-            )
+    with patch('titan_plugin_github.clients.github_client.GitClient'):
+        config = GitHubPluginConfig(repo_owner="test-owner", repo_name="test-repo")
+        return GitHubClient(
+            config=config,
+            git_client=Mock(),
+            repo_owner="test-owner",
+            repo_name="test-repo"
+        )
 
 
 def test_client_initialization():
@@ -47,25 +45,23 @@ def test_client_initialization():
 
     with patch('titan_plugin_github.clients.github_client.GHNetwork'):
         with patch('titan_plugin_github.clients.github_client.GraphQLNetwork'):
-            with patch('titan_plugin_github.clients.github_client.SecretManager'):
-                with patch('titan_plugin_github.clients.github_client.GitClient'):
-                    config = GitHubPluginConfig(repo_owner="test-owner", repo_name="test-repo")
-                    client = GitHubClient(
-                        config=config,
-                        secrets=Mock(),
-                        git_client=Mock(),
-                        repo_owner="test-owner",
-                        repo_name="test-repo"
-                    )
+            with patch('titan_plugin_github.clients.github_client.GitClient'):
+                config = GitHubPluginConfig(repo_owner="test-owner", repo_name="test-repo")
+                client = GitHubClient(
+                    config=config,
+                    git_client=Mock(),
+                    repo_owner="test-owner",
+                    repo_name="test-repo"
+                )
 
-                    assert client.repo_owner == "test-owner"
-                    assert client.repo_name == "test-repo"
-                    assert client._gh_network is not None
-                    assert client._pr_service is not None
-                    assert client._review_service is not None
-                    assert client._issue_service is not None
-                    assert client._team_service is not None
-                    assert client._release_service is not None
+                assert client.repo_owner == "test-owner"
+                assert client.repo_name == "test-repo"
+                assert client._gh_network is not None
+                assert client._pr_service is not None
+                assert client._review_service is not None
+                assert client._issue_service is not None
+                assert client._team_service is not None
+                assert client._release_service is not None
 
 
 def test_get_pull_request_delegates_to_service(github_client, sample_ui_pr):
@@ -218,3 +214,31 @@ def test_resolve_review_thread_delegates_to_service(github_client):
 
     assert isinstance(result, ClientSuccess)
     github_client._review_service.resolve_review_thread.assert_called_once_with("thread_123")
+
+
+def test_get_commit_review_context_delegates_to_service(github_client):
+    """Test that commit review context delegates to PRService."""
+    from titan_plugin_github.models.review_models import ReferencedCommitContext
+
+    commit_context = ReferencedCommitContext(
+        sha="343e2e9d7402d0afccfd35a9ecc8e6ea341031c6",
+        abbreviated_sha="343e2e9",
+        message="remove default state value",
+        changed_files=["src/BaseDialog.kt"],
+        patch_excerpt="diff --git a/src/BaseDialog.kt b/src/BaseDialog.kt",
+    )
+    github_client._pr_service.get_commit_review_context = Mock(
+        return_value=ClientSuccess(data=commit_context, message="Commit context retrieved")
+    )
+
+    result = github_client.get_commit_review_context("343e2e9", max_files=2, max_patch_chars=1200)
+
+    assert isinstance(result, ClientSuccess)
+    assert result.data.abbreviated_sha == "343e2e9"
+    github_client._pr_service.get_commit_review_context.assert_called_once_with(
+        "343e2e9",
+        repo_owner=None,
+        repo_name=None,
+        max_files=2,
+        max_patch_chars=1200,
+    )

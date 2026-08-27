@@ -1,0 +1,39 @@
+name: "Plan JIRA Issue with AI CLI"
+description: "Fetch a JIRA issue and its comments, hand it off to an AI coding CLI to study it and confirm a plan, then offer to assign the issue to yourself"
+
+steps:
+  - id: select_issue
+    name: "Select JIRA Issue"
+    plugin: jira
+    step: select_jira_issue
+
+  - id: get_issue
+    name: "Get Full Issue Details"
+    plugin: jira
+    step: get_issue
+
+  - id: get_comments
+    name: "Get Issue Comments"
+    plugin: jira
+    step: get_comments
+
+  - id: build_task_context
+    name: "Build Task Context"
+    plugin: jira
+    step: build_jira_task_context
+
+  - id: plan_with_cli
+    name: "Study Issue and Confirm Plan"
+    plugin: core
+    step: ai_code_assistant
+    params:
+      context_key: "jira_task_context"
+      # This workflow's whole purpose is handing the issue off to an AI CLI, so skip the
+      # "do you want AI assistance?" prompt and go straight to the launch.
+      ask_confirmation: false
+      fail_on_decline: false
+
+  - id: confirm_and_assign_issue
+    name: "Assign Issue to Yourself"
+    plugin: jira
+    step: confirm_and_assign_issue

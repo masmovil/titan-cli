@@ -1,0 +1,33 @@
+name: "Summarize Slack Target"
+description: "Search for a person or channel, read recent Slack messages, and summarize them with AI"
+
+params:
+  slack_history_limit: 30
+
+steps:
+  - id: validate_connection
+    name: "Validate Slack Connection"
+    plugin: slack
+    step: validate_connection
+
+  - id: select_target
+    name: "Select Slack Target"
+    plugin: slack
+    step: select_target
+
+  - id: ensure_target_conversation
+    name: "Resolve Target Conversation"
+    plugin: slack
+    step: ensure_target_conversation
+
+  - id: read_recent_messages
+    name: "Read Recent Messages"
+    plugin: slack
+    step: read_recent_messages
+    params:
+      slack_history_limit: "${slack_history_limit}"
+
+  - id: ai_summarize_messages
+    name: "Summarize Messages"
+    plugin: slack
+    step: ai_summarize_messages

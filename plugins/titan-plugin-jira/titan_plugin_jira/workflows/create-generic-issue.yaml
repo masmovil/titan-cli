@@ -39,7 +39,7 @@ steps:
 
   - name: "Assignment"
     plugin: jira
-    step: confirm_auto_assign
+    step: confirm_assignee_for_new_issue
     description: "Assign issue to yourself?"
 
   - hook: before_create_issue

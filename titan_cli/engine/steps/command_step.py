@@ -2,6 +2,7 @@ import os
 from subprocess import Popen, PIPE
 import re
 import shlex
+from titan_cli.core.security import redact
 from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error, WorkflowResult
@@ -47,16 +48,21 @@ def execute_command_step(step: WorkflowStepModel, ctx: WorkflowContext) -> Workf
 
     command = resolve_parameters_in_string(command_template, ctx)
 
-    emit_text(f"Executing command: {command}")
+    # ${key} interpolation from ctx.data can carry a secret into the command
+    # string; what the user sees goes through the redaction filter.
+    emit_text(f"Executing command: {redact(command)}")
 
     try:
         use_venv = step.params.get("use_venv", False)
+        # A command step runs whatever the user could type in their own
+        # console, so it inherits the same environment their console has.
+        # (Titan-managed project secrets are NOT in os.environ - the vault
+        # keeps them in memory - so none of them ride along here.)
         process_env = os.environ.copy()
         cwd = ctx.get("cwd") or os.getcwd()
 
         if use_venv:
             emit_dim("Activating poetry virtual environment for step...")
-            
             venv_env = get_poetry_venv_env(cwd=cwd)
             if venv_env:
                 process_env = venv_env
@@ -83,17 +89,16 @@ def execute_command_step(step: WorkflowStepModel, ctx: WorkflowContext) -> Workf
         stdout_output, stderr_output = process.communicate()
 
         if stdout_output:
-            emit_text(stdout_output)
-        
+            emit_text(redact(stdout_output))
         if process.returncode != 0:
             error_message = f"Command failed with exit code {process.returncode}"
             if stderr_output:
                 error_message += f"\n{stderr_output}"
 
-            return Error(error_message)
+            return Error(redact(error_message))
 
         return Success(
-            message=f"Command '{command}' executed successfully.",
+            message=f"Command '{redact(command)}' executed successfully.",
             metadata={"command_output": stdout_output}
         )
 

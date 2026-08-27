@@ -24,6 +24,7 @@ from .results import (
 )
 from .context import WorkflowContext
 from .builder import WorkflowContextBuilder
+from .option_item import OptionItem
 
 __all__ = [
     # Result types
@@ -40,4 +41,6 @@ __all__ = [
     # Context & builder
     "WorkflowContext",
     "WorkflowContextBuilder",
+    # Prompt option list
+    "OptionItem",
 ]

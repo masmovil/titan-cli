@@ -123,6 +123,14 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
             "--prompt-responses-json",
             help="JSON array of pre-seeded prompt responses for headless execution.",
         ),
+        output_json: bool = typer.Option(
+            False,
+            "--json",
+            help=(
+                "Compatibility flag for headless clients. runs start always emits "
+                "JSON Lines event-stream output."
+            ),
+        ),
         mode: str = typer.Option(
             "event_stream",
             "--mode",
@@ -145,6 +153,7 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
                 "headless_run_requested",
                 workflow_name=workflow_name,
                 mode=mode,
+                output_json=output_json,
                 project_path=project_path,
                 preseeded_prompt_responses=len(request.prompt_responses),
             )

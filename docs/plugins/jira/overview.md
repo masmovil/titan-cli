@@ -4,7 +4,7 @@ The Jira plugin provides Titan's Jira integration for issue lookup, JQL search, 
 
 - a high-level `JiraClient` for direct use from Titan code
 - reusable workflow `steps` for issue search, issue analysis, transitions, and issue creation
-- built-in workflows such as `analyze-jira-issues` and `create-generic-issue`
+- built-in workflows such as `analyze-jira-issues`, `create-generic-issue`, and `plan-jira-issue`
 
 ## Requirements
 

@@ -7,7 +7,7 @@ Uses gh CLI through the network layer.
 """
 
 import json
-from typing import Optional
+from typing import List, Optional
 
 from titan_cli.core.result import ClientResult, ClientSuccess, ClientError
 from titan_cli.core.logging import log_client_operation
@@ -23,7 +23,7 @@ class ReleaseService:
     """
     Service for GitHub release operations.
 
-    Handles creating GitHub releases for a repository.
+    Handles creating, listing, and reading GitHub releases for a repository.
     """
 
     def __init__(self, gh_network: GHNetwork):
@@ -99,6 +99,86 @@ class ReleaseService:
             return ClientSuccess(
                 data=ui_release,
                 message=f"Release '{tag_name}' created"
+            )
+
+        except json.JSONDecodeError as e:
+            return ClientError(
+                error_message=f"Failed to parse release data: {e}",
+                error_code="JSON_PARSE_ERROR"
+            )
+        except GitHubAPIError as e:
+            return ClientError(error_message=str(e), error_code="API_ERROR")
+
+    @log_client_operation()
+    def list_releases(
+        self,
+        limit: int = 15,
+        exclude_drafts: bool = True,
+    ) -> ClientResult[List[UIRelease]]:
+        """
+        List published GitHub releases for the repository.
+
+        Args:
+            limit: Maximum number of releases to return
+            exclude_drafts: Whether to exclude draft releases from the result
+
+        Returns:
+            ClientResult[List[UIRelease]]
+        """
+        try:
+            args = [
+                "release", "list",
+                "--limit", str(limit),
+                "--json", "tagName,name,publishedAt,isPrerelease,isDraft",
+            ] + self.gh.get_repo_arg()
+
+            output = self.gh.run_command(args)
+            data = json.loads(output)
+
+            releases = [
+                from_network_release(NetworkRelease.from_json(item))
+                for item in data
+                if not (exclude_drafts and item.get("isDraft"))
+            ]
+
+            return ClientSuccess(
+                data=releases,
+                message=f"Retrieved {len(releases)} releases"
+            )
+
+        except json.JSONDecodeError as e:
+            return ClientError(
+                error_message=f"Failed to parse releases: {e}",
+                error_code="JSON_PARSE_ERROR"
+            )
+        except GitHubAPIError as e:
+            return ClientError(error_message=str(e), error_code="API_ERROR")
+
+    @log_client_operation()
+    def get_release(self, tag_name: str) -> ClientResult[UIRelease]:
+        """
+        Get a single GitHub release, including its full notes body.
+
+        Args:
+            tag_name: Tag of the release to fetch
+
+        Returns:
+            ClientResult[UIRelease]
+        """
+        try:
+            args = [
+                "release", "view", tag_name,
+                "--json", "tagName,name,url,isPrerelease,isDraft,publishedAt,body",
+            ] + self.gh.get_repo_arg()
+
+            output = self.gh.run_command(args)
+            data = json.loads(output)
+            network_release = NetworkRelease.from_json(data)
+            ui_release = from_network_release(network_release)
+
+            return ClientSuccess(
+                data=ui_release,
+                message=f"Release '{tag_name}' retrieved"
             )
 
         except json.JSONDecodeError as e:

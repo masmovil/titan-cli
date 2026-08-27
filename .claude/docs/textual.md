@@ -19,7 +19,6 @@ This guide explains how to create workflow steps using the Textual TUI framework
 
 ```python
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip, Exit
-from titan_cli.ui.tui.widgets import Panel
 
 def my_step(ctx: WorkflowContext) -> WorkflowResult:
     """Step description."""
@@ -28,27 +27,31 @@ def my_step(ctx: WorkflowContext) -> WorkflowResult:
     if not ctx.textual:
         return Error("Textual UI context is not available for this step.")
 
-    # 2. Step logic
+    # 2. Mark the beginning of the step (renders the step header)
+    ctx.textual.begin_step("My Step")
+
+    # 3. Step logic
     try:
         # Show progress with loading indicator
         with ctx.textual.loading("Processing..."):
             result = do_something()
 
         # Show result
-        ctx.textual.mount(
-            Panel(text="Success!", panel_type="success")
-        )
+        ctx.textual.panel("Success!", panel_type="success")
 
+        # 4. Mark the end of the step before returning
+        ctx.textual.end_step("success")
         return Success("Operation completed", metadata={"result": result})
 
     except Exception as e:
-        ctx.textual.mount(Panel(str(e), panel_type="error"))
+        ctx.textual.panel(str(e), panel_type="error")
+        ctx.textual.end_step("error")
         return Error(str(e))
 ```
 
 ### Key Features
 
-1. **No Manual Step Headers**: The `TextualWorkflowExecutor` automatically renders headers
+1. **Step Headers via begin_step/end_step**: Steps render their own header by calling `ctx.textual.begin_step("Title")` at the start and `ctx.textual.end_step("success" | "error" | "skip")` before returning (see `plugins/titan-plugin-git/titan_plugin_git/steps/commit_step.py` for a real example)
 2. **Single Context**: Only `ctx.textual` for all UI interaction
 3. **Loading Indicators**: Use context managers for long operations
 4. **Textual Widgets**: Import widgets from `titan_cli.ui.tui.widgets`
@@ -60,7 +63,9 @@ def my_step(ctx: WorkflowContext) -> WorkflowResult:
 
 ### ⚠️ Step Function Naming
 
-**CRITICAL**: The function name must EXACTLY match the `step:` field in your workflow YAML.
+**CRITICAL (project/user steps only)**: For steps loaded from `.titan/steps/` (`plugin: project`) or `~/.titan/steps/` (`plugin: user`), the function name must EXACTLY match the `step:` field in your workflow YAML.
+
+**Plugin steps are different**: official plugin steps are mapped explicitly in the plugin's `get_steps()` dictionary, so the YAML `step:` name can differ from the function name (e.g. the git plugin maps `"create_commit"` to `create_git_commit_step`).
 
 #### Example from Project Steps
 
@@ -132,7 +137,7 @@ The `ProjectStepSource` searches for functions by name using Python's `getattr()
 step_func = getattr(module, step_name, None)  # Looks for exact name
 ```
 
-**Rule**: Function name = step name. No suffixes, no prefixes, exact match.
+**Rule**: For project/user steps, function name = step name. No suffixes, no prefixes, exact match. Plugin steps are resolved through the `get_steps()` mapping instead.
 
 ---
 
@@ -158,8 +163,6 @@ ctx.textual.text("")  # Empty line for spacing
 # Styled text
 ctx.textual.bold_text("Important message")
 ctx.textual.dim_text("Secondary information")
-ctx.textual.italic_text("Emphasis")
-ctx.textual.dim_italic_text("Secondary emphasis")
 
 # Colored text
 ctx.textual.primary_text("Primary color message")
@@ -167,9 +170,16 @@ ctx.textual.bold_primary_text("Bold primary message")
 ctx.textual.success_text("Operation successful")
 ctx.textual.error_text("Operation failed")
 ctx.textual.warning_text("Warning message")
+
+# Tinted, content-width chip — for a fact ABOUT the output, not part of it.
+# Its one use today is naming the AI that served the step; pass it straight to the façade:
+#   ctx.ai_router.generate_text(prompt, policy=my_step, announce=ctx.textual.ai_chip)
+ctx.textual.ai_chip("claude · CLI, automatic")
 ```
 
-**IMPORTANT**: Always use these specific methods instead of `text()` with markup:
+**Note**: There are no `italic_text()` / `dim_italic_text()` methods on `ctx.textual`. If you need italic text, mount the `ItalicText` / `DimItalicText` widgets directly (from `titan_cli.ui.tui.widgets`).
+
+**IMPORTANT**: `text()` takes a single string argument (no `markup` parameter). Always use the specific styled methods instead:
 
 ```python
 # ✅ CORRECT
@@ -191,15 +201,43 @@ analysis = "## Summary\n\n- Point 1\n- Point 2"
 ctx.textual.markdown(analysis)
 ```
 
-##### `mount(widget: Widget)`
-Mounts any Textual widget to the output panel.
+##### `panel(text, panel_type="info", show_icon=True, use_markdown=False)`
+Shows a bordered panel with consistent styling. Preferred over mounting the `Panel` widget manually.
 
 ```python
-from titan_cli.ui.tui.widgets import Panel
+ctx.textual.panel("Operation completed successfully!", panel_type="success")
+ctx.textual.panel("Warning: This action cannot be undone", panel_type="warning")
+ctx.textual.panel("## Analysis\n\n- Point one", panel_type="info", use_markdown=True)
+```
 
-ctx.textual.mount(
-    Panel(text="Operation completed", panel_type="success")
-)
+Panel types: `"info"`, `"success"`, `"warning"`, `"error"`.
+
+##### `table(headers, rows, title="", full_width=True, cell_padding=1, zebra_stripes=False, show_header=True, show_cursor=True, cursor_type="row", row_height=1)`
+Shows a table with consistent styling. Preferred over mounting the `Table` widget manually.
+
+```python
+ctx.textual.table(headers=["Name", "Value"], rows=[["foo", "bar"]])
+ctx.textual.table(headers=headers, rows=rows, title="Results", row_height=2)
+```
+
+##### `show_diff_stat(formatted_files, formatted_summary, title="Changes summary:", use_panel=False)`
+Renders a formatted `git diff --stat` display. Use alongside `format_diff_stat_display()` from `titan_plugin_git.operations`.
+
+```python
+from titan_plugin_git.operations import format_diff_stat_display
+
+formatted_files, formatted_summary = format_diff_stat_display(stat_output)
+ctx.textual.show_diff_stat(formatted_files, formatted_summary, "Changes in branch:")
+ctx.textual.show_diff_stat(formatted_files, formatted_summary, "Changes made:", use_panel=True)
+```
+
+##### `mount(widget: Widget)`
+Mounts any Textual widget to the output panel. Use for custom widgets; for panels and tables prefer the `panel()` / `table()` convenience methods above.
+
+```python
+from titan_cli.ui.tui.widgets import DimItalicText
+
+ctx.textual.mount(DimItalicText("Secondary emphasis"))
 ```
 
 ##### `begin_step(title: str)`
@@ -265,6 +303,13 @@ if not title:
     return Error("Title cannot be empty")
 ```
 
+#### `ask_password(question: str) -> Optional[str]`
+Requests a password/secret with hidden input (blocks until response). Raises `KeyboardInterrupt` if the user presses Escape.
+
+```python
+passphrase = ctx.textual.ask_password("Enter GPG passphrase:")
+```
+
 #### `ask_multiline(question: str, default: str = "") -> Optional[str]`
 Requests multiline input (Enter to submit, Shift+Enter for new line).
 
@@ -287,7 +332,7 @@ else:
     pass
 ```
 
-#### `ask_selection(question: str, options: List[SelectionOption]) -> List[Any]`
+#### `ask_multiselect(question: str, options: List[SelectionOption]) -> List[Any]`
 Shows a multi-select list (spacebar to toggle, Enter to confirm).
 
 ```python
@@ -295,10 +340,10 @@ from titan_cli.ui.tui.widgets import SelectionOption
 
 options = [
     SelectionOption(value="feature1", label="Feature 1"),
-    SelectionOption(value="feature2", label="Feature 2"),
+    SelectionOption(value="feature2", label="Feature 2", selected=True),
 ]
 
-selected = ctx.textual.ask_selection("Select features:", options)
+selected = ctx.textual.ask_multiselect("Select features:", options)
 # Returns list of selected values: ["feature1", "feature2"]
 ```
 
@@ -322,7 +367,7 @@ choice = ctx.textual.ask_choice("What to do?", options)
 Shows a styled option list with titles and descriptions (like workflow selection menu).
 
 ```python
-from titan_cli.ui.tui.widgets import OptionItem
+from titan_cli.engine import OptionItem  # canonical import (widgets re-export is backward-compat)
 
 options = [
     OptionItem(
@@ -360,6 +405,42 @@ exit_code = ctx.textual.launch_external_cli(
     "claude",
     prompt="Fix this bug",
     cwd="/path/to/project"
+)
+```
+
+### AI Content Review Flows
+
+#### `ai_content_review_flow(content_title, content_body, ...) -> tuple[str, Optional[str], Optional[str]]`
+Generic Use/Edit/Reject flow for reviewing AI-generated title + body content (PRs, issues, etc.). Shows a preview, offers three choices, and handles the edit loop.
+
+Optional keyword args: `header_text`, `title_label`, `description_label`, `edit_instruction`, `confirm_question`, `choice_question`.
+
+Returns `(choice, final_title, final_body)` where `choice` is `"use"`, `"edit"`, or `"reject"` (title/body are `None` on reject).
+
+```python
+choice, title, body = ctx.textual.ai_content_review_flow(
+    content_title="feat: Add dark mode support",
+    content_body="## Summary\n- Implemented theme switcher...",
+    header_text="AI-Generated PR",
+    title_label="PR Title:",
+    description_label="PR Description:",
+)
+
+if choice == "reject":
+    return Skip("User rejected AI content")
+```
+
+#### `ai_document_review_flow(document_title, document_content, ...) -> tuple[str, Optional[str]]`
+Same Use/Edit/Reject flow for single long-form documents (release notes, reports). Uses a panel to preserve line breaks.
+
+Optional keyword args: `header_text`, `title_label`, `edit_instruction`, `confirm_question`, `choice_question`.
+
+Returns `(choice, final_content)`.
+
+```python
+choice, content = ctx.textual.ai_document_review_flow(
+    document_title="Release Notes v26.8",
+    document_content="# 26.8\n\n## Features\n- ...",
 )
 ```
 
@@ -459,7 +540,7 @@ if choice == "edit":
 ```python
 # Small/medium content - let screen handle it
 ctx.textual.text("Processing...")
-ctx.textual.mount(Panel("Result: Success", panel_type="success"))
+ctx.textual.panel("Result: Success", panel_type="success")
 # Screen will auto-scroll when step ends
 return Success("Done")
 ```
@@ -481,48 +562,30 @@ All widgets are imported from this package and can be mounted using `ctx.textual
 ### Display Widgets
 
 #### Panel
-Displays content in a bordered panel with different types/colors.
+Displays content in a bordered panel with different types/colors. In steps, prefer the `ctx.textual.panel()` convenience method instead of mounting this widget manually.
 
 ```python
-from titan_cli.ui.tui.widgets import Panel
-
-# Success panel (green)
-ctx.textual.mount(Panel("Operation successful", panel_type="success"))
-
-# Error panel (red)
-ctx.textual.mount(Panel("Error occurred", panel_type="error"))
-
-# Info panel (blue)
-ctx.textual.mount(Panel("FYI: Something happened", panel_type="info"))
-
-# Warning panel (yellow)
-ctx.textual.mount(Panel("Warning message", panel_type="warning"))
-
-# Default panel (no color)
-ctx.textual.mount(Panel("Regular message", panel_type="default"))
+# Preferred in steps
+ctx.textual.panel("Operation successful", panel_type="success")
+ctx.textual.panel("Error occurred", panel_type="error")
+ctx.textual.panel("FYI: Something happened", panel_type="info")
+ctx.textual.panel("Warning message", panel_type="warning")
 ```
 
 **Implementation**: `/titan_cli/ui/tui/widgets/panel.py`
 
 #### Table
-Displays tabular data with headers.
+Displays tabular data with headers. In steps, prefer the `ctx.textual.table()` convenience method instead of mounting this widget manually.
 
 ```python
-from titan_cli.ui.tui.widgets import Table
-
 headers = ["#", "Key", "Status", "Summary"]
 rows = [
     ["1", "PROJ-123", "Open", "Fix login bug"],
     ["2", "PROJ-124", "In Progress", "Add dark mode"],
 ]
 
-ctx.textual.mount(
-    Table(
-        headers=headers,
-        rows=rows,
-        title="Issues"
-    )
-)
+# Preferred in steps
+ctx.textual.table(headers=headers, rows=rows, title="Issues")
 ```
 
 **Implementation**: `/titan_cli/ui/tui/widgets/table.py`
@@ -580,7 +643,7 @@ from titan_cli.ui.tui.widgets import PromptTextArea
 **Implementation**: `/titan_cli/ui/tui/widgets/prompt_textarea.py`
 
 #### PromptSelectionList
-Multi-select list widget (used by `ctx.textual.ask_selection()`).
+Multi-select list widget (used by `ctx.textual.ask_multiselect()`).
 
 ```python
 from titan_cli.ui.tui.widgets import PromptSelectionList, SelectionOption
@@ -590,7 +653,7 @@ options = [
     SelectionOption(value="opt2", label="Option 2"),
 ]
 
-# Used via ctx.textual.ask_selection("Question?", options)
+# Used via ctx.textual.ask_multiselect("Question?", options)
 ```
 
 **Implementation**: `/titan_cli/ui/tui/widgets/prompt_selection_list.py`
@@ -617,7 +680,8 @@ options = [
 Styled option list with titles and descriptions (used by `ctx.textual.ask_option()`).
 
 ```python
-from titan_cli.ui.tui.widgets import PromptOptionList, OptionItem
+from titan_cli.engine import OptionItem  # canonical import (widgets re-export is backward-compat)
+from titan_cli.ui.tui.widgets import PromptOptionList
 
 options = [
     OptionItem(
@@ -673,7 +737,6 @@ from titan_cli.ui.tui.widgets import Button
 
 ```python
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip, Exit
-from titan_cli.ui.tui.widgets import Panel
 
 def simple_step(ctx: WorkflowContext) -> WorkflowResult:
     """A simple step that shows a message."""
@@ -682,9 +745,7 @@ def simple_step(ctx: WorkflowContext) -> WorkflowResult:
 
     message = ctx.get("message", "Hello, World!")
 
-    ctx.textual.mount(
-        Panel(text=message, panel_type="success")
-    )
+    ctx.textual.panel(message, panel_type="success")
 
     return Success("Message displayed")
 ```
@@ -693,7 +754,6 @@ def simple_step(ctx: WorkflowContext) -> WorkflowResult:
 
 ```python
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip, Exit, Skip
-from titan_cli.ui.tui.widgets import Panel
 
 def prompt_for_title_step(ctx: WorkflowContext) -> WorkflowResult:
     """Prompt user for a title."""
@@ -710,9 +770,7 @@ def prompt_for_title_step(ctx: WorkflowContext) -> WorkflowResult:
         if not title:
             return Error("Title cannot be empty")
 
-        ctx.textual.mount(
-            Panel(f"Title set: {title}", panel_type="success")
-        )
+        ctx.textual.panel(f"Title set: {title}", panel_type="success")
 
         return Success("Title captured", metadata={"title": title})
 
@@ -724,7 +782,6 @@ def prompt_for_title_step(ctx: WorkflowContext) -> WorkflowResult:
 
 ```python
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip, Exit, Skip
-from titan_cli.ui.tui.widgets import Panel
 
 def ai_analyze_step(ctx: WorkflowContext) -> WorkflowResult:
     """Analyze content using AI."""
@@ -733,28 +790,27 @@ def ai_analyze_step(ctx: WorkflowContext) -> WorkflowResult:
 
     # Check AI availability
     if not ctx.ai or not ctx.ai.is_available():
-        ctx.textual.mount(
-            Panel("AI not configured", panel_type="info")
-        )
+        ctx.textual.panel("AI not configured", panel_type="info")
         return Skip("AI not configured")
 
     content = ctx.get("content")
     if not content:
-        ctx.textual.mount(
-            Panel("No content to analyze", panel_type="error")
-        )
+        ctx.textual.panel("No content to analyze", panel_type="error")
         return Error("No content to analyze")
 
     # Analyze with loading indicator
+    from titan_cli.ai.models import AIMessage
+
     with ctx.textual.loading("Analyzing content with AI..."):
-        analysis = ctx.ai.generate([{
-            "role": "user",
-            "content": f"Analyze this: {content}"
-        }])
+        response = ctx.ai.generate([
+            AIMessage(role="user", content=f"Analyze this: {content}")
+        ])
+
+    analysis = response.content.strip()
 
     # Show result
     ctx.textual.text("")
-    ctx.textual.text("AI Analysis:", markup="bold cyan")
+    ctx.textual.bold_primary_text("AI Analysis:")
     ctx.textual.text("")
     ctx.textual.markdown(analysis)
 
@@ -765,12 +821,10 @@ def ai_analyze_step(ctx: WorkflowContext) -> WorkflowResult:
     )
 
     if not use_analysis:
-        ctx.textual.text("Analysis rejected", markup="yellow")
+        ctx.textual.warning_text("Analysis rejected")
         return Skip("User rejected analysis")
 
-    ctx.textual.mount(
-        Panel("Analysis accepted", panel_type="success")
-    )
+    ctx.textual.panel("Analysis accepted", panel_type="success")
 
     return Success("Analysis completed", metadata={"analysis": analysis})
 ```
@@ -779,7 +833,6 @@ def ai_analyze_step(ctx: WorkflowContext) -> WorkflowResult:
 
 ```python
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip, Exit
-from titan_cli.ui.tui.widgets import Panel, Table
 
 def search_issues_step(ctx: WorkflowContext) -> WorkflowResult:
     """Search and display issues."""
@@ -787,9 +840,7 @@ def search_issues_step(ctx: WorkflowContext) -> WorkflowResult:
         return Error("Textual UI context is not available for this step.")
 
     if not ctx.jira:
-        ctx.textual.mount(
-            Panel("JIRA client not available", panel_type="error")
-        )
+        ctx.textual.panel("JIRA client not available", panel_type="error")
         return Error("JIRA client not available")
 
     query = ctx.get("query", "status = Open")
@@ -799,15 +850,11 @@ def search_issues_step(ctx: WorkflowContext) -> WorkflowResult:
         issues = ctx.jira.search_tickets(jql=query, max_results=50)
 
     if not issues:
-        ctx.textual.mount(
-            Panel("No issues found", panel_type="info")
-        )
+        ctx.textual.panel("No issues found", panel_type="info")
         return Success("No issues found", metadata={"issues": []})
 
     # Show result
-    ctx.textual.mount(
-        Panel(f"Found {len(issues)} issues", panel_type="success")
-    )
+    ctx.textual.panel(f"Found {len(issues)} issues", panel_type="success")
     ctx.textual.text("")
 
     # Prepare table
@@ -822,9 +869,7 @@ def search_issues_step(ctx: WorkflowContext) -> WorkflowResult:
         ])
 
     # Render table
-    ctx.textual.mount(
-        Table(headers=headers, rows=rows, title="Issues")
-    )
+    ctx.textual.table(headers=headers, rows=rows, title="Issues")
 
     return Success(
         f"Found {len(issues)} issues",
@@ -836,7 +881,6 @@ def search_issues_step(ctx: WorkflowContext) -> WorkflowResult:
 
 ```python
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip, Exit
-from titan_cli.ui.tui.widgets import Panel
 import requests
 
 def fetch_data_step(ctx: WorkflowContext) -> WorkflowResult:
@@ -846,12 +890,12 @@ def fetch_data_step(ctx: WorkflowContext) -> WorkflowResult:
 
     url = ctx.get("url")
     if not url:
-        ctx.textual.mount(Panel("URL is required", panel_type="error"))
+        ctx.textual.panel("URL is required", panel_type="error")
         return Error("URL is required")
 
     try:
         # Show info
-        ctx.textual.text(f"Fetching from: {url}", markup="dim")
+        ctx.textual.dim_text(f"Fetching from: {url}")
 
         # Fetch with loading
         with ctx.textual.loading(f"Fetching data from {url}..."):
@@ -860,28 +904,26 @@ def fetch_data_step(ctx: WorkflowContext) -> WorkflowResult:
             data = response.json()
 
         # Success
-        ctx.textual.mount(
-            Panel(
-                f"Successfully fetched {len(data)} records",
-                panel_type="success"
-            )
+        ctx.textual.panel(
+            f"Successfully fetched {len(data)} records",
+            panel_type="success"
         )
 
         return Success("Data fetched", metadata={"data": data})
 
     except requests.RequestException as e:
         error_msg = f"Failed to fetch data: {e}"
-        ctx.textual.mount(Panel(error_msg, panel_type="error"))
+        ctx.textual.panel(error_msg, panel_type="error")
         return Error(error_msg)
     except ValueError as e:
         error_msg = f"Invalid JSON response: {e}"
-        ctx.textual.mount(Panel(error_msg, panel_type="error"))
+        ctx.textual.panel(error_msg, panel_type="error")
         return Error(error_msg)
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()
         error_msg = f"Unexpected error: {e}\n\n{error_detail}"
-        ctx.textual.mount(Panel(error_msg, panel_type="error"))
+        ctx.textual.panel(error_msg, panel_type="error")
         return Error(error_msg)
 ```
 
@@ -918,9 +960,9 @@ def fetch_data_step(ctx: WorkflowContext) -> WorkflowResult:
 
 1. **Unified UI**: Single context (`ctx.textual`) for all UI interaction
 2. **Better UX**: Interactive Textual widgets superior to basic terminal output
-3. **Integrated Progress**: Executor handles headers automatically, steps focus on logic
+3. **Integrated Progress**: `begin_step()`/`end_step()` render consistent step headers and status colors
 4. **Loading Indicators**: Context managers for showing progress during long operations
-5. **No Boilerplate**: No repetitive code for headers and formatting
+5. **Low Boilerplate**: Convenience methods (`panel()`, `table()`, styled text) avoid repetitive formatting code
 6. **Thread-Safe**: Automatic synchronization between execution threads and UI
 7. **Markdown Support**: Native markdown rendering in the TUI
 8. **External CLIs**: Can suspend TUI to launch external tools (claude, gemini, etc.)
@@ -1291,4 +1333,4 @@ def test_widget_step(ctx: WorkflowContext) -> WorkflowResult:
 
 ---
 
-**Last updated**: 2026-02-12
+**Last updated**: 2026-08-04

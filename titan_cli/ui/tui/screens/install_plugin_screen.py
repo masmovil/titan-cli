@@ -18,6 +18,7 @@ from titan_cli.core.plugins.community_sources import (
     detect_host,
     fetch_pyproject_toml,
     get_github_token,
+    get_titan_incompatibility,
     parse_plugin_metadata,
     parse_repo_url,
     resolve_ref_to_commit_sha,
@@ -373,6 +374,16 @@ class InstallPluginScreen(BaseScreen):
 
         self._metadata = parse_plugin_metadata(content)
 
+        from titan_cli import __version__ as titan_version
+        incompatibility = get_titan_incompatibility(self._metadata, titan_version)
+        if incompatibility:
+            body.mount(Panel(
+                f"This version cannot be installed: it {incompatibility}",
+                panel_type="error",
+            ))
+            self._set_next_label("Next", disabled=True)
+            return
+
         if self._metadata.get("parse_error"):
             body.mount(Panel(
                 "Could not read plugin metadata — pyproject.toml may be malformed.",
@@ -497,13 +508,9 @@ class InstallPluginScreen(BaseScreen):
             )
             await asyncio.to_thread(self.config.load)
 
-            installed_plugin = self.config.registry._plugins.get(plugin_name)
-            if installed_plugin and hasattr(installed_plugin, "get_config_schema"):
-                try:
-                    schema = installed_plugin.get_config_schema()
-                    self._plugin_has_config = bool(schema.get("properties"))
-                except Exception:
-                    self._plugin_has_config = False
+            from .plugin_config_resolver import plugin_has_config_ui
+
+            self._plugin_has_config = plugin_has_config_ui(self.config, plugin_name)
 
             body.mount(SuccessText(f"{Icons.SUCCESS} Plugin added to this project."))
 
@@ -514,9 +521,12 @@ class InstallPluginScreen(BaseScreen):
             self._set_next_label("Next")
 
     def _open_config_wizard(self, plugin_name: str) -> None:
-        from .plugin_config_wizard import PluginConfigWizardScreen
-        wizard = PluginConfigWizardScreen(self.config, plugin_name)
-        self.app.push_screen(wizard, lambda _: self._load_step(self.current_step + 1))
+        from .plugin_config_resolver import resolve_plugin_config_screen
+
+        self.app.push_screen(
+            resolve_plugin_config_screen(self.config, plugin_name),
+            lambda _: self._load_step(self.current_step + 1),
+        )
 
     def _prepare_project_plugin_install(self, plugin_name: str) -> Optional[str]:
         """Persist the project pin and provision its isolated runtime."""

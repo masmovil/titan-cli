@@ -611,10 +611,10 @@ class ProjectSetupWizardScreen(BaseScreen):
             self.wizard_data["current_plugin_index"] = current_index + 1
             self._configure_next_plugin()
 
-        # Launch plugin configuration wizard
-        from .plugin_config_wizard import PluginConfigWizardScreen
+        # Launch plugin configuration screen
+        from .plugin_config_resolver import resolve_plugin_config_screen
         self.app.push_screen(
-            PluginConfigWizardScreen(self.config, plugin_name),
+            resolve_plugin_config_screen(self.config, plugin_name),
             on_plugin_config_complete
         )
 

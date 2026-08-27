@@ -2,7 +2,7 @@ name: "Create Pull Request with AI"
 description: "AI-powered PR creation with intelligent analysis and suggestions"
 
 params:
-  draft: false
+  draft: null
 
 hooks:
   - before_pr_generation
@@ -42,6 +42,19 @@ steps:
     name: "AI PR Description"
     plugin: github
     step: ai_suggest_pr_description
+
+  - id: choose_pr_draft_mode
+    name: "Choose PR Draft Mode"
+    plugin: github
+    step: prompt_for_pr_draft
+
+  - id: select_pr_labels
+    name: "Select PR Labels"
+    plugin: github
+    step: prompt_for_labels
+    params:
+      output_key: pr_labels
+      prompt: "Select labels for this pull request:"
 
   - hook: before_push
 

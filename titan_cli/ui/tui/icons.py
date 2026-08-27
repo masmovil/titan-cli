@@ -65,6 +65,7 @@ class Icons:
     SETTINGS = "⚙ "
     SEARCH = "🔍"
     STAR = "⭐"
+    STAR_OUTLINE = "☆"
     CHECK = "✓"
     CROSS = "✗"
     BULLET = "•"

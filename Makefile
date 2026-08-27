@@ -1,7 +1,7 @@
 # Titan CLI - Makefile
 # Development commands for initial setup
 
-.PHONY: help install dev-install test clean docs-serve docs-build docs-deploy
+.PHONY: help install dev-install test check-github clean docs-serve docs-build docs-deploy
 
 # Default target
 help:
@@ -10,6 +10,7 @@ help:
 	@echo "For Contributors:"
 	@echo "  make dev-install    Setup development environment (creates titan-dev)"
 	@echo "  make test           Run all tests"
+	@echo "  make check-github   Ruff + pytest for titan-plugin-github only"
 	@echo ""
 	@echo "For Users:"
 	@echo "  make install        Install production version (NOT recommended - use pipx)"
@@ -62,6 +63,11 @@ install:
 test:
 	@echo "🧪 Running all tests..."
 	poetry run pytest
+
+# Ruff + pytest for the GitHub plugin only (faster loop while working on it)
+check-github:
+	poetry run ruff check plugins/titan-plugin-github/
+	poetry run pytest plugins/titan-plugin-github/tests -q
 
 # Docs commands
 docs-serve:

@@ -1,0 +1,51 @@
+name: "Thread Resolution"
+description: "AI-powered analysis of open PR threads: resolve, insist, or reply"
+
+steps:
+  - id: select_pr
+    name: "Select PR to Review"
+    plugin: github
+    step: select_pr_for_code_review
+
+  - id: fetch_bundle
+    name: "Fetch PR Review Bundle"
+    plugin: github
+    step: fetch_pr_review_bundle
+
+  - id: build_candidates
+    name: "Build Thread Review Candidates"
+    plugin: github
+    step: build_thread_review_candidates
+
+  - id: build_contexts
+    name: "Build Thread Review Contexts"
+    plugin: github
+    step: build_thread_review_contexts
+
+  - id: ai_resolution
+    name: "AI Thread Resolution"
+    plugin: github
+    step: ai_thread_resolution
+
+  - id: normalize
+    name: "Normalize Thread Decisions"
+    plugin: github
+    step: normalize_thread_decisions
+
+  - id: build_actions
+    name: "Build Thread Actions"
+    plugin: github
+    step: build_thread_actions
+    on_error: continue
+
+  - id: validate_actions
+    name: "Validate & Approve Actions"
+    plugin: github
+    step: validate_review_actions
+    on_error: continue
+
+  - id: submit_actions
+    name: "Submit Review"
+    plugin: github
+    step: submit_review_actions
+    on_error: continue

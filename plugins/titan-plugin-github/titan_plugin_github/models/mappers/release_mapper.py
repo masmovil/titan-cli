@@ -19,4 +19,7 @@ def from_network_release(network_release: NetworkRelease) -> UIRelease:
         title=network_release.name,
         url=network_release.url,
         is_prerelease=network_release.is_prerelease,
+        body=network_release.body,
+        published_at=network_release.published_at,
+        is_draft=network_release.is_draft,
     )

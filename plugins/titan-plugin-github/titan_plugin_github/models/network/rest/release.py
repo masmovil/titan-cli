@@ -15,6 +15,9 @@ class NetworkRelease:
     name: str
     url: str
     is_prerelease: bool
+    body: str = ""
+    published_at: str = ""
+    is_draft: bool = False
 
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> "NetworkRelease":
@@ -26,4 +29,7 @@ class NetworkRelease:
             name=data.get("name", "") or data.get("tagName", ""),
             url=data.get("url", ""),
             is_prerelease=bool(data.get("isPrerelease", False)),
+            body=data.get("body", "") or "",
+            published_at=data.get("publishedAt", "") or "",
+            is_draft=bool(data.get("isDraft", False)),
         )

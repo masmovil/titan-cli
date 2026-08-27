@@ -5,6 +5,11 @@ Unit tests for PR mappers
 from unittest.mock import Mock
 from titan_plugin_github.models.network.rest import NetworkPullRequest, NetworkUser
 from titan_plugin_github.models.mappers.pr_mapper import from_rest_pr
+from titan_plugin_github.operations.pr_selection_operations import (
+    build_pr_selection_description,
+    build_pr_selection_title,
+    format_review_status_badge,
+)
 
 
 class TestFromRestPR:
@@ -34,6 +39,8 @@ class TestFromRestPR:
             changedFiles=5,
             reviews=reviews,
             labels=[{"name": "feature"}, {"name": "enhancement"}],
+            statusCheckRollup=[{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+            reviewDecision="APPROVED",
             createdAt="2025-01-15T10:00:00Z",
             updatedAt="2025-01-15T12:00:00Z",
         )
@@ -56,6 +63,8 @@ class TestFromRestPR:
         assert ui_pr.is_mergeable is True
         assert ui_pr.is_draft is False
         assert ui_pr.review_summary == "✅ 2 approved"
+        assert ui_pr.checks_summary == "1 passing"
+        assert ui_pr.review_status_summary == "approved"
         assert ui_pr.labels == ["feature", "enhancement"]
         assert ui_pr.formatted_created_at == "15/01/2025 10:00:00"
         assert ui_pr.formatted_updated_at == "15/01/2025 12:00:00"
@@ -266,3 +275,156 @@ class TestFromRestPR:
         # Assert
         assert ui_pr.formatted_created_at == ""
         assert ui_pr.formatted_updated_at == ""
+
+    def test_maps_requested_reviewers_and_pending_reviewers(self):
+        """Test that requested and pending reviewers are correctly mapped"""
+        # Arrange
+        author = NetworkUser(login="author")
+        reviewer1 = NetworkUser(login="reviewer1", name="Reviewer One")
+        reviewer2 = NetworkUser(login="reviewer2", name="Reviewer Two")
+        reviewer3 = NetworkUser(login="reviewer3", name="Reviewer Three")
+
+        rest_pr = NetworkPullRequest(
+            number=1,
+            title="PR",
+            body="",
+            state="OPEN",
+            isDraft=False,
+            author=author,
+            headRefName="feature",
+            baseRefName="main",
+            mergeable="MERGEABLE",
+            additions=0,
+            deletions=0,
+            changedFiles=0,
+            reviews=[
+                Mock(state="APPROVED", user=reviewer1),
+                Mock(state="CHANGES_REQUESTED", user=reviewer2),
+            ],
+            labels=[],
+            requestedReviewers=[reviewer1, reviewer2, reviewer3],
+            createdAt="2025-01-15T10:00:00Z",
+            updatedAt="2025-01-15T10:00:00Z",
+        )
+
+        # Act
+        ui_pr = from_rest_pr(rest_pr)
+
+        # Assert
+        assert ui_pr.requested_reviewers == ["reviewer1", "reviewer2", "reviewer3"]
+        assert ui_pr.pending_reviewers == ["reviewer3"]
+
+
+class TestPRSelectionOperations:
+    def test_build_pr_selection_description_base(self):
+        pr = from_rest_pr(
+            NetworkPullRequest(
+                number=7,
+                title="Test",
+                body="",
+                state="OPEN",
+                isDraft=False,
+                author=NetworkUser(login="author"),
+                headRefName="feat/test",
+                baseRefName="main",
+                mergeable="MERGEABLE",
+                additions=0,
+                deletions=0,
+                changedFiles=0,
+                reviews=[],
+                labels=[],
+            )
+        )
+
+        assert build_pr_selection_title(pr) == "#7: Test"
+        assert build_pr_selection_description(pr) == "feat/test → main"
+
+    def test_build_pr_selection_description_with_extras(self):
+        pr = from_rest_pr(
+            NetworkPullRequest(
+                number=8,
+                title="Test",
+                body="",
+                state="OPEN",
+                isDraft=False,
+                author=NetworkUser(login="author"),
+                headRefName="feat/test",
+                baseRefName="main",
+                mergeable="MERGEABLE",
+                additions=0,
+                deletions=0,
+                changedFiles=0,
+                reviews=[],
+                labels=[],
+                statusCheckRollup=[{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+                reviewDecision="APPROVED",
+            )
+        )
+
+        assert (
+            build_pr_selection_title(pr, highlight_assigned=True, include_review_badge=True)
+            == "⭐ #8: Test  [green]● approved[/green]"
+        )
+        assert build_pr_selection_description(
+            pr,
+            include_author=True,
+            include_checks=True,
+        ) == "by author · feat/test → main · Checks: 1 passing"
+
+    def test_build_pr_selection_title_escapes_rich_markup_in_pr_title(self):
+        pr = from_rest_pr(
+            NetworkPullRequest(
+                number=9,
+                title="[WIP] fix parser",
+                body="",
+                state="OPEN",
+                isDraft=False,
+                author=NetworkUser(login="author"),
+                headRefName="feat/test",
+                baseRefName="main",
+                mergeable="MERGEABLE",
+                additions=0,
+                deletions=0,
+                changedFiles=0,
+                reviews=[],
+                labels=[],
+                reviewDecision="APPROVED",
+            )
+        )
+
+        assert (
+            build_pr_selection_title(pr, include_review_badge=True)
+            == r"#9: \[WIP\] fix parser  [green]● approved[/green]"
+        )
+
+    def test_build_pr_selection_title_includes_draft_review_badge(self):
+        pr = from_rest_pr(
+            NetworkPullRequest(
+                number=10,
+                title="Draft PR",
+                body="",
+                state="OPEN",
+                isDraft=True,
+                author=NetworkUser(login="author"),
+                headRefName="feat/draft",
+                baseRefName="main",
+                mergeable="MERGEABLE",
+                additions=0,
+                deletions=0,
+                changedFiles=0,
+                reviews=[],
+                labels=[],
+            )
+        )
+
+        assert (
+            build_pr_selection_title(pr, include_review_badge=True)
+            == "#10: Draft PR  [yellow]● draft[/yellow]"
+        )
+
+    def test_format_review_status_badge(self):
+        assert format_review_status_badge("approved") == "[green]● approved[/green]"
+        assert format_review_status_badge("changes requested") == "[red]● changes requested[/red]"
+        assert format_review_status_badge("draft") == "[yellow]● draft[/yellow]"
+        assert format_review_status_badge("review required") == "[blue]● review required[/blue]"
+        assert format_review_status_badge("ready for review") == "[cyan]● ready for review[/cyan]"

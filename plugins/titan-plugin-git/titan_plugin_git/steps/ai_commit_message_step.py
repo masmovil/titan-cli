@@ -1,4 +1,7 @@
 # plugins/titan-plugin-git/titan_plugin_git/steps/ai_commit_message_step.py
+from titan_cli.ai.router.declaration import declare_ai_usage
+from titan_cli.ai.router.enums import AIProviderType, AITask
+from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from titan_cli.core.result import ClientSuccess, ClientError
 from titan_plugin_git.messages import msg
@@ -9,6 +12,13 @@ from ..operations import (
 )
 
 
+@declare_ai_usage(
+    task=AITask.COMMIT_MESSAGE,
+    # A commit message is one prompt in, one text out: a remote connection or a
+    # headless CLI can do it, an interactive session cannot.
+    executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+    enforces=True,
+)
 def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
     """
     Generate a commit message using AI based on the current changes.
@@ -18,7 +28,7 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
 
     Requires:
         ctx.git: An initialized GitClient.
-        ctx.ai: An initialized AIClient.
+        ctx.ai_router: The AI execution façade.
 
     Inputs (from ctx.data):
         git_status: Current git status with changes.
@@ -29,7 +39,8 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
     Returns:
         Success: If the commit message was generated successfully.
         Error: If the operation fails.
-        Skip: If no changes, AI not configured, or user declined.
+        Skip: If there are no changes, AI is turned off for this task, or the
+            user declined the suggestion.
     """
     if not ctx.textual:
         return Error("Textual UI context is not available for this step.")
@@ -37,8 +48,7 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
     # Begin step container
     ctx.textual.begin_step("AI Commit Message")
 
-    # Check if AI is configured
-    if not ctx.ai or not ctx.ai.is_available():
+    if not ctx.ai_router:
         ctx.textual.error_text(msg.Steps.AICommitMessage.AI_NOT_CONFIGURED)
         ctx.textual.end_step("error")
         return Error(msg.Steps.AICommitMessage.AI_NOT_CONFIGURED)
@@ -59,8 +69,12 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
         # Get diff of uncommitted changes
         ctx.textual.dim_text(msg.Steps.AICommitMessage.ANALYZING_CHANGES)
 
-        # Get diff of all uncommitted changes using ClientResult pattern
-        diff_result = ctx.git.get_uncommitted_diff()
+        files_for_commit = ctx.get("selected_files") or (
+            git_status.modified_files + git_status.untracked_files + git_status.staged_files
+        )
+
+        # Keep AI context aligned with the exact files that will be committed.
+        diff_result = ctx.git.get_uncommitted_diff_for_files(files_for_commit)
 
         match diff_result:
             case ClientSuccess(data=diff_text):
@@ -72,19 +86,33 @@ def ai_generate_commit_message(ctx: WorkflowContext) -> WorkflowResult:
                 return Error(f"Failed to get diff: {err}")
 
         # Build AI prompt using operations
-        all_files = git_status.modified_files + git_status.untracked_files + git_status.staged_files
-        prompt = build_ai_commit_prompt(diff_text, all_files, max_diff_chars=8000)
+        prompt = build_ai_commit_prompt(diff_text, files_for_commit, max_diff_chars=8000)
 
-        # Call AI with loading indicator
-        from titan_cli.ai.models import AIMessage
-
-        messages = [AIMessage(role="user", content=prompt)]
+        project_root = ctx.get("project_root", ".")
 
         with ctx.textual.loading(msg.Steps.AICommitMessage.GENERATING_MESSAGE):
-            response = ctx.ai.generate(messages, max_tokens=1024, temperature=0.7)
+            result = ctx.ai_router.generate_text(
+                prompt,
+                policy=ai_generate_commit_message,
+                cwd=project_root,
+                timeout=180,
+                max_tokens=1024,
+                temperature=0.7,
+                announce=ctx.textual.ai_chip,
+            )
 
-        # Process AI response using operations (normalize and capitalize)
-        commit_message = process_ai_commit_message(response.content)
+        match result:
+            case AIExecutionSuccess(data=generated_text):
+                # Normalize and capitalize whatever the provider returned.
+                commit_message = process_ai_commit_message(generated_text)
+            case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
+                ctx.textual.dim_text(disabled_message)
+                ctx.textual.end_step("skip")
+                return Skip(disabled_message)
+            case AIExecutionError(error_message=err):
+                ctx.textual.error_text(err)
+                ctx.textual.end_step("error")
+                return Error(err)
 
         # Show preview to user
         ctx.textual.text("")  # spacing

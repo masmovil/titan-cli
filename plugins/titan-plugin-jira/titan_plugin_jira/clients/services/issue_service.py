@@ -449,6 +449,29 @@ class IssueService:
 
         return self.assign_fix_version_by_name(issue_key, project_key, version_name)
 
+    @log_client_operation()
+    def assign_issue(
+        self,
+        issue_key: str,
+        account_id: str,
+    ) -> ClientResult[None]:
+        """Assign an existing issue to a user by account ID."""
+        try:
+            self.network.make_request(
+                "PUT", f"issue/{issue_key}/assignee", json={"accountId": account_id}
+            )
+
+            return ClientSuccess(
+                data=None,
+                message=f"Assigned {issue_key} to user {account_id}",
+            )
+
+        except JiraAPIError as e:
+            return ClientError(
+                error_message=f"Failed to assign {issue_key} to user {account_id}: {e.message}",
+                error_code="ASSIGN_ISSUE_ERROR",
+            )
+
     def _convert_text_to_adf(self, text: str) -> dict:
         """
         Convert plain text to Atlassian Document Format (ADF).

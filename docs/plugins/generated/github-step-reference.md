@@ -39,6 +39,7 @@ Creates a GitHub pull request using data from the workflow context.
 | `pr_title` | str | The title of the pull request. |
 | `pr_body` | str, optional | The body/description of the pull request. |
 | `pr_head_branch` | str | The branch with the new changes. |
+| `pr_base_branch` | str, optional | The branch to merge into. Defaults to the git plugin's configured main branch. |
 | `pr_is_draft` | bool, optional | Whether to create the PR as a draft. Defaults to False. |
 | `pr_reviewers` | list, optional | List of GitHub usernames or team slugs to request review from. |
 | `pr_excluded_reviewers` | list, optional | List of GitHub usernames to exclude from team expansion. |
@@ -327,6 +328,52 @@ Interactively prompts the user for a Pull Request body.
 | `Error` | - | If the user cancels. |
 | `Skip` | `pr_body` | If pr_body already exists. |
 
+### `prompt_for_pr_draft`
+
+Ask whether the pull request should be created as a draft.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: github
+  step: prompt_for_pr_draft
+```
+
+**Used by built-in workflows:** `create-pr-ai`
+
+**Available to later steps:** `pr_is_draft`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.textual` | - | Textual UI components. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `draft` | bool | None, optional | Draft mode from workflow params. Use True/False to skip the prompt, or None to ask interactively. |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `pr_is_draft` | bool | Whether the PR should be created as a draft. |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `pr_is_draft` | If the draft preference was resolved successfully. |
+| `Error` | - | If the user cancels or the prompt fails. |
+
 ### `prompt_for_issue_body_step`
 
 Interactively prompts the user for a GitHub issue body.
@@ -410,7 +457,7 @@ Asks the user if they want to assign the issue to themselves.
 
 ### `prompt_for_labels`
 
-Prompts the user to select labels for the issue.
+Prompt the user to select repository labels and save them to context.
 
 **How to read this contract**
 
@@ -425,7 +472,9 @@ Prompts the user to select labels for the issue.
   step: prompt_for_labels
 ```
 
-**Available to later steps:** `labels`
+**Used by built-in workflows:** `create-pr-ai`
+
+**Available to later steps:** `<output_key>`
 
 **Requires**
 
@@ -433,44 +482,27 @@ Prompts the user to select labels for the issue.
 |------|------|-------------|
 | `ctx.github` | - | An initialized GitHubClient. |
 
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `output_key` | str, optional | Context key where selected labels should be stored. Defaults to "labels". |
+| `prompt` | str, optional | Prompt text shown to the user. Defaults to "Select labels:". |
+| `default_selected_key` | str, optional | Context key used to preselect labels. Defaults to output_key. |
+
 **Outputs (saved to ctx.data)**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `labels` | list[str] | Labels selected by the user. |
+| `<output_key>` | list[str] | Labels selected by the user. |
 
 **Returns**
 
 | Result | Saved for later steps | Description |
 |--------|-----------------------|-------------|
-| `Success` | `labels` | If label selection completes successfully. |
-| `Skip` | `labels` | If the repository has no labels. |
+| `Success` | `<output_key>` | If label selection completes successfully. |
+| `Skip` | `<output_key>` | If the repository has no labels. |
 | `Error` | - | If the GitHub client is unavailable or the prompt fails. |
-
-### `select_cli`
-
-Ask user to explicitly choose which AI CLI to use for PR analysis.
-
-**How to read this contract**
-
-- `Inputs (from ctx.data)` shows what the step expects before it runs.
-- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
-- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
-
-**Workflow usage**
-
-```yaml
-- plugin: github
-  step: select_cli
-```
-
-**Used by built-in workflows:** `review-pr`
-
-**Returns**
-
-| Result | Saved for later steps | Description |
-|--------|-----------------------|-------------|
-| `Success with the chosen CLI name stored in ctx.data` | - | - |
 
 ## Issue Creation
 
@@ -892,7 +924,7 @@ List all open PRs and ask user to select one.
   step: select_pr_for_code_review
 ```
 
-**Used by built-in workflows:** `review-pr`
+**Used by built-in workflows:** `review-pr`, `review-pr-thread-resolution`
 
 **Available to later steps:** `review_pr_number`, `review_pr_title`, `review_pr_head`, `review_pr_base`
 
@@ -928,7 +960,7 @@ Fetch all data needed for a full PR review cycle.
   step: fetch_pr_review_bundle
 ```
 
-**Used by built-in workflows:** `review-pr`
+**Used by built-in workflows:** `review-pr`, `review-pr-thread-resolution`
 
 **Available to later steps:** `review_pr`, `review_diff`, `review_changed_files`, `review_changed_files_with_stats`, `review_commit_sha`, `review_threads`, `review_general_comments`, `pr_template`
 
@@ -1442,7 +1474,7 @@ Present each ReviewActionProposal to the user for approval, editing, or skipping
   step: validate_review_actions
 ```
 
-**Used by built-in workflows:** `review-pr`
+**Used by built-in workflows:** `review-pr`, `review-pr-thread-resolution`
 
 **Available to later steps:** `approved_action_proposals (List[ReviewActionProposal])`
 
@@ -1475,7 +1507,7 @@ Submit approved ReviewActionProposal objects to GitHub.
   step: submit_review_actions
 ```
 
-**Used by built-in workflows:** `review-pr`
+**Used by built-in workflows:** `review-pr`, `review-pr-thread-resolution`
 
 **Returns**
 
@@ -1499,6 +1531,8 @@ Select open inline threads worth AI analysis.
 - plugin: github
   step: build_thread_review_candidates
 ```
+
+**Used by built-in workflows:** `review-pr-thread-resolution`
 
 **Available to later steps:** `thread_review_candidates (List[ThreadReviewCandidate])`
 
@@ -1531,7 +1565,15 @@ Enrich thread candidates with diff hunk context and full reply history.
   step: build_thread_review_contexts
 ```
 
+**Used by built-in workflows:** `review-pr-thread-resolution`
+
 **Available to later steps:** `thread_review_contexts (List[ThreadReviewContext])`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.github` | - | Optional GitHub client used to inspect referenced commits. |
 
 **Outputs (saved to ctx.data)**
 
@@ -1561,6 +1603,8 @@ AI call: decide what to do with each open thread.
 - plugin: github
   step: ai_thread_resolution
 ```
+
+**Used by built-in workflows:** `review-pr-thread-resolution`
 
 **Available to later steps:** `raw_thread_decisions`
 
@@ -1593,6 +1637,8 @@ Parse and validate raw AI output into ThreadDecision models.
   step: normalize_thread_decisions
 ```
 
+**Used by built-in workflows:** `review-pr-thread-resolution`
+
 **Available to later steps:** `thread_decisions`
 
 **Outputs (saved to ctx.data)**
@@ -1623,6 +1669,8 @@ Transform ThreadDecision objects into ReviewActionProposal objects.
 - plugin: github
   step: build_thread_actions
 ```
+
+**Used by built-in workflows:** `review-pr-thread-resolution`
 
 **Available to later steps:** `review_action_proposals (List[ReviewActionProposal])`
 
@@ -1700,3 +1748,53 @@ Cleanup a worktree created for PR review.
 |--------|-----------------------|-------------|
 | `Success` | - | Worktree cleaned up |
 | `Exit` | - | No worktree to cleanup |
+
+## Releases
+
+### `select_release`
+
+List published GitHub releases and select one to use as a notes source.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: github
+  step: select_release
+```
+
+**Available to later steps:** `selected_release`, `selected_release_tag`, `selected_release_notes`, `selected_release_url`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.github` | - | An initialized GitHubClient. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `github_release_limit` | int, optional | Maximum number of releases to list. Defaults to 15. |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `selected_release` | UIRelease | Selected GitHub release, including its notes body. |
+| `selected_release_tag` | str | Tag name of the selected release. |
+| `selected_release_notes` | str | Release notes body of the selected release. |
+| `selected_release_url` | str | URL of the selected release. |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `selected_release`, `selected_release_tag`, `selected_release_notes`, `selected_release_url` | If a release is selected successfully. |
+| `Skip` | `selected_release`, `selected_release_tag`, `selected_release_notes`, `selected_release_url` | If no published releases exist. |
+| `Error` | - | If the GitHub client is not available or the request fails. |

@@ -62,6 +62,21 @@ query($owner: String!, $repo: String!, $prNumber: Int!) {
           updatedAt
         }
       }
+      reviews(first: 50) {
+        nodes {
+          databaseId
+          body
+          state
+          author {
+            login
+            ... on User {
+              name
+            }
+          }
+          createdAt: submittedAt
+          updatedAt: submittedAt
+        }
+      }
     }
   }
 }

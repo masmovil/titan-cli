@@ -10,14 +10,26 @@ errors or context that could benefit from AI assistance.
 
 import json
 
+from titan_cli.ai.router import (
+    AIRouteDecision,
+    AIProviderType,
+    AITask,
+    declare_ai_usage,
+)
 from titan_cli.core.workflows.models import WorkflowStepModel
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error, Skip, WorkflowResult
-from titan_cli.external_cli.launcher import CLILauncher
 from titan_cli.external_cli.configs import CLI_REGISTRY
 from titan_cli.messages import msg
 
 
+@declare_ai_usage(
+    task=AITask.GENERIC_ASSISTANT,
+    # Fixing lint/test/build issues means editing files and running commands in
+    # a real terminal session - only an interactive CLI can do that.
+    executes=[AIProviderType.CLI_INTERACTIVE],
+    enforces=True,
+)
 def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> WorkflowResult:
     """
     Launch AI coding assistant with context from workflow.
@@ -27,7 +39,10 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
         prompt_template: str - Template for the prompt (use {context} placeholder)
         ask_confirmation: bool - Whether to ask user before launching (default: True)
         fail_on_decline: bool - If True, return Error when user declines (default: False)
-        cli_preference: str - Which CLI to use: "claude", "gemini", "auto" (default: "auto")
+        pre_launch_warning: str - Optional warning panel shown just before the CLI starts
+
+    Which CLI runs is not a step parameter: it is the default CLI configured once in AI
+    Configuration, so every workflow uses the same one and nothing is asked mid-run.
 
     Example workflow usage:
         - id: ai-help
@@ -51,15 +66,7 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
     prompt_template = step.params.get("prompt_template", "{context}")
     ask_confirmation = step.params.get("ask_confirmation", True)
     fail_on_decline = step.params.get("fail_on_decline", False)
-    cli_preference = step.params.get("cli_preference", "auto")
     pre_launch_warning = step.params.get("pre_launch_warning")
-
-    # Validate cli_preference
-    VALID_CLI_PREFERENCES = {"auto", "claude", "gemini"}
-    if cli_preference not in VALID_CLI_PREFERENCES:
-        ctx.textual.error_text(f"Invalid cli_preference: {cli_preference}. Must be one of {VALID_CLI_PREFERENCES}")
-        ctx.textual.end_step("error")
-        return Error(f"Invalid cli_preference: {cli_preference}. Must be one of {VALID_CLI_PREFERENCES}")
 
     # Validate required parameters
     if not context_key:
@@ -107,7 +114,6 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
 
     # Ask for confirmation if needed
     if ask_confirmation:
-        ctx.textual.text("")  # spacing
         should_launch = ctx.textual.ask_confirm(
             msg.AIAssistant.CONFIRM_LAUNCH_ASSISTANT,
             default=True
@@ -121,78 +127,52 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
             ctx.textual.end_step("skip")
             return Skip(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
 
-    # Determine which CLI to use
-    cli_to_launch = None
+    # This step owns its own execution (it launches an interactive session and suspends the
+    # TUI), so it resolves the route instead of asking the façade to run a prompt. Which CLI
+    # runs is never asked here: it is configured beforehand in AI Configuration.
+    if not ctx.ai_router:
+        ctx.textual.error_text(msg.AIAssistant.ROUTING_UNAVAILABLE)
+        ctx.textual.end_step("error")
+        return Error(msg.AIAssistant.ROUTING_UNAVAILABLE)
 
-    preferred_clis = []
-    if cli_preference == "auto":
-        preferred_clis = list(CLI_REGISTRY.keys())
-    else:
-        preferred_clis = [cli_preference]
-    
-    available_launchers = {}
-    for cli_name in preferred_clis:
-        config = CLI_REGISTRY.get(cli_name)
-        if config:
-            launcher = CLILauncher(
-                cli_name=cli_name,
-                install_instructions=config.get("install_instructions"),
-                prompt_flag=config.get("prompt_flag")
-            )
-            if launcher.is_available():
-                available_launchers[cli_name] = launcher
-
-    if not available_launchers:
+    # No CLI installed at all is an environment that simply cannot do this, not a
+    # misconfiguration - it stays the friendly skip it has always been.
+    if not ctx.ai_router.availability.available_interactive_clis():
         ctx.textual.warning_text(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
         ctx.textual.end_step("skip")
         return Skip(msg.AIAssistant.NO_ASSISTANT_CLI_FOUND)
 
-    if len(available_launchers) == 1:
-        cli_to_launch = list(available_launchers.keys())[0]
-    else:
-        # Show available CLIs with numbers
-        ctx.textual.bold_primary_text(msg.AIAssistant.SELECT_ASSISTANT_CLI)
+    resolution = ctx.ai_router.resolve(policy=execute_ai_assistant_step)
 
-        cli_options = list(available_launchers.keys())
-        for idx, cli_name in enumerate(cli_options, 1):
-            display_name = CLI_REGISTRY[cli_name].get("display_name", cli_name)
-            ctx.textual.text(f"  {idx}. {display_name}")
-
-        if pre_launch_warning:
-            ctx.textual.text("")  # spacing
-            ctx.textual.panel(pre_launch_warning, panel_type="warning")
-
-        ctx.textual.text("")  # spacing
-        choice_str = ctx.textual.ask_text("Select option (or press Enter to cancel):", default="")
-
-        if not choice_str or choice_str.strip() == "":
-            ctx.textual.dim_text(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
-            ctx.textual.end_step("skip")
-            return Skip(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
-
-        try:
-            choice_idx = int(choice_str.strip()) - 1
-            if 0 <= choice_idx < len(cli_options):
-                cli_to_launch = cli_options[choice_idx]
-            else:
-                ctx.textual.error_text("Invalid option selected")
-                ctx.textual.end_step("skip")
-                return Skip(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
-        except ValueError:
-            ctx.textual.error_text("Invalid input - must be a number")
-            ctx.textual.end_step("skip")
-            return Skip(msg.AIAssistant.DECLINED_ASSISTANCE_SKIPPED)
-
-    # Validate selection
-    if cli_to_launch not in available_launchers:
-        ctx.textual.error_text(f"Unknown CLI to launch: {cli_to_launch}")
+    if not isinstance(resolution, AIRouteDecision):
+        message = f"{resolution.reason}. {msg.AIAssistant.CONFIGURE_HINT}"
+        ctx.textual.error_text(message)
         ctx.textual.end_step("error")
-        return Error(f"Unknown CLI to launch: {cli_to_launch}")
+        return Error(message)
 
-    cli_name = CLI_REGISTRY[cli_to_launch].get("display_name", cli_to_launch)
+    if resolution.provider == AIProviderType.OFF:
+        ctx.textual.dim_text(msg.AIAssistant.AI_DISABLED)
+        ctx.textual.end_step("skip")
+        return Skip(msg.AIAssistant.AI_DISABLED)
+
+    if resolution.provider != AIProviderType.CLI_INTERACTIVE or not resolution.cli:
+        message = msg.AIAssistant.INTERACTIVE_CLI_REQUIRED.format(
+            provider=resolution.provider
+        )
+        ctx.textual.error_text(message)
+        ctx.textual.end_step("error")
+        return Error(message)
+
+    cli_to_launch = resolution.cli
+    cli_name = CLI_REGISTRY.get(cli_to_launch, {}).get("display_name", cli_to_launch)
+
+    ctx.textual.ai_chip(f"CLI, interactive · {cli_name}")
+
+    if pre_launch_warning:
+        ctx.textual.panel(pre_launch_warning, panel_type="warning")
+        ctx.textual.text("")  # spacing
 
     # Launch the CLI
-    ctx.textual.text("")  # spacing
     ctx.textual.primary_text(msg.AIAssistant.LAUNCHING_ASSISTANT.format(cli_name=cli_name))
 
     project_root = ctx.get("project_root", ".")
@@ -204,7 +184,6 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
         cwd=project_root
     )
 
-    ctx.textual.text("")  # spacing
     ctx.textual.success_text(msg.AIAssistant.BACK_IN_TITAN)
 
     if exit_code != 0:

@@ -55,6 +55,30 @@ IMPORTANT:
 - Gherkin tests should cover main cases
 """
 
+JIRA_PLAN_PROMPT_TEMPLATE = """You are being launched from Titan CLI to help plan work for a JIRA issue.
+
+Start as you normally would: load and follow this project's own documentation and any
+skills/onboarding material it points to (e.g. CLAUDE.md, README, harness docs) before
+looking at the issue below.
+
+Here is the full context of the JIRA issue, including all comments:
+
+{context}
+
+Your task right now is PLANNING ONLY:
+1. Study the issue and its comments above.
+2. Explore only the specific, necessary parts of the codebase directly related to this
+   issue to understand what changes are required. Do not do a broad or exhaustive
+   exploration of the whole project - stay narrowly scoped to avoid wasting effort on
+   anything not relevant to this issue.
+3. Break the work down into a clear, ordered list of concrete steps.
+4. Present that plan to the user and explicitly ask them to confirm or adjust it before
+   doing any further work.
+
+Do not start implementing until the user has confirmed the plan. When you exit this
+session, control returns to Titan CLI and this workflow ends.
+"""
+
 FALLBACK_ISSUE_TEMPLATE = """## Description
 
 {{ description }}

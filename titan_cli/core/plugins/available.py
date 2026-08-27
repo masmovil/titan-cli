@@ -53,4 +53,10 @@ KNOWN_PLUGINS: List[KnownPlugin] = [
         "repo_url": "https://github.com/masmovil/ragnarok-titan-cli-workflows",
         "recommended_ref": "0.7.0",
     },
+    {
+        "name": "slack",
+        "description": "Slack integration for personal messaging and workspace access.",
+        "package_name": "titan-plugin-slack",
+        "dependencies": []
+    },
 ]

@@ -44,3 +44,15 @@ def get_headless_adapter(cli_name: Union[SupportedCLI, str]) -> HeadlessCliAdapt
             f"Available: {available}"
         )
     return adapter_class()
+
+
+def list_available_headless_clis() -> list[SupportedCLI]:
+    """
+    Return the registered CLIs that currently have an available headless adapter,
+    in registry order.
+    """
+    return [
+        cli_name
+        for cli_name in HEADLESS_ADAPTER_REGISTRY
+        if get_headless_adapter(cli_name).is_available()
+    ]

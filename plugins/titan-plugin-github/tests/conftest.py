@@ -57,6 +57,8 @@ def sample_network_pr(sample_network_user):
         mergedAt=None,
         reviews=[],
         labels=[{"name": "feature"}, {"name": "backend"}],
+        statusCheckRollup=[],
+        reviewDecision="REVIEW_REQUIRED",
         isCrossRepository=False,
         headRepositoryOwnerLogin="test-owner",
     )
@@ -82,6 +84,8 @@ def sample_ui_pr():
         is_mergeable=True,
         is_draft=False,
         review_summary="No reviews",
+        checks_summary="No checks",
+        review_status_summary="review required",
         labels=["feature", "backend"],
         formatted_created_at="15/01/2025 10:00:00",
         formatted_updated_at="15/01/2025 11:00:00",
@@ -186,6 +190,7 @@ def mock_git_client():
 
     client.create_worktree = Mock(return_value=ClientSuccess(data=None, message="Created"))
     client.remove_worktree = Mock(return_value=ClientSuccess(data=None, message="Removed"))
+    client.prune_worktrees = Mock(return_value=ClientSuccess(data=None, message="Pruned"))
     client.commit_in_worktree = Mock(return_value=ClientSuccess(
         data="abc123def456789abc123def456789abc1234567", message="Committed"
     ))

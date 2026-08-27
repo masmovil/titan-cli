@@ -8,7 +8,7 @@ Titan interacts only with this generic interface.
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Optional
+from typing import Any, Optional
 from typing import Protocol, runtime_checkable
 
 
@@ -54,6 +54,28 @@ class HeadlessCliAdapter(Protocol):
         """The CLI identifier."""
         ...
 
+    @property
+    def supports_structured_output(self) -> bool:
+        """Whether this adapter can enforce a JSON Schema on the CLI's own response,
+        instead of relying on prompt instructions the model may not follow."""
+        ...
+
+    @property
+    def supports_tool_restriction(self) -> bool:
+        """Whether this adapter can enforce a tool denylist on the CLI's own session,
+        instead of relying on prompt instructions the model may not follow."""
+        ...
+
+    @property
+    def supports_effort_control(self) -> bool:
+        """Whether this adapter can set a reasoning-effort tier for the CLI's own session."""
+        ...
+
+    @property
+    def supports_model_selection(self) -> bool:
+        """Whether this adapter can select a specific model for the CLI's own session."""
+        ...
+
     def is_available(self) -> bool:
         """Return True if the CLI is installed and reachable."""
         ...
@@ -63,6 +85,10 @@ class HeadlessCliAdapter(Protocol):
         prompt: str,
         cwd: Optional[str] = None,
         timeout: int = 60,
+        json_schema: Optional[dict[str, Any]] = None,
+        disallowed_tools: Optional[list[str]] = None,
+        effort: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> HeadlessResponse:
         """
         Run the CLI with the given prompt in headless mode.
@@ -71,8 +97,18 @@ class HeadlessCliAdapter(Protocol):
             prompt: The prompt to send to the CLI.
             cwd: Working directory for the subprocess.
             timeout: Seconds before the subprocess is killed.
+            json_schema: Optional JSON Schema (top-level type "object") to enforce on the
+                response. Ignored by adapters where `supports_structured_output` is False.
+            disallowed_tools: Optional list of built-in tool names to remove from the CLI's
+                session entirely (e.g. ["Bash", "Agent"]). Ignored by adapters where
+                `supports_tool_restriction` is False.
+            effort: Optional reasoning-effort tier (e.g. "low", "medium", "high"). Ignored by
+                adapters where `supports_effort_control` is False.
+            model: Optional model identifier to run the CLI with (e.g. "claude-opus-4-8").
+                Ignored by adapters where `supports_model_selection` is False.
 
         Returns:
-            HeadlessResponse with stdout, stderr, and exit_code.
+            HeadlessResponse with stdout, stderr, and exit_code. When `json_schema` is
+            honored, stdout is the schema-validated JSON, with no surrounding prose.
         """
         ...

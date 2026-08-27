@@ -14,9 +14,25 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
-from typing import Optional
+from typing import Final, Optional
 
 import structlog
+
+
+_SLACK_SDK_NOISY_MESSAGES: Final[tuple[str, ...]] = (
+    "Received the following response",
+)
+
+
+class _SlackSdkNoiseFilter(logging.Filter):
+    """Drop extremely verbose Slack SDK wire-response logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not record.name.startswith("slack_sdk"):
+            return True
+
+        message = record.getMessage()
+        return not any(noisy in message for noisy in _SLACK_SDK_NOISY_MESSAGES)
 
 
 def setup_logging(
@@ -188,6 +204,7 @@ def _setup_file_handler(log_file: Optional[Path], is_dev: bool) -> None:
 
     # File always logs at DEBUG in dev, INFO in prod
     file_handler.setLevel(logging.DEBUG if is_dev else logging.INFO)
+    file_handler.addFilter(_SlackSdkNoiseFilter())
 
     # Add to root logger
     root_logger = logging.getLogger()
@@ -213,6 +230,7 @@ def _setup_console_handler(log_level: int, is_dev: bool) -> None:
 
     # Format is handled by structlog processors
     console_handler.setFormatter(logging.Formatter("%(message)s"))
+    console_handler.addFilter(_SlackSdkNoiseFilter())
 
     # Add to root logger
     root_logger = logging.getLogger()
@@ -222,6 +240,12 @@ def _setup_console_handler(log_level: int, is_dev: bool) -> None:
     # This prevents EVENT/SYSTEM spam in the console while keeping app logs visible
     logging.getLogger("textual").setLevel(logging.WARNING)
     logging.getLogger("rich").setLevel(logging.WARNING)
+    # Silence markdown-it-py's per-rule parsing debug logs (entering fence/list/etc.)
+    logging.getLogger("markdown_it").setLevel(logging.WARNING)
+    logging.getLogger("slack_sdk").setLevel(logging.DEBUG if is_dev else logging.WARNING)
+    logging.getLogger("slack_sdk.web.base_client").setLevel(
+        logging.DEBUG if is_dev else logging.WARNING
+    )
 
 
 def _configure_structlog(is_dev: bool) -> None:

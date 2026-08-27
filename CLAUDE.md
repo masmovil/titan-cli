@@ -2,6 +2,13 @@
 
 Documentation for the Titan CLI project to assist Claude in development.
 
+## Session Bootstrap
+
+Before doing any work in this repo, read [`harness/README.md`](harness/README.md) — it names
+the current-focus domain/task and points to that domain's own state files
+(`feature-list.json`, `progress.md`, `session-handoff.md`). Don't ask which task we're on;
+that file answers it.
+
 ## Project Overview
 
 Titan CLI is a command-line tool with a Textual-based TUI (Terminal User Interface) that enables automated workflows for Git, GitHub, Jira, and other services, with AI integration for intelligent assistance.
@@ -14,6 +21,11 @@ Titan CLI is a command-line tool with a Textual-based TUI (Terminal User Interfa
 titan-cli/
 ├── titan_cli/                 # Core application
 │   ├── engine/               # Workflow engine
+│   ├── core/                # Config, plugins, workflows, logging
+│   │   └── security/        # THE secrets trust boundary (vault, broker,
+│   │                        #   redaction) — see Secrets & Security below
+│   ├── ai/                  # AI layer: providers (Anthropic, OpenAI,
+│   │                        #   Gemini, LiteLLM), agents, LLM tools
 │   ├── ui/tui/              # Textual TUI interface
 │   │   ├── screens/         # TUI screens
 │   │   ├── widgets/         # Custom widgets
@@ -23,15 +35,18 @@ titan-cli/
 │
 └── plugins/                  # Plugin system
     ├── titan-plugin-git/    # Git plugin
-    │   ├── operations/      # Business logic (NEW)
+    │   ├── operations/      # Business logic
     │   └── steps/           # UI orchestration
     ├── titan-plugin-github/ # GitHub plugin
-    │   ├── operations/      # Business logic (NEW)
+    │   ├── operations/      # Business logic
     │   └── steps/           # UI orchestration
     ├── titan-plugin-jira/   # Jira plugin
-    │   ├── operations/      # Business logic (NEW)
+    │   ├── operations/      # Business logic
     │   └── steps/           # UI orchestration
-    └── ...
+    ├── titan-plugin-slack/  # Slack plugin (official; simplified layout,
+    │                        #   no models/ layer)
+    └── ...                  # titan-plugin-docker and titan-plugin-poeditor
+                             #   exist but are NOT registered as official
 ```
 
 ### Plugin Architecture (5-Layer Pattern)
@@ -49,15 +64,15 @@ Steps → Operations → Client → Services → Network
 
 **Key Features:**
 - **Result Wrapper Pattern**: `ClientSuccess`/`ClientError` for type-safe error handling
-- **Network Models**: `NetworkJiraIssue`, `NetworkGraphQLPullRequest` (faithful to APIs)
+- **Network Models**: `NetworkIssue`, `NetworkPullRequest` (faithful to APIs; REST vs GraphQL variants live in separate directories)
 - **UI Models**: `UIJiraIssue`, `UIPullRequest` (pre-formatted for display)
 - **Mappers**: Pure functions converting Network → UI
 - **Services**: PRIVATE data access layer
 - **Operations**: OPTIONAL business logic layer
 
 **Quick Reference:**
-- `*API` classes: HTTP/CLI communication (JiraAPI, GitHubRESTAPI)
-- `Network*` models: Faithful to API responses
+- `*Network` classes: HTTP/CLI communication (JiraNetwork, GHNetwork, GraphQLNetwork, GitNetwork)
+- `Network*` models: Faithful to API responses, disambiguated by directory (`models/network/rest/` vs `models/network/graphql/`), e.g. `NetworkPullRequest`, `NetworkUser`
 - `UI*` models: Optimized for rendering
 - `ClientResult[T]`: Return type for all client methods
 
@@ -73,6 +88,25 @@ Workflows are defined in YAML files and executed through steps that can:
 - Display information in the TUI
 
 ## Technical Documentation
+
+### Secrets & Security
+
+**📖 [Secrets & Security Guide](.claude/docs/security.md)** ⭐
+
+**No Titan API ever returns a secret string.** All raw secret handling lives
+behind `titan_cli/core/security/` (CI-enforced import boundary). The rules
+every step/plugin must follow:
+
+- Steps use `ctx.secret_broker` (pre-scoped per plugin); plugins receive a
+  broker in `initialize(config, broker)`. There is **no `get()`** — use
+  `create_client()`, a session factory, or a use-primitive
+  (`run_with_secret_stdin` / `run_with_secret_env` / `with_secret_tempfile`).
+- Never put a raw secret in `ctx.data` or result metadata: `Success`/`Skip`/
+  `Exit` scan their metadata and raise `SecretLeakError`. Wrap plugin-derived
+  sensitive material (decrypted keys, service accounts) in `SensitiveValue`
+  and `reveal()` it as late as possible.
+- Never pass a credential on argv or via the inherited environment — the
+  use-primitives exist for exactly that.
 
 ### Workflows
 
@@ -107,9 +141,9 @@ The step rules cover required conventions such as publishing step outputs via `S
 
 ### Common Pitfalls ⚠️
 
-**1. Step Function Naming Mismatch**
+**1. Step Function Naming Mismatch (project/user steps)**
 
-The function name in your Python file MUST match the `step:` field in the YAML workflow exactly.
+For **project and user steps** (`.titan/steps/`, `~/.titan/steps/`), the function name in your Python file MUST match the `step:` field in the YAML workflow exactly. This does NOT apply to plugin steps: plugins map step names explicitly in their `get_steps()` dict, so the YAML name and the function name can differ.
 
 ❌ **WRONG**:
 ```python
@@ -219,11 +253,14 @@ This applies when you:
 - Change the expected usage or behavior of an existing public client function
 - Add a workflow that exposes a new user-facing plugin capability
 
-Keep the matching page in `docs/` up to date:
+Keep the matching pages in `docs/` up to date. Each official plugin has its own directory with four pages (`overview.md`, `workflow-steps.md`, `client-api.md`, `built-in-workflows.md`):
 
-- `docs/plugins/git-plugin.md`
-- `docs/plugins/github-plugin.md`
-- `docs/plugins/jira-plugin.md`
+- `docs/plugins/git/`
+- `docs/plugins/github/`
+- `docs/plugins/jira/`
+- `docs/plugins/slack/`
+
+Auto-generated step references live in `docs/plugins/generated/` (see the `sync-plugin-docs` and `validate-plugin-docs` workflows in `.titan/workflows/`).
 
 The documentation must show:
 
@@ -331,7 +368,7 @@ When creating new steps or refactoring existing ones:
 - **Anthropic SDK**: Anthropic direct provider
 - **Google GenAI SDK**: Gemini direct provider
 - **OpenAI SDK**: OpenAI direct provider and LiteLLM/OpenAI-compatible gateways
-- **PyGithub**: GitHub API client
+- **gh CLI + GraphQL/REST over Requests**: GitHub integration (no PyGithub)
 - **Requests**: HTTP client for APIs
 
 ## Project Setup
@@ -359,7 +396,9 @@ titan-dev
 - Allows immediate testing of code changes
 - Enables development logging
 
-Logs for `titan-dev` are written to `~/.local/state/titan/logs/titan.log` during TUI execution.
+Logs for `titan-dev` are written to `~/.local/state/titan/logs/titan.log` during TUI execution
+(see the **[Logging Guide](.claude/docs/logging.md)** and
+**[Development vs Production](.claude/docs/development-vs-production.md)** for details).
 For live visual debugging, use `titan-dev --devtools` and run `textual console`
 in another terminal.
 
@@ -391,7 +430,7 @@ default_connection = "default"
 
 [ai.connections.default]
 name = "My Claude"
-kind = "direct_provider"
+connection_type = "direct_provider"
 provider = "anthropic"
 default_model = "claude-sonnet-4-5"
 ```
@@ -481,18 +520,6 @@ and run `textual console` in another terminal.
 - **Extensible**: Plugin system
 - **Multi-Connection**: Supports direct providers and LLM gateways
 
-## Recent Important Commits
-
-- `75050d4`: feat(jira): add JiraAgent with AI-powered issue analysis and customizable Jinja2 templates
-- `a63e0ab`: Migrate git and github plugin steps to new Textual context
-- `45d82cb`: Migrate git and github workflows to textual TUI framework
-- `e3d6889`: Migrate create pull request step to textual TUI components
-
-## Current Branch
-
-**Branch**: `master`
-**Main Branch**: `master`
-
 ## Recent Architecture Changes
 
 ### Project-Based Configuration (2026-01-19)
@@ -552,4 +579,4 @@ See **[Plugin Architecture Guide](.claude/docs/plugin-architecture.md)** for com
 
 ---
 
-**Last updated**: 2026-02-16
+**Last updated**: 2026-08-04

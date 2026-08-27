@@ -68,10 +68,16 @@ class Messages:
         INVALID_PROMPT_TEMPLATE = "Invalid prompt_template: missing placeholder {e}"
         FAILED_TO_BUILD_PROMPT = "Failed to build prompt: {e}"
         CONFIRM_LAUNCH_ASSISTANT = "Would you like AI assistance to help fix these issues?"
-        SELECT_ASSISTANT_CLI = "Select which AI assistant to use"
         DECLINED_ASSISTANCE_STOPPED = "User declined AI assistance - workflow stopped"
         DECLINED_ASSISTANCE_SKIPPED = "User declined AI assistance"
         NO_ASSISTANT_CLI_FOUND = "No AI coding assistant CLI found"
+        AI_DISABLED = "AI is turned off for the assistant task - skipping"
+        ROUTING_UNAVAILABLE = "AI routing is not available in this workflow context."
+        CONFIGURE_HINT = "Set a default CLI in AI Configuration (main menu)."
+        INTERACTIVE_CLI_REQUIRED = (
+            "This step needs an interactive CLI session, but '{provider}' is configured for it. "
+            "Choose a CLI in AI Configuration (main menu)."
+        )
         LAUNCHING_ASSISTANT = "Launching {cli_name}..."
         PROMPT_PREVIEW = "Prompt: {prompt_preview}"
         BACK_IN_TITAN = "Back in Titan workflow"
@@ -87,6 +93,11 @@ class Messages:
         # Plugin / Core Errors
         PLUGIN_LOAD_FAILED = "Failed to load plugin '{plugin_name}': {error}"
         PLUGIN_INIT_FAILED = "Failed to initialize plugin '{plugin_name}': {error}"
+        PLUGIN_INCOMPATIBLE = "Plugin '{plugin_name}' is not compatible with this Titan CLI: {detail}"
+        PLUGIN_API_MISSING = (
+            "uses an API that does not exist in titan-cli {current} ({error}). "
+            "It was likely built for a different titan-cli version — update the plugin."
+        )
         CONFIG_PARSE_ERROR = "Failed to parse configuration file at {file_path}: {error}"
 
         # File system

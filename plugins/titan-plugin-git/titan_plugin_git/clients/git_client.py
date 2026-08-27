@@ -15,18 +15,21 @@ from .services import (
     CommitService,
     StatusService,
     DiffService,
+    MergeService,
     RemoteService,
     StashService,
     TagService,
     WorktreeService,
 )
 from ..models.view import (
+    UIFileChurn,
     UIGitBranch,
     UIGitCommit,
     UIGitStatus,
     UIGitTag,
     UIGitWorktree,
 )
+from ..models.view.merge import UIMergeResult
 from ..messages import msg
 
 
@@ -73,6 +76,7 @@ class GitClient:
         self.commit_service = CommitService(self.network, main_branch, default_remote)
         self.status_service = StatusService(self.network)
         self.diff_service = DiffService(self.network, default_remote)
+        self.merge_service = MergeService(self.network)
         self.remote_service = RemoteService(self.network)
         self.stash_service = StashService(self.network)
         self.tag_service = TagService(self.network)
@@ -303,6 +307,10 @@ class GitClient:
         """Get diff of all uncommitted changes."""
         return self.diff_service.get_uncommitted_diff()
 
+    def get_uncommitted_diff_for_files(self, files: list[str]) -> ClientResult[str]:
+        """Get diff of uncommitted changes limited to specific files."""
+        return self.diff_service.get_uncommitted_diff_for_files(files)
+
     def get_staged_diff(self) -> ClientResult[str]:
         """Get diff of staged changes only."""
         return self.diff_service.get_staged_diff()
@@ -330,6 +338,35 @@ class GitClient:
         """
         return self.diff_service.get_branch_diff(base_branch, head_branch, context_lines, use_remote)
 
+    def get_branch_numstat(
+        self, base_branch: str, head_branch: str, use_remote: bool = False
+    ) -> ClientResult[List[UIFileChurn]]:
+        """
+        Get per-file addition/deletion counters between two branches.
+
+        Args:
+            base_branch: Base branch name
+            head_branch: Head branch name
+            use_remote: If True, both branches are treated as remote refs (default: False)
+
+        Returns:
+            ClientResult[List[UIFileChurn]] with one entry per changed file
+        """
+        return self.diff_service.get_branch_numstat(base_branch, head_branch, use_remote)
+
+    def get_changed_files(self, base_ref: str, head_ref: str) -> ClientResult[List[str]]:
+        """
+        List the paths that differ between two refs (commits, branches or tags).
+
+        Args:
+            base_ref: Base ref, used verbatim (no remote prefixing)
+            head_ref: Head ref, used verbatim
+
+        Returns:
+            ClientResult[List[str]] with the changed paths
+        """
+        return self.diff_service.get_changed_files(base_ref, head_ref)
+
     def get_diff_stat(self, base_ref: str, head_ref: str = "HEAD") -> ClientResult[str]:
         """Get diff stat summary."""
         return self.diff_service.get_diff_stat(base_ref, head_ref)
@@ -346,6 +383,41 @@ class GitClient:
             f"{self.default_remote}/{base_branch}",
             head_branch
         )
+
+    # ===== Merge Methods =====
+
+    def merge(
+        self,
+        ref: str,
+        target_branch: str = "",
+        no_ff: bool = False
+    ) -> ClientResult[UIMergeResult]:
+        """Merge a ref into the current branch (conflicts are a valid outcome)."""
+        return self.merge_service.merge(ref, target_branch, no_ff)
+
+    def get_conflicted_files(self) -> ClientResult[List[str]]:
+        """List paths with unresolved conflicts."""
+        return self.merge_service.get_conflicted_files()
+
+    def get_unresolved_conflict_files(self) -> ClientResult[List[str]]:
+        """List unmerged paths whose content still contains conflict markers."""
+        return self.merge_service.get_unresolved_conflict_files()
+
+    def is_merge_in_progress(self) -> ClientResult[bool]:
+        """Check whether a merge is currently in progress."""
+        return self.merge_service.is_merge_in_progress()
+
+    def stage_all(self) -> ClientResult[None]:
+        """Stage every change in the working tree."""
+        return self.merge_service.stage_all()
+
+    def continue_merge(self, no_verify: bool = True) -> ClientResult[str]:
+        """Complete an in-progress merge using git's suggested message."""
+        return self.merge_service.continue_merge(no_verify)
+
+    def abort_merge(self) -> ClientResult[None]:
+        """Abort an in-progress merge and restore the pre-merge state."""
+        return self.merge_service.abort_merge()
 
     # ===== Remote Methods =====
 
@@ -439,6 +511,10 @@ class GitClient:
     def remove_worktree(self, path: str, force: bool = False) -> ClientResult[None]:
         """Remove a worktree."""
         return self.worktree_service.remove_worktree(path, force)
+
+    def prune_worktrees(self) -> ClientResult[None]:
+        """Prune stale worktree metadata for directories that no longer exist."""
+        return self.worktree_service.prune_worktrees()
 
     def list_worktrees(self) -> ClientResult[List[UIGitWorktree]]:
         """List all worktrees."""

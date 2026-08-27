@@ -9,6 +9,15 @@ from typing import List, Optional, Dict, Any
 
 from .user import NetworkUser
 from .review import NetworkReview
+from ...pr_enums import PRMergeableState, PRReviewDecision, PRState
+
+
+def _coerce_enum(value: Any, enum_cls, default):
+    """Coerce a raw API value into a StrEnum member safely."""
+    try:
+        return enum_cls(value)
+    except Exception:
+        return default
 
 
 @dataclass
@@ -39,26 +48,31 @@ class NetworkPullRequest:
         mergedAt: Merge timestamp if merged (ISO 8601, camelCase as in API)
         reviews: List of reviews
         labels: List of label objects with 'name' field
+        requestedReviewers: List of users requested to review the PR
     """
     number: int
     title: str
     body: str
-    state: str
+    state: PRState
     author: NetworkUser
     baseRefName: str  # Keep camelCase from API
     headRefName: str  # Keep camelCase from API
     additions: int = 0
     deletions: int = 0
     changedFiles: int = 0  # Keep camelCase from API
-    mergeable: str = "UNKNOWN"  # String: MERGEABLE | CONFLICTING | UNKNOWN
+    mergeable: PRMergeableState = PRMergeableState.UNKNOWN
     isDraft: bool = False  # Keep camelCase from API
     createdAt: Optional[str] = None  # Keep camelCase from API
     updatedAt: Optional[str] = None  # Keep camelCase from API
     mergedAt: Optional[str] = None  # Keep camelCase from API
     reviews: List[NetworkReview] = field(default_factory=list)
     labels: List[Dict[str, Any]] = field(default_factory=list)  # Raw label objects
+    statusCheckRollup: List[Dict[str, Any]] = field(default_factory=list)
+    reviewDecision: Optional[PRReviewDecision] = None
     isCrossRepository: bool = False
     headRepositoryOwnerLogin: Optional[str] = None
+    headRepositoryName: Optional[str] = None
+    requestedReviewers: List[NetworkUser] = field(default_factory=list)  # Users requested to review
 
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> 'NetworkPullRequest':
@@ -85,26 +99,42 @@ class NetworkPullRequest:
         reviews_data = data.get("reviews", [])
         reviews = [NetworkReview.from_json(r) for r in reviews_data]
 
+        # Parse requested reviewers (gh CLI JSON field is "reviewRequests")
+        requested_reviewers_data = data.get("reviewRequests", [])
+        requested_reviewers = [NetworkUser.from_json(r) for r in requested_reviewers_data]
+
         return cls(
             number=data.get("number", 0),
             title=data.get("title", ""),
             body=data.get("body", ""),
-            state=data.get("state", "OPEN"),
+            state=_coerce_enum(data.get("state", PRState.OPEN), PRState, PRState.OPEN),
             author=author,
             baseRefName=data.get("baseRefName", ""),
             headRefName=data.get("headRefName", ""),
             additions=data.get("additions", 0),
             deletions=data.get("deletions", 0),
             changedFiles=data.get("changedFiles", 0),
-            mergeable=data.get("mergeable", "UNKNOWN"),
+            mergeable=_coerce_enum(
+                data.get("mergeable", PRMergeableState.UNKNOWN),
+                PRMergeableState,
+                PRMergeableState.UNKNOWN,
+            ),
             isDraft=data.get("isDraft", False),
             createdAt=data.get("createdAt"),
             updatedAt=data.get("updatedAt"),
             mergedAt=data.get("mergedAt"),
             reviews=reviews,
             labels=data.get("labels", []),  # Keep raw label objects
+            statusCheckRollup=data.get("statusCheckRollup", []),
+            reviewDecision=(
+                _coerce_enum(data.get("reviewDecision"), PRReviewDecision, None)
+                if data.get("reviewDecision") is not None
+                else None
+            ),
             isCrossRepository=data.get("isCrossRepository", False),
             headRepositoryOwnerLogin=(data.get("headRepositoryOwner") or {}).get("login"),
+            headRepositoryName=(data.get("headRepository") or {}).get("name"),
+            requestedReviewers=requested_reviewers,
         )
 
 

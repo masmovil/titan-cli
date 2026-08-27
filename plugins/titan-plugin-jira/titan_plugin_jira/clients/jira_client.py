@@ -429,6 +429,10 @@ class JiraClient:
             version_name=version_name,
         )
 
+    def assign_issue(self, issue_key: str, account_id: str) -> ClientResult[None]:
+        """Assign an existing issue to a user by account ID."""
+        return self._issue_service.assign_issue(issue_key=issue_key, account_id=account_id)
+
     def get_priorities(self) -> ClientResult[List[UIPriority]]:
         """
         Get all available priorities in Jira.

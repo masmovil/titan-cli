@@ -5,27 +5,12 @@ Widget for selecting a single option from a list with title and description.
 Similar to the workflow selection interface.
 """
 
-from typing import Callable, List, Any
-from dataclasses import dataclass
+from typing import Any, Callable, List
 from textual.widget import Widget
 from textual.widgets import OptionList
 from textual.widgets.option_list import Option
+from titan_cli.engine.option_item import OptionItem
 from .text import BoldText, DimText
-
-
-@dataclass
-class OptionItem:
-    """
-    Option for option list selection.
-
-    Attributes:
-        value: The value to return when selected (can be any type)
-        title: The title text (rendered in bold)
-        description: Optional description text (rendered in dim)
-    """
-    value: Any
-    title: str
-    description: str = ""
 
 
 class PromptOptionList(Widget):

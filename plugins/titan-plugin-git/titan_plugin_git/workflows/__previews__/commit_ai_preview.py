@@ -11,7 +11,6 @@ from titan_cli.ui.components.spacer import SpacerRenderer
 from titan_cli.engine.mock_context import (
     MockGitClient,
     MockAIClient,
-    MockSecretManager,
 )
 from titan_cli.engine import WorkflowContext
 from titan_cli.engine.ui_container import UIComponents
@@ -46,11 +45,8 @@ def create_commit_ai_mock_context() -> WorkflowContext:
 
     ai = MockAIClient()
 
-    secrets = MockSecretManager()
-
     # Build context
     ctx = WorkflowContext(
-        secrets=secrets,
         ui=ui,
         views=views
     )

@@ -24,6 +24,9 @@ class SavedQueries:
     MY_OPEN_ISSUES = 'project = {project} AND assignee = currentUser() AND status IN ("Open", "Ready to Dev") ORDER BY updated DESC'
     """Issues assigned to you that are Open or Ready to Dev in the specified project"""
 
+    READY_TO_DEV_ISSUES = 'project = {project} AND status = "Ready to Dev" ORDER BY updated DESC'
+    """All issues that are Ready to Dev in the specified project (regardless of assignee), ordered by last updated"""
+
     MY_ISSUES = "assignee = currentUser() ORDER BY updated DESC"
     """All issues assigned to you (including Done)"""
 

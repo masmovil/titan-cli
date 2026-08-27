@@ -6,14 +6,23 @@
       "steps": [
         {"name": "search_saved_query", "summary": "Search Jira issues using a named saved query."},
         {"name": "search_jql", "summary": "Search Jira issues using explicit JQL from workflow context."},
-        {"name": "prompt_select_issue", "summary": "Prompt the user to select one issue from search results."}
+        {"name": "prompt_select_issue", "summary": "Prompt the user to select one issue from search results."},
+        {"name": "select_jira_issue", "summary": "Resolve a Jira issue key from a number, a full key, or a text search."}
       ]
     },
     {
       "name": "Issue Retrieval and Analysis",
       "steps": [
         {"name": "get_issue", "summary": "Fetch full details for a selected Jira issue."},
+        {"name": "get_comments", "summary": "Fetch all comments for a Jira issue."},
         {"name": "ai_analyze_issue_requirements", "summary": "Generate an AI-assisted requirements analysis for the selected issue."}
+      ]
+    },
+    {
+      "name": "AI Planning Handoff",
+      "steps": [
+        {"name": "build_jira_task_context", "summary": "Build the full AI prompt for planning work on a Jira issue."},
+        {"name": "confirm_and_assign_issue", "summary": "Offer to assign the current issue to the user in Jira."}
       ]
     },
     {
@@ -37,7 +46,7 @@
         {"name": "select_issue_priority", "summary": "Choose the Jira issue priority."},
         {"name": "ai_enhance_issue_description", "summary": "Expand the raw issue request into title and description using AI."},
         {"name": "review_issue_description", "summary": "Review and optionally edit the generated issue content."},
-        {"name": "confirm_auto_assign", "summary": "Ask whether the new issue should be self-assigned."},
+        {"name": "confirm_assignee_for_new_issue", "summary": "Ask whether the new issue should be self-assigned."},
         {"name": "create_generic_issue", "summary": "Create a Jira issue from the prepared workflow context."}
       ]
     }

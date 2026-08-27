@@ -5,8 +5,6 @@ from dataclasses import dataclass, field
 
 from titan_cli.engine.interaction.headless import HeadlessInteractionPort
 from titan_cli.engine.interaction.textual import TextualInteractionPort
-from titan_cli.core.secrets import SecretManager
-
 
 @dataclass
 class WorkflowContext:
@@ -17,7 +15,7 @@ class WorkflowContext:
     - Dependency injection (clients, services)
     - Shared data storage between steps
     - Textual TUI components
-    - Access to secrets
+    - Namespace-scoped secret management (`secret_broker`)
 
     UI Architecture:
         ctx.textual.text     # Textual TUI components
@@ -26,8 +24,10 @@ class WorkflowContext:
         ctx.textual.prompts
     """
 
-    # Core dependencies
-    secrets: SecretManager
+    # Namespace-scoped secrets API for the current step, assigned per step by
+    # the executor. A step can store/check/delete secrets in its own
+    # namespace; there is deliberately no way to read a value back.
+    secret_broker: Optional[Any] = None
 
     # Legacy Textual TUI components (for compatibility during refactor)
     textual: Optional[Any] = None
@@ -36,12 +36,19 @@ class WorkflowContext:
     # Plugin registry
     plugin_manager: Optional[Any] = None
 
+    # TitanConfig instance (for steps that need to persist user preferences)
+    titan_config: Optional[Any] = None
+
     # Service clients (populated by builder)
     ai: Optional[Any] = None
+    # AIExecutor - resolves and runs AI calls on the provider the user chose per task
+    ai_router: Optional[Any] = None
     git: Optional[Any] = None
     github: Optional[Any] = None
     github_managers: Optional[Any] = None
     jira: Optional[Any] = None
+    slack: Optional[Any] = None
+    docker: Optional[Any] = None
 
     # Workflow metadata (set by executor)
     workflow_name: Optional[str] = None

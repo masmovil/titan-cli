@@ -6,7 +6,9 @@ Shared formatting functions for converting network data to UI-friendly strings.
 All presentation/display logic should use these utilities for consistency.
 """
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
+
+from .pr_enums import PRReviewDecision, PRState
 
 
 def format_date(iso_date: str) -> str:
@@ -34,7 +36,7 @@ def format_date(iso_date: str) -> str:
         return iso_date
 
 
-def get_pr_status_icon(state: str, is_draft: bool) -> str:
+def get_pr_status_icon(state: PRState | str, is_draft: bool) -> str:
     """
     Get emoji icon for PR state.
 
@@ -51,13 +53,15 @@ def get_pr_status_icon(state: str, is_draft: bool) -> str:
         >>> get_pr_status_icon("OPEN", True)
         '📝'
     """
-    if state == "MERGED":
+    state_value = str(state)
+
+    if state_value == PRState.MERGED:
         return "🟣"
-    elif state == "CLOSED":
+    elif state_value == PRState.CLOSED:
         return "🔴"
     elif is_draft:
         return "📝"
-    elif state == "OPEN":
+    elif state_value == PRState.OPEN:
         return "🟢"
     return "⚪"
 
@@ -150,6 +154,59 @@ def calculate_review_summary(reviews: list) -> str:
         return f"💬 {len(reviews)} comments"
 
 
+def summarize_status_check_rollup(status_check_rollup: list[dict[str, Any]]) -> str:
+    """Summarize PR checks into a compact human-readable string."""
+    check_runs = [check for check in status_check_rollup if check.get("__typename") == "CheckRun"]
+
+    if not check_runs:
+        return "No checks"
+
+    passing = 0
+    failing = 0
+    pending = 0
+
+    for check in check_runs:
+        status = str(check.get("status", "")).upper()
+        conclusion = check.get("conclusion")
+        conclusion = str(conclusion).upper() if conclusion is not None else None
+
+        if status != "COMPLETED" or conclusion is None:
+            pending += 1
+        elif conclusion in {"SUCCESS", "NEUTRAL", "SKIPPED"}:
+            passing += 1
+        elif conclusion in {"FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "CANCELLED", "STARTUP_FAILURE", "STALE"}:
+            failing += 1
+        else:
+            pending += 1
+
+    parts = []
+    if failing:
+        parts.append(f"{failing} failing")
+    if pending:
+        parts.append(f"{pending} pending")
+    if passing:
+        parts.append(f"{passing} passing")
+
+    return ", ".join(parts) if parts else "No checks"
+
+
+def summarize_review_status(review_decision: Optional[PRReviewDecision | str], is_draft: bool) -> str:
+    """Summarize PR review state for list displays."""
+    if is_draft:
+        return "draft"
+
+    mapping = {
+        PRReviewDecision.APPROVED: "approved",
+        PRReviewDecision.CHANGES_REQUESTED: "changes requested",
+        PRReviewDecision.REVIEW_REQUIRED: "review required",
+    }
+    if review_decision:
+        normalized = str(review_decision)
+        return mapping.get(normalized, normalized.lower())
+
+    return "ready for review"
+
+
 def get_review_state_icon(state: str) -> str:
     """
     Get icon for review state.
@@ -204,6 +261,8 @@ __all__ = [
     "format_pr_stats",
     "format_branch_info",
     "calculate_review_summary",
+    "summarize_status_check_rollup",
+    "summarize_review_status",
     "get_review_state_icon",
     "format_short_sha",
 ]

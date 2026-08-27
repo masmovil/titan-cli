@@ -1,0 +1,8 @@
+name: "Docker Status"
+description: "Show the current state of every Docker Compose service for this project"
+
+steps:
+  - id: compose_status
+    name: "Docker Compose Status"
+    plugin: docker
+    step: compose_status

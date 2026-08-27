@@ -8,6 +8,36 @@ from .app import TitanApp
 __all__ = ["TitanApp"]
 
 
+def _run_app(app: TitanApp) -> None:
+    """
+    Run the app, then guarantee the process actually exits.
+
+    Workflow steps run on non-daemon executor threads that the interpreter
+    joins at exit. Blocking calls made from them are interruptible and notice
+    the app closing within half a second - but if any future call slips through
+    without that escape, the console would hang after the TUI is gone until a
+    second Ctrl+C. Waiting briefly and then forcing the exit turns that worst
+    case into a short pause instead of a hang.
+    """
+    import logging
+    import os
+    import threading
+
+    app.run()
+
+    for _ in range(6):  # up to ~3s for worker threads to notice the app closed
+        lingering = [
+            t for t in threading.enumerate()
+            if t is not threading.current_thread() and not t.daemon
+        ]
+        if not lingering:
+            return
+        lingering[0].join(timeout=0.5)
+
+    logging.shutdown()
+    os._exit(0)
+
+
 def launch_tui(debug: bool = False, devtools: bool = False):
     """
     Launch the Titan TUI application.
@@ -81,7 +111,7 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                 def on_project_wizard_complete(_=None):
                     """After project wizard completes, show main menu."""
                     # Reload project config without resetting plugins
-                    from titan_cli.core.secrets import SecretManager
+                    from titan_cli.core.security import create_broker_factory
                     from titan_cli.core.models import TitanConfigModel
 
                     _project_root = find_project_root()
@@ -92,11 +122,11 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                     merged = self.config._merge_configs(self.config.global_config, self.config.project_config)
                     self.config.config = TitanConfigModel(**merged)
 
-                    # Update secrets manager to use project root
-                    self.config.secrets = SecretManager(project_path=_project_root)
+                    # Rebuild the broker factory against the project root
+                    self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
                     # Initialize only the configured plugins (without reset)
-                    self.config.registry.initialize_plugins(config=self.config, secrets=self.config.secrets)
+                    self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
 
                     # Reload workflow registry to reflect enabled/disabled plugins
                     self.config.workflows.reload()
@@ -132,7 +162,7 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                         )
                     else:
                         # Project is configured, reload configs without resetting plugins
-                        from titan_cli.core.secrets import SecretManager
+                        from titan_cli.core.security import create_broker_factory
                         from titan_cli.core.models import TitanConfigModel
 
                         self.config.project_config_path = project_config_path
@@ -142,11 +172,11 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                         merged = self.config._merge_configs(self.config.global_config, self.config.project_config)
                         self.config.config = TitanConfigModel(**merged)
 
-                        # Update secrets manager to use project root
-                        self.config.secrets = SecretManager(project_path=_project_root)
+                        # Rebuild the broker factory against the project root
+                        self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
                         # Initialize plugins with new config
-                        self.config.registry.initialize_plugins(config=self.config, secrets=self.config.secrets)
+                        self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
 
                         # Reload workflow registry to reflect enabled/disabled plugins
                         self.config.workflows.reload()
@@ -161,7 +191,7 @@ def launch_tui(debug: bool = False, devtools: bool = False):
 
         # Create app with the flow screen
         app = TitanApp(config=config, initial_screen=WizardFlowScreen(config))
-        app.run()
+        _run_app(app)
         return
 
     # Global config exists, check if project config exists at project root (git root or cwd)
@@ -191,7 +221,7 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                 def on_project_wizard_complete(_=None):
                     """After project wizard completes, show main menu."""
                     # Reload project config without resetting plugins
-                    from titan_cli.core.secrets import SecretManager
+                    from titan_cli.core.security import create_broker_factory
                     from titan_cli.core.models import TitanConfigModel
 
                     _project_root = find_project_root()
@@ -202,11 +232,11 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                     merged = self.config._merge_configs(self.config.global_config, self.config.project_config)
                     self.config.config = TitanConfigModel(**merged)
 
-                    # Update secrets manager to use project root
-                    self.config.secrets = SecretManager(project_path=_project_root)
+                    # Rebuild the broker factory against the project root
+                    self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
                     # Initialize only the configured plugins (without reset)
-                    self.config.registry.initialize_plugins(config=self.config, secrets=self.config.secrets)
+                    self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
 
                     # Reload workflow registry to reflect enabled/disabled plugins
                     self.config.workflows.reload()
@@ -223,11 +253,11 @@ def launch_tui(debug: bool = False, devtools: bool = False):
 
         # Create app with the flow screen
         app = TitanApp(config=config, initial_screen=ProjectWizardFlowScreen(config))
-        app.run()
+        _run_app(app)
         return
 
     # Both global and project configs exist: Initialize normally with plugins
     plugin_registry = PluginRegistry()
     config = TitanConfig(registry=plugin_registry)  # Plugins will initialize here
     app = TitanApp(config=config)
-    app.run()
+    _run_app(app)

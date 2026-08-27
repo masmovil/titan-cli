@@ -56,15 +56,17 @@ class TitanPlugin(ABC):
         """
         return []
 
-    def initialize(self, config: Any, secrets: Any) -> None:
+    def initialize(self, config: Any, broker: Any) -> None:
         """
-        Initialize plugin with configuration and secrets.
-        
+        Initialize plugin with configuration and its scoped secret broker.
+
         Called once when plugin is loaded by PluginRegistry.
-        
+
         Args:
             config: TitanConfig instance
-            secrets: SecretManager instance
+            broker: SecretBroker scoped to this plugin's namespace. It can
+                store/check/delete secrets and build authenticated clients,
+                but never read a value back.
         """
         pass
 
@@ -92,6 +94,14 @@ class TitanPlugin(ABC):
         Returns:
             Plugin-specific managers container or None
         """
+        return None
+
+    def has_custom_config_screen(self) -> bool:
+        """Return whether this plugin provides a custom configuration screen."""
+        return False
+
+    def create_config_screen(self, config: Any) -> Optional[Any]:
+        """Create a plugin-specific configuration screen when supported."""
         return None
 
     def get_steps(self) -> Dict[str, Callable]:

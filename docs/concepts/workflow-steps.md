@@ -298,7 +298,6 @@ Example YAML:
     prompt_template: "Help me fix these failing tests:\n\n{context}"
     ask_confirmation: true
     fail_on_decline: false
-    cli_preference: "auto"
 ```
 
 Supported params:
@@ -307,21 +306,26 @@ Supported params:
 - `prompt_template`: prompt template using `{context}` placeholder
 - `ask_confirmation`: ask the user before launching the assistant
 - `fail_on_decline`: return `Error` instead of `Skip` if the user declines
-- `cli_preference`: `"auto"`, `"claude"`, or `"gemini"`
-- `pre_launch_warning`: optional warning text shown before CLI selection
+- `pre_launch_warning`: optional warning text shown just before the CLI starts
+
+Which CLI runs is **not** a step param. It is the default CLI chosen once in
+**AI Configuration → CLI**, so every workflow uses the same one and nothing is asked
+mid-run. Users can also route this task to `Off` under **AI Configuration → AI per task**,
+in which case the step skips.
 
 Behavior:
 
 - returns `Skip` if there is no context under `context_key`
-- returns `Skip` if no supported assistant CLI is available
+- returns `Skip` if no supported assistant CLI is installed at all
+- returns `Skip` if the user turned this task off
 - returns `Error` if required params are missing or invalid
+- returns `Error` if no default CLI is configured, or the configured one is not installed
 - returns `Error` if the launched CLI exits with a non-zero code
 - returns `Success` when the assistant exits successfully
 
 Notes:
 
 - The step clears the consumed `context_key` from `ctx.data` after reading it, so later steps do not accidentally reuse stale context.
-- With `cli_preference: "auto"`, Titan selects an available CLI automatically or prompts if several are installed.
 - This step uses Titan's Textual UI and temporarily suspends the TUI while the external CLI runs.
 
 ## Recommended structure for public plugin steps

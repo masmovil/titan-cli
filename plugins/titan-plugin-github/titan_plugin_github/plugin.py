@@ -4,7 +4,7 @@ from typing import Optional
 
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker
 from titan_cli.core.plugins.models import GitHubPluginConfig
 from .clients.github_client import GitHubClient
 from .exceptions import GitHubError
@@ -28,7 +28,7 @@ class GitHubPlugin(TitanPlugin):
     def dependencies(self) -> list[str]:
         return ["git"]
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         """
         Initializes the GitHubClient.
         """
@@ -71,7 +71,6 @@ class GitHubPlugin(TitanPlugin):
         # Initialize client with validated configuration and git_client
         self._client = GitHubClient(
             config=validated_config,
-            secrets=secrets,
             git_client=git_client,
             repo_owner=repo_owner, # Pass detected/configured owner
             repo_name=repo_name, # Pass detected/configured name
@@ -133,7 +132,7 @@ class GitHubPlugin(TitanPlugin):
         Returns a dictionary of available workflow steps.
         """
         from .steps.create_pr_step import create_pr_step
-        from .steps.github_prompt_steps import prompt_for_pr_title_step, prompt_for_pr_body_step, prompt_for_issue_body_step, prompt_for_self_assign_step, prompt_for_labels_step
+        from .steps.github_prompt_steps import prompt_for_pr_title_step, prompt_for_pr_body_step, prompt_for_pr_draft_step, prompt_for_issue_body_step, prompt_for_self_assign_step, prompt_for_labels_step
         from .steps.ai_pr_step import ai_suggest_pr_description_step
         from .steps.issue_steps import ai_suggest_issue_title_and_body_step, create_issue_steps
         from .steps.preview_step import preview_and_confirm_issue_step
@@ -172,6 +171,7 @@ class GitHubPlugin(TitanPlugin):
             ai_review_findings,
             normalize_findings,
             dedupe_findings,
+            verify_findings,
             build_new_comment_actions,
             validate_review_actions,
             submit_review_actions,
@@ -181,11 +181,12 @@ class GitHubPlugin(TitanPlugin):
             normalize_thread_decisions,
             build_thread_actions,
         )
-        from .steps.select_cli_step import select_cli_step
+        from .steps.release_steps import select_release_step
         return {
             "create_pr": create_pr_step,
             "prompt_for_pr_title": prompt_for_pr_title_step,
             "prompt_for_pr_body": prompt_for_pr_body_step,
+            "prompt_for_pr_draft": prompt_for_pr_draft_step,
             "prompt_for_issue_body_step": prompt_for_issue_body_step,
             "prompt_for_self_assign": prompt_for_self_assign_step,
             "prompt_for_labels": prompt_for_labels_step,
@@ -210,8 +211,8 @@ class GitHubPlugin(TitanPlugin):
             # Code review steps
             "select_pr_for_code_review": select_pr_for_code_review,
             "fetch_pr_review_bundle": fetch_pr_review_bundle,
-            # CLI selection
-            "select_cli": select_cli_step,
+            # Releases
+            "select_release": select_release_step,
             # Phase 2: cheap context steps (pre-AI)
             "build_change_manifest": build_change_manifest,
             "build_existing_comments_index": build_existing_comments_index,
@@ -227,6 +228,7 @@ class GitHubPlugin(TitanPlugin):
             "ai_review_findings": ai_review_findings,
             "normalize_findings": normalize_findings,
             "dedupe_findings": dedupe_findings,
+            "verify_findings": verify_findings,
             # Phase 5: UI + submit
             "build_new_comment_actions": build_new_comment_actions,
             "validate_review_actions": validate_review_actions,

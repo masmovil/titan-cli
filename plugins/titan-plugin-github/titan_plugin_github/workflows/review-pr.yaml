@@ -7,11 +7,6 @@ steps:
     plugin: github
     step: select_pr_for_code_review
 
-  - id: select_cli
-    name: "Select AI CLI"
-    plugin: github
-    step: select_cli
-
   - id: fetch_bundle
     name: "Fetch PR Review Bundle"
     plugin: github
@@ -74,12 +69,6 @@ steps:
     step: ai_review_findings
     on_error: continue
 
-  - id: cleanup_worktree
-    name: "Cleanup PR Worktree"
-    plugin: github
-    step: cleanup_worktree
-    on_error: continue
-
   - id: normalize
     name: "Normalize Findings"
     plugin: github
@@ -89,6 +78,14 @@ steps:
     name: "Deduplicate Findings"
     plugin: github
     step: dedupe_findings
+
+  # Fail-open quality filter: refuted findings are dropped before the human gate;
+  # any verification failure just passes findings through unverified.
+  - id: verify
+    name: "Verify Findings"
+    plugin: github
+    step: verify_findings
+    on_error: continue
 
   - id: build_actions
     name: "Build Comment Actions"
@@ -106,4 +103,15 @@ steps:
     name: "Submit Review"
     plugin: github
     step: submit_review_actions
+    on_error: continue
+
+  # Backstop only: validate_actions releases the worktree itself right after
+  # precomputing every action's code context (so abandoning the review at an
+  # interactive gate can't leave a stale worktree). This step covers the paths that
+  # never reach validate_actions and the rare early-release failure.
+  # on_error: continue so a failed cleanup never masks the review's outcome.
+  - id: cleanup_worktree
+    name: "Cleanup PR Worktree"
+    plugin: github
+    step: cleanup_worktree
     on_error: continue

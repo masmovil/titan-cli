@@ -10,6 +10,8 @@ Each preview should create its own mock context with customized data.
 from typing import Optional
 from dataclasses import dataclass
 
+from titan_cli.core.result import ClientSuccess
+
 
 @dataclass
 class MockGitStatus:
@@ -96,7 +98,7 @@ class MockAIClient:
     def is_available(self) -> bool:
         return True
 
-    def generate(self, messages, max_tokens: int = 1000, temperature: float = 0.7):
+    def generate(self, messages, max_tokens: int = 1000, temperature: float = 0.7, json_schema=None):
         # Extract the prompt
         prompt = messages[0].content if messages else ""
 
@@ -145,24 +147,9 @@ class MockGitHubClient:
             "draft": draft
         }
 
-
-class MockSecretManager:
-    """Mock SecretManager for previews"""
-
-    def __init__(self, project_path=None):
-        self.project_path = project_path
-
-    def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
-        """Mock get secret - returns fake values"""
-        mock_secrets = {
-            "github_token": "ghp_mocktoken123",
-            "anthropic_api_key": "sk-ant-mock123",
-        }
-        return mock_secrets.get(key, default)
-
-    def set(self, key: str, value: str) -> None:
-        """Mock set secret - does nothing"""
-        pass
+    def list_labels(self):
+        """Mock repository labels for workflow previews."""
+        return ClientSuccess(data=["bug", "feature", "documentation"], message="Labels retrieved")
 
 
 # Export all mock classes for use in previews
@@ -172,5 +159,4 @@ __all__ = [
     "MockAIResponse",
     "MockAIClient",
     "MockGitHubClient",
-    "MockSecretManager",
 ]

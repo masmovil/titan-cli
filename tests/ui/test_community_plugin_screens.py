@@ -94,3 +94,77 @@ def test_plugin_management_remove_plugin_clears_project_and_global_source(mocker
 
     remove_project.assert_called_once_with("sample")
     config.clear_global_plugin_source.assert_called_once_with("sample")
+
+
+def _stable_record():
+    from titan_cli.core.plugins.community_sources import CommunityPluginRecord
+
+    return CommunityPluginRecord(
+        repo_url="https://github.com/example/sample-plugin",
+        package_name="sample",
+        titan_plugin_name="sample",
+        installed_at="",
+        channel=PluginChannel.STABLE,
+        dev_local_path=None,
+        requested_ref="0.10.0",
+        resolved_commit="c" * 40,
+    )
+
+
+def test_run_update_does_not_pin_an_incompatible_candidate(mocker):
+    import asyncio
+
+    config = MagicMock()
+    screen = PluginManagementScreen(config)
+    app = MagicMock()
+    mocker.patch.object(PluginManagementScreen, "app", new_callable=PropertyMock, return_value=app)
+
+    mocker.patch("titan_cli.ui.tui.screens.plugin_management.get_github_token", return_value=None)
+    mocker.patch("titan_cli.ui.tui.screens.plugin_management.check_for_update", return_value="0.12.0")
+    mocker.patch(
+        "titan_cli.core.plugins.community_sources.resolve_ref_to_commit_sha",
+        return_value=("d" * 40, None),
+    )
+    mocker.patch.object(
+        screen,
+        "_check_candidate_incompatibility",
+        return_value="requires titan-cli >=0.9, but titan-cli 0.8.0 is running.",
+    )
+    write_pin = mocker.patch.object(screen, "_update_project_stable_source")
+
+    asyncio.run(screen._run_update(_stable_record()))
+
+    write_pin.assert_not_called()
+    error_messages = [
+        call.kwargs | {"message": call.args[0]}
+        for call in app.notify.call_args_list
+    ]
+    assert any(
+        m.get("severity") == "error" and "requires titan-cli >=0.9" in m["message"]
+        for m in error_messages
+    )
+
+
+def test_check_candidate_incompatibility_only_blocks_on_positive_detection(mocker):
+    from titan_cli.core.plugins.community_sources import PluginHost
+
+    config = MagicMock()
+    screen = PluginManagementScreen(config)
+
+    fetch = mocker.patch(
+        "titan_cli.core.plugins.community_sources.fetch_pyproject_toml",
+        return_value=(None, "network_error"),
+    )
+    assert screen._check_candidate_incompatibility(
+        "https://github.com/example/sample-plugin", "e" * 40, PluginHost.GITHUB, None
+    ) is None
+    assert fetch.called
+
+    fetch.return_value = (
+        '[project]\nname = "sample"\ndependencies = ["titan-cli>=999.0"]',
+        None,
+    )
+    message = screen._check_candidate_incompatibility(
+        "https://github.com/example/sample-plugin", "e" * 40, PluginHost.GITHUB, None
+    )
+    assert message is not None and ">=999.0" in message

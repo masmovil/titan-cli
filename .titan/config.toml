@@ -1,3 +1,5 @@
+config_version = "1.0"
+
 [project]
 name = "titan-cli"
 type = "generic"
@@ -21,3 +23,33 @@ auto_assign_prs = true
 
 [plugins.jira]
 enabled = false
+
+[plugins.slack]
+enabled = true
+
+[plugins.slack.config]
+oauth_client_id = "6537700668563.11317707809587"
+default_team_id = "T06FTLLKNGK"
+default_team_name = "MasStack"
+granted_scopes = [
+    "identify",
+    "channels:history",
+    "groups:history",
+    "im:history",
+    "mpim:history",
+    "channels:read",
+    "groups:read",
+    "users:read",
+    "channels:write",
+    "chat:write",
+    "groups:write",
+    "im:write",
+    "mpim:write",
+]
+default_channels = [
+    "titan-cli",
+    "chapter-apps-general",
+    "chapter-apps-ios-ragnarok",
+    "chapter-apps-android-ragnarok",
+    "help-titan-cli",
+]

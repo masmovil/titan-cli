@@ -8,6 +8,8 @@ from titan_plugin_github.models.formatting import (
     format_pr_stats,
     format_branch_info,
     calculate_review_summary,
+    summarize_status_check_rollup,
+    summarize_review_status,
 )
 
 
@@ -167,3 +169,35 @@ class TestCalculateReviewSummary:
         ]
         result = calculate_review_summary(reviews)
         assert result == "✅ 2 approved"
+
+
+class TestSummarizeStatusCheckRollup:
+    def test_no_checks(self):
+        assert summarize_status_check_rollup([]) == "No checks"
+
+    def test_success_and_pending_and_failure(self):
+        rollup = [
+            {"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS"},
+            {"__typename": "CheckRun", "status": "IN_PROGRESS", "conclusion": None},
+            {"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "FAILURE"},
+        ]
+        assert summarize_status_check_rollup(rollup) == "1 failing, 1 pending, 1 passing"
+
+    def test_ignores_status_context_entries(self):
+        rollup = [
+            {"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS"},
+            {"__typename": "StatusContext", "state": "SUCCESS", "context": "danger/euskaltel"},
+            {"__typename": "StatusContext", "state": "SUCCESS", "context": "danger/yoigo"},
+        ]
+        assert summarize_status_check_rollup(rollup) == "1 passing"
+
+
+class TestSummarizeReviewStatus:
+    def test_draft_takes_precedence(self):
+        assert summarize_review_status("APPROVED", True) == "draft"
+
+    def test_review_required(self):
+        assert summarize_review_status("REVIEW_REQUIRED", False) == "review required"
+
+    def test_ready_for_review_fallback(self):
+        assert summarize_review_status(None, False) == "ready for review"

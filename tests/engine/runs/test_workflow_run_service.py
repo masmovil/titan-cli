@@ -39,6 +39,7 @@ def test_list_workflows_maps_registry_discovery():
 def test_start_workflow_creates_run_state():
     config = MagicMock()
     config.workflows.discover.return_value = []
+    config.workflows.get_workflow.return_value = None
     config.project_root = MagicMock()
     config.registry.list_installed.return_value = []
     service = WorkflowRunService(config=config)
@@ -55,7 +56,7 @@ def test_start_workflow_creates_run_state():
     assert run.events[-1].type == "run_result_emitted"
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_executes_successfully(mock_executor_cls, mock_secret_manager_cls):
     config = MagicMock()
@@ -86,7 +87,7 @@ def test_start_workflow_executes_successfully(mock_executor_cls, mock_secret_man
     mock_executor.execute.assert_called_once()
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_marks_failed_when_executor_returns_error(
     mock_executor_cls,
@@ -116,7 +117,7 @@ def test_start_workflow_marks_failed_when_executor_returns_error(
     assert run.events[-1].type == "run_result_emitted"
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_waits_for_prompt_when_interaction_is_required(
     mock_executor_cls,
@@ -150,7 +151,7 @@ def test_start_workflow_waits_for_prompt_when_interaction_is_required(
     assert run.events[-1].type == "prompt_requested"
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_consumes_preseeded_prompt_responses(
     mock_executor_cls,
@@ -191,7 +192,7 @@ def test_start_workflow_consumes_preseeded_prompt_responses(
     assert not any(event.type == "prompt_answered" for event in run.events)
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_exposes_markdown_events_in_headless_runs(
     mock_executor_cls,
@@ -228,7 +229,7 @@ def test_start_workflow_exposes_markdown_events_in_headless_runs(
     )
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_exposes_interaction_events_in_headless_runs(
     mock_executor_cls,
@@ -267,7 +268,7 @@ def test_start_workflow_exposes_interaction_events_in_headless_runs(
     assert run.events[-1].type == "interaction_requested"
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_prompt_response_resumes_run(
     mock_executor_cls,
@@ -326,7 +327,7 @@ def test_submit_prompt_response_resumes_run(
     assert seen_start_step_indexes == [0, 0]
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_resumes_run(
     mock_executor_cls,
@@ -386,7 +387,7 @@ def test_submit_interaction_response_resumes_run(
     assert state["calls"] == 2
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_emits_semantic_diff_output(
     mock_executor_cls,
@@ -428,7 +429,7 @@ def test_start_workflow_emits_semantic_diff_output(
     assert output.metadata["kind"] == "unified_patch"
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_supports_two_consecutive_option_lists(
     mock_executor_cls,
@@ -526,7 +527,7 @@ def test_submit_interaction_response_supports_two_consecutive_option_lists(
     assert completed.pending_interaction is None
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_exposes_item_review_interaction_events(
     mock_executor_cls,
@@ -584,7 +585,7 @@ def test_start_workflow_exposes_item_review_interaction_events(
     assert run.events[-1].type == "interaction_requested"
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_resumes_item_review_with_edit(
     mock_executor_cls,
@@ -668,7 +669,7 @@ def test_submit_interaction_response_resumes_item_review_with_edit(
     assert call_count["value"] == 2
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_fails_run_for_unknown_item_review_item(
     mock_executor_cls,
@@ -737,7 +738,7 @@ def test_submit_interaction_response_fails_run_for_unknown_item_review_item(
     assert "unknown item_id" in updated.events[-2].payload["message"]
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_fails_run_for_incomplete_item_review_without_exit(
     mock_executor_cls,
@@ -795,7 +796,7 @@ def test_submit_interaction_response_fails_run_for_incomplete_item_review_withou
     assert "must include one decision for every item" in updated.events[-2].payload["message"]
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_allows_partial_item_review_with_exit_requested(
     mock_executor_cls,
@@ -861,7 +862,7 @@ def test_submit_interaction_response_allows_partial_item_review_with_exit_reques
     assert call_count["value"] == 2
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_success_text_emits_visible_text_output_with_success_variant(
     mock_executor_cls,
@@ -898,7 +899,7 @@ def test_success_text_emits_visible_text_output_with_success_variant(
     assert outputs[1].payload["output"].metadata["variant"] == "muted"
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_loading_emits_progress_lifecycle_outputs(
     mock_executor_cls,
@@ -940,7 +941,7 @@ def test_loading_emits_progress_lifecycle_outputs(
     assert progress_outputs[0].metadata["progress_id"] == progress_outputs[1].metadata["progress_id"]
 
 
-@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_cancel_run_during_resuming_transitions_to_cancelled(
     mock_executor_cls,

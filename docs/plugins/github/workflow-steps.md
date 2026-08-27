@@ -12,6 +12,7 @@ For full contract details for every public step, including documented inputs, ou
 - [Pull Request Review](#pull-request-review)
 - [Code Review](#code-review)
 - [Worktree Support](#worktree-support)
+- [Releases](#releases)
 
 ## Summary
 
@@ -24,10 +25,10 @@ For full contract details for every public step, including documented inputs, ou
 | `ai_suggest_pr_description` | Pull Requests | `create-pr-ai` |
 | `prompt_for_pr_title` | Prompt and Selection | - |
 | `prompt_for_pr_body` | Prompt and Selection | - |
+| `prompt_for_pr_draft` | Prompt and Selection | `create-pr-ai` |
 | `prompt_for_issue_body_step` | Prompt and Selection | `create-issue-ai` |
 | `prompt_for_self_assign` | Prompt and Selection | `create-issue-ai` |
-| `prompt_for_labels` | Prompt and Selection | - |
-| `select_cli` | Prompt and Selection | - |
+| `prompt_for_labels` | Prompt and Selection | `create-pr-ai` |
 | `ai_suggest_issue_title_and_body` | Issue Creation | `create-issue-ai` |
 | `preview_and_confirm_issue` | Issue Creation | - |
 | `create_issue` | Issue Creation | `create-issue-ai` |
@@ -51,6 +52,7 @@ For full contract details for every public step, including documented inputs, ou
 | `ai_review_findings` | Code Review | - |
 | `normalize_findings` | Code Review | - |
 | `dedupe_findings` | Code Review | - |
+| `verify_findings` | Code Review | - |
 | `build_new_comment_actions` | Code Review | - |
 | `validate_review_actions` | Code Review | - |
 | `submit_review_actions` | Code Review | - |
@@ -61,6 +63,7 @@ For full contract details for every public step, including documented inputs, ou
 | `build_thread_actions` | Code Review | - |
 | `create_worktree` | Worktree Support | - |
 | `cleanup_worktree` | Worktree Support | - |
+| `select_release` | Releases | - |
 
 ## Pull Requests
 
@@ -78,10 +81,10 @@ Use these steps when a workflow needs interactive user input before creation or 
 
 - `prompt_for_pr_title`: capture a PR title interactively when one is not already available
 - `prompt_for_pr_body`: capture a PR body interactively when one is not already available
+- `prompt_for_pr_draft`: ask whether the PR should be created as draft
 - `prompt_for_issue_body_step`: capture the raw issue request before AI expansion
 - `prompt_for_self_assign`: ask whether the current user should be assigned to the issue
-- `prompt_for_labels`: prompt for labels to attach to an issue or PR
-- `select_cli`: choose which external CLI a workflow should use
+- `prompt_for_labels`: prompt for repository labels and save the selection to a configurable context key
 
 ## Issue Creation
 
@@ -120,6 +123,7 @@ These are advanced review-pipeline steps for structured AI-assisted code review.
 - `ai_review_findings`: run targeted AI analysis and produce candidate findings
 - `normalize_findings`: normalize raw findings into workflow-friendly structures
 - `dedupe_findings`: remove duplicate or overlapping findings before submission
+- `verify_findings`: adversarial AI pass that drops findings refuted against the code (fail-open)
 - `build_new_comment_actions`: translate findings into GitHub review actions
 - `validate_review_actions`: validate those review actions before posting
 - `submit_review_actions`: submit review comments or review actions to GitHub
@@ -135,6 +139,12 @@ Use these steps when a GitHub workflow should operate in a dedicated worktree.
 
 - `create_worktree`: create an isolated worktree for GitHub-focused workflow tasks
 - `cleanup_worktree`: remove a worktree created during workflow execution
+
+## Releases
+
+Use this step to let a workflow pick a published GitHub release and read its notes.
+
+- `select_release`: list published GitHub releases and select one to use as a notes source
 
 <!-- BEGIN GENERATED STEP CONTRACTS -->
 ## Detailed Step Contracts
@@ -179,6 +189,7 @@ How to read these contracts:
     | `pr_title` | str | The title of the pull request. |
     | `pr_body` | str, optional | The body/description of the pull request. |
     | `pr_head_branch` | str | The branch with the new changes. |
+    | `pr_base_branch` | str, optional | The branch to merge into. Defaults to the git plugin's configured main branch. |
     | `pr_is_draft` | bool, optional | Whether to create the PR as a draft. Defaults to False. |
     | `pr_reviewers` | list, optional | List of GitHub usernames or team slugs to request review from. |
     | `pr_excluded_reviewers` | list, optional | List of GitHub usernames to exclude from team expansion. |
@@ -440,6 +451,46 @@ How to read these contracts:
     | `Skip` | `pr_body` | If pr_body already exists. |
 
 
+??? info "`prompt_for_pr_draft`"
+    Ask whether the pull request should be created as a draft.
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: github
+      step: prompt_for_pr_draft
+    ```
+
+    **Used by built-in workflows:** `create-pr-ai`
+
+    **Available to later steps:** `pr_is_draft`
+
+    **Requires**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `ctx.textual` | - | Textual UI components. |
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `draft` | bool | None, optional | Draft mode from workflow params. Use True/False to skip the prompt, or None to ask interactively. |
+
+    **Outputs (saved to ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `pr_is_draft` | bool | Whether the PR should be created as a draft. |
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | `pr_is_draft` | If the draft preference was resolved successfully. |
+    | `Error` | - | If the user cancels or the prompt fails. |
+
+
 ??? info "`prompt_for_issue_body_step`"
     Interactively prompts the user for a GitHub issue body.
 
@@ -518,7 +569,7 @@ How to read these contracts:
 
 
 ??? info "`prompt_for_labels`"
-    Prompts the user to select labels for the issue.
+    Prompt the user to select repository labels and save them to context.
 
     **Workflow usage**
 
@@ -527,7 +578,9 @@ How to read these contracts:
       step: prompt_for_labels
     ```
 
-    **Available to later steps:** `labels`
+    **Used by built-in workflows:** `create-pr-ai`
+
+    **Available to later steps:** `<output_key>`
 
     **Requires**
 
@@ -537,48 +590,25 @@ How to read these contracts:
 
     **Inputs (from ctx.data)**
 
-    None documented.
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `output_key` | str, optional | Context key where selected labels should be stored. Defaults to "labels". |
+    | `prompt` | str, optional | Prompt text shown to the user. Defaults to "Select labels:". |
+    | `default_selected_key` | str, optional | Context key used to preselect labels. Defaults to output_key. |
 
     **Outputs (saved to ctx.data)**
 
     | Name | Type | Description |
     |------|------|-------------|
-    | `labels` | list[str] | Labels selected by the user. |
+    | `<output_key>` | list[str] | Labels selected by the user. |
 
     **Returns**
 
     | Result | Saved for later steps | Description |
     |--------|-----------------------|-------------|
-    | `Success` | `labels` | If label selection completes successfully. |
-    | `Skip` | `labels` | If the repository has no labels. |
+    | `Success` | `<output_key>` | If label selection completes successfully. |
+    | `Skip` | `<output_key>` | If the repository has no labels. |
     | `Error` | - | If the GitHub client is unavailable or the prompt fails. |
-
-
-??? info "`select_cli`"
-    Ask user to explicitly choose which AI CLI to use for PR analysis.
-
-    **Workflow usage**
-
-    ```yaml
-    - plugin: github
-      step: select_cli
-    ```
-
-    **Used by built-in workflows:** `review-pr`
-
-    **Inputs (from ctx.data)**
-
-    None documented.
-
-    **Outputs (saved to ctx.data)**
-
-    None documented.
-
-    **Returns**
-
-    | Result | Saved for later steps | Description |
-    |--------|-----------------------|-------------|
-    | `Success with the chosen CLI name stored in ctx.data` | - | - |
 
 
 ### Issue Creation
@@ -982,7 +1012,7 @@ How to read these contracts:
       step: select_pr_for_code_review
     ```
 
-    **Used by built-in workflows:** `review-pr`
+    **Used by built-in workflows:** `review-pr`, `review-pr-thread-resolution`
 
     **Available to later steps:** `review_pr_number`, `review_pr_title`, `review_pr_head`, `review_pr_base`
 
@@ -1016,7 +1046,7 @@ How to read these contracts:
       step: fetch_pr_review_bundle
     ```
 
-    **Used by built-in workflows:** `review-pr`
+    **Used by built-in workflows:** `review-pr`, `review-pr-thread-resolution`
 
     **Available to later steps:** `review_pr`, `review_diff`, `review_changed_files`, `review_changed_files_with_stats`, `review_commit_sha`, `review_threads`, `review_general_comments`, `pr_template`
 
@@ -1359,6 +1389,14 @@ How to read these contracts:
 ??? info "`ai_review_findings`"
     Second AI call: find actionable problems in the exact code context.
 
+    When `findings_synthesis_enabled` is `true` in the project review profile
+    (`.titan/review/profile.yaml`, default `false`) and the PR touches more than one
+    focus file, one extra best-effort cross-file synthesis batch runs after the
+    per-file batches: every reviewed file's hunks together (hunks_only, no expansion),
+    instructed to look only for cross-file inconsistencies introduced by the PR.
+    Skipped silently when the combined hunks exceed the prompt budget; its findings
+    are deduped against the per-file batches' findings before aggregation.
+
     **Workflow usage**
 
     ```yaml
@@ -1449,6 +1487,50 @@ How to read these contracts:
     | `Success or Error` | - | - |
 
 
+??? info "`verify_findings`"
+    Adversarial verification pass: one batched AI call (low effort) tries to REFUTE
+    each non-nit finding against the code it targets; findings refuted with evidence
+    are dropped before the human gate. Fail-open: any CLI, parse, or budget problem
+    keeps all findings. Gated by `findings_verification_enabled` in the project
+    review profile (`.titan/review/profile.yaml`, default `false` — opt in per
+    project; disabled by default because in observed real reviews the pass has
+    not refuted findings and only added latency).
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: github
+      step: verify_findings
+      on_error: continue
+    ```
+
+    **Used by built-in workflows:** `review-pr`
+
+    **Available to later steps:** `deduped_findings` (verified set), `refuted_findings`
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `deduped_findings` | List[Finding] | Findings after duplicate removal |
+    | `review_context_batches` | List[FocusContextBatch] | Source of the focused hunks shown to the verifier |
+    | `review_strategy` | ReviewStrategy | Prompt budget cap |
+
+    **Outputs (saved to ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `deduped_findings` | List[Finding] | Verified findings (refuted ones removed) |
+    | `refuted_findings` | List[Finding] | Findings dropped by the verifier, with reasons shown in the UI |
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | `deduped_findings`, `refuted_findings` | Verification applied. |
+    | `Skip` | - | No findings, only nits, verification disabled, no CLI, over budget, or verification failed (fail-open). |
+
+
 ??? info "`build_new_comment_actions`"
     Convert deduplicated findings into ReviewActionProposal objects.
 
@@ -1490,7 +1572,7 @@ How to read these contracts:
       step: validate_review_actions
     ```
 
-    **Used by built-in workflows:** `review-pr`
+    **Used by built-in workflows:** `review-pr`, `review-pr-thread-resolution`
 
     **Available to later steps:** `approved_action_proposals (List[ReviewActionProposal])`
 
@@ -1521,7 +1603,7 @@ How to read these contracts:
       step: submit_review_actions
     ```
 
-    **Used by built-in workflows:** `review-pr`
+    **Used by built-in workflows:** `review-pr`, `review-pr-thread-resolution`
 
     **Inputs (from ctx.data)**
 
@@ -1547,6 +1629,8 @@ How to read these contracts:
     - plugin: github
       step: build_thread_review_candidates
     ```
+
+    **Used by built-in workflows:** `review-pr-thread-resolution`
 
     **Available to later steps:** `thread_review_candidates (List[ThreadReviewCandidate])`
 
@@ -1577,7 +1661,15 @@ How to read these contracts:
       step: build_thread_review_contexts
     ```
 
+    **Used by built-in workflows:** `review-pr-thread-resolution`
+
     **Available to later steps:** `thread_review_contexts (List[ThreadReviewContext])`
+
+    **Requires**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `ctx.github` | - | Optional GitHub client used to inspect referenced commits. |
 
     **Inputs (from ctx.data)**
 
@@ -1605,6 +1697,8 @@ How to read these contracts:
     - plugin: github
       step: ai_thread_resolution
     ```
+
+    **Used by built-in workflows:** `review-pr-thread-resolution`
 
     **Available to later steps:** `raw_thread_decisions`
 
@@ -1635,6 +1729,8 @@ How to read these contracts:
       step: normalize_thread_decisions
     ```
 
+    **Used by built-in workflows:** `review-pr-thread-resolution`
+
     **Available to later steps:** `thread_decisions`
 
     **Inputs (from ctx.data)**
@@ -1663,6 +1759,8 @@ How to read these contracts:
     - plugin: github
       step: build_thread_actions
     ```
+
+    **Used by built-in workflows:** `review-pr-thread-resolution`
 
     **Available to later steps:** `review_action_proposals (List[ReviewActionProposal])`
 
@@ -1744,6 +1842,50 @@ How to read these contracts:
     |--------|-----------------------|-------------|
     | `Success` | - | Worktree cleaned up |
     | `Exit` | - | No worktree to cleanup |
+
+
+### Releases
+
+??? info "`select_release`"
+    List published GitHub releases and select one to use as a notes source.
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: github
+      step: select_release
+    ```
+
+    **Available to later steps:** `selected_release`, `selected_release_tag`, `selected_release_notes`, `selected_release_url`
+
+    **Requires**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `ctx.github` | - | An initialized GitHubClient. |
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `github_release_limit` | int, optional | Maximum number of releases to list. Defaults to 15. |
+
+    **Outputs (saved to ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `selected_release` | UIRelease | Selected GitHub release, including its notes body. |
+    | `selected_release_tag` | str | Tag name of the selected release. |
+    | `selected_release_notes` | str | Release notes body of the selected release. |
+    | `selected_release_url` | str | URL of the selected release. |
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | `selected_release`, `selected_release_tag`, `selected_release_notes`, `selected_release_url` | If a release is selected successfully. |
+    | `Skip` | `selected_release`, `selected_release_tag`, `selected_release_notes`, `selected_release_url` | If no published releases exist. |
+    | `Error` | - | If the GitHub client is not available or the request fails. |
 <!-- END GENERATED STEP CONTRACTS -->
 
 ## Docstring-based reference

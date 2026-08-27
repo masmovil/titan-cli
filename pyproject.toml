@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "titan-cli"
-version = "0.5.0"
+version = "0.8.0"
 description = "Modular development tools orchestrator - Streamline your workflows with AI integration and intuitive terminal UI"
 authors = ["MasOrange Apps Team <apps-management-stores@masorange.es>"]
 readme = "README.md"
@@ -23,11 +23,13 @@ packages = [
     {include = "titan_cli"},
     {include = "titan_plugin_git", from = "plugins/titan-plugin-git"},
     {include = "titan_plugin_github", from = "plugins/titan-plugin-github"},
-    {include = "titan_plugin_jira", from = "plugins/titan-plugin-jira"}
+    {include = "titan_plugin_jira", from = "plugins/titan-plugin-jira"},
+    {include = "titan_plugin_slack", from = "plugins/titan-plugin-slack"},
+    {include = "titan_plugin_docker", from = "plugins/titan-plugin-docker"}
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<4.0.0"
+python = ">=3.11,<4.0.0"
 typer = ">=0.20.0,<1.0.0"
 tomli = ">=2.0.0,<3.0.0"
 pydantic = ">=2.0.0,<3.0.0"
@@ -47,6 +49,7 @@ structlog = ">=25.5.0,<26.0.0"
 h2 = ">=4.1.0,<5.0.0"
 fastapi = ">=0.116.0,<1.0.0"
 uvicorn = ">=0.35.0,<1.0.0"
+slack-sdk = ">=3.27.0,<4.0.0"
 
 [tool.poetry.group.docs]
 optional = true
@@ -66,6 +69,8 @@ textual-dev = "^1.0.0"
 titan-plugin-git = {path = "plugins/titan-plugin-git", develop = true}
 titan-plugin-github = {path = "plugins/titan-plugin-github", develop = true}
 titan-plugin-jira = {path = "plugins/titan-plugin-jira", develop = true}
+titan-plugin-slack = {path = "plugins/titan-plugin-slack", develop = true}
+titan-plugin-docker = {path = "plugins/titan-plugin-docker", develop = true}
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -78,13 +83,17 @@ titan = "titan_cli.cli:app"
 git = "titan_plugin_git.plugin:GitPlugin"
 github = "titan_plugin_github.plugin:GitHubPlugin"
 jira = "titan_plugin_jira.plugin:JiraPlugin"
+slack = "titan_plugin_slack.plugin:SlackPlugin"
+docker = "titan_plugin_docker.plugin:DockerPlugin"
 
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
     "plugins/titan-plugin-git/tests",
     "plugins/titan-plugin-github/tests",
-    "plugins/titan-plugin-jira/tests"
+    "plugins/titan-plugin-jira/tests",
+    "plugins/titan-plugin-slack/tests",
+    "plugins/titan-plugin-docker/tests"
 ]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

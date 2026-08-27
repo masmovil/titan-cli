@@ -43,6 +43,8 @@ def sample_pr_json():
         "mergedAt": None,
         "reviews": [],
         "labels": [{"name": "feature"}, {"name": "backend"}],
+        "statusCheckRollup": [],
+        "reviewDecision": "REVIEW_REQUIRED",
         "isCrossRepository": False,
         "headRepositoryOwner": {"login": "test-owner"},
     }
@@ -69,6 +71,8 @@ def test_get_pull_request_success(pr_service, mock_gh_network, sample_pr_json):
     assert result.data.is_draft is False
     assert result.data.is_cross_repository is False
     assert result.data.head_repository_owner == "test-owner"
+    assert result.data.checks_summary == "No checks"
+    assert result.data.review_status_summary == "review required"
     assert "feature" in result.data.labels
     assert "backend" in result.data.labels
 
@@ -186,3 +190,102 @@ def test_merge_pr_failure(pr_service, mock_gh_network):
     assert result.data.merged is False
     assert result.data.status_icon == "❌"
     assert "not mergeable" in result.data.message.lower()
+
+
+def test_get_commit_review_context_success(pr_service, mock_gh_network):
+    """Test commit context retrieval for a referenced SHA."""
+    mock_gh_network.run_command.return_value = json.dumps(
+        {
+            "sha": "343e2e9d7402d0afccfd35a9ecc8e6ea341031c6",
+            "commit": {"message": "remove default state value"},
+            "files": [
+                {
+                    "filename": "freyja-core/src/main/kotlin/.../BaseDialog.kt",
+                    "status": "modified",
+                    "patch": "@@ -36,7 +35,7 @@\n-fun BaseDialog(dialogState: DialogState = remember { DialogState() })\n+fun BaseDialog(dialogState: DialogState)\n",
+                }
+            ],
+        }
+    )
+
+    result = pr_service.get_commit_review_context("343e2e9")
+
+    assert isinstance(result, ClientSuccess)
+    assert result.data.abbreviated_sha == "343e2e9"
+    assert result.data.changed_files == ["freyja-core/src/main/kotlin/.../BaseDialog.kt"]
+    assert "remove default state value" == result.data.message
+    assert "diff --git a/freyja-core/src/main/kotlin/.../BaseDialog.kt" in result.data.patch_excerpt
+    assert "repos/test-owner/test-repo/commits/343e2e9" in mock_gh_network.run_command.call_args[0][0][1]
+
+
+def test_get_commit_review_context_uses_head_repo_when_provided(pr_service, mock_gh_network):
+    """Test that repo_owner/repo_name override the configured base repo (fork PRs)."""
+    mock_gh_network.run_command.return_value = json.dumps(
+        {
+            "sha": "343e2e9d7402d0afccfd35a9ecc8e6ea341031c6",
+            "commit": {"message": "remove default state value"},
+            "files": [],
+        }
+    )
+
+    result = pr_service.get_commit_review_context(
+        "343e2e9", repo_owner="fork-owner", repo_name="fork-repo"
+    )
+
+    assert isinstance(result, ClientSuccess)
+    assert "repos/fork-owner/fork-repo/commits/343e2e9" in mock_gh_network.run_command.call_args[0][0][1]
+
+
+def test_get_commit_review_context_returns_parse_error_on_invalid_json(pr_service, mock_gh_network):
+    """Test invalid commit payload handling."""
+    mock_gh_network.run_command.return_value = "not json"
+
+    result = pr_service.get_commit_review_context("343e2e9")
+
+    assert isinstance(result, ClientError)
+    assert result.error_code == "PARSE_ERROR"
+
+
+def test_get_commit_review_context_returns_api_error_on_network_failure(pr_service, mock_gh_network):
+    """Test GitHub API failure handling."""
+    mock_gh_network.run_command.side_effect = GitHubAPIError("Not Found")
+
+    result = pr_service.get_commit_review_context("343e2e9")
+
+    assert isinstance(result, ClientError)
+    assert result.error_code == "API_ERROR"
+
+
+def test_get_pr_commit_sha_reads_head_ref_oid(pr_service, mock_gh_network):
+    """Test the head SHA comes from headRefOid, not from the commits list."""
+    mock_gh_network.run_command.return_value = json.dumps({"headRefOid": "4a999bc6"})
+
+    result = pr_service.get_pr_commit_sha(3355)
+
+    assert isinstance(result, ClientSuccess)
+    assert result.data == "4a999bc6"
+    args = mock_gh_network.run_command.call_args[0][0]
+    assert "headRefOid" in args
+    # gh caps the commits list at 100 entries, so its last element is not the head
+    # on long-lived PRs; anchoring comments to it gets them rejected as unresolvable.
+    assert "commits" not in args
+
+
+def test_get_pr_commit_sha_missing_head_returns_error(pr_service, mock_gh_network):
+    """Test an empty headRefOid is reported rather than passed on as a valid SHA."""
+    mock_gh_network.run_command.return_value = json.dumps({"headRefOid": ""})
+
+    result = pr_service.get_pr_commit_sha(123)
+
+    assert isinstance(result, ClientError)
+    assert result.error_code == "NO_COMMITS"
+
+
+def test_get_pr_commit_sha_returns_api_error_on_network_failure(pr_service, mock_gh_network):
+    """Test GitHub API failure handling."""
+    mock_gh_network.run_command.side_effect = GitHubAPIError("Not Found")
+
+    result = pr_service.get_pr_commit_sha(123)
+
+    assert isinstance(result, ClientError)
+    assert result.error_code == "API_ERROR"
