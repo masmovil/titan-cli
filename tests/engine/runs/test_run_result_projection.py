@@ -1,6 +1,7 @@
-from titan_cli.application.runtime.status import RunSessionStatus
-from titan_cli.application.runtime.run_session import RunSession
-from titan_cli.application.services.workflow_run_service import WorkflowRunService
+from titan_cli.engine.runs.status import RunSessionStatus
+from titan_cli.engine.runs.projection import build_run_result
+from titan_cli.engine.runs.session import RunSession
+from titan_cli.engine.runs.service import WorkflowRunService
 from titan_cli.ports.protocol import EventType
 from titan_cli.ports.protocol import OutputPayload
 from titan_cli.ports.protocol import StepRef
@@ -83,7 +84,7 @@ def test_workflow_service_projects_events_into_ui_result():
     )
     service._append_event(session, EventType.RUN_COMPLETED, {"message": "done"})
 
-    result = service._workflow_result_from_session(session)
+    result = build_run_result(session)
 
     assert result.run_id == "run-1"
     assert result.workflow_name == "analyze-jira-issues"
@@ -120,7 +121,7 @@ def test_workflow_service_marks_running_step_failed_from_workflow_failure():
     )
     service._append_event(session, EventType.RUN_FAILED, {"message": "boom"})
 
-    result = service._workflow_result_from_session(session)
+    result = build_run_result(session)
 
     assert result.steps[0].status == "failed"
     assert result.steps[0].error == "boom"
@@ -168,7 +169,7 @@ def test_workflow_service_projects_diff_output_metadata_into_terminal_result():
     )
     service._append_event(session, EventType.RUN_COMPLETED, {"message": "done"})
 
-    result = service._workflow_result_from_session(session)
+    result = build_run_result(session)
 
     assert result.steps[0].outputs[0].format == "diff"
     assert result.steps[0].outputs[0].metadata["kind"] == "unified_patch"
@@ -224,7 +225,7 @@ def test_workflow_service_projects_structured_summary_into_terminal_result():
     )
     service._append_event(session, EventType.RUN_COMPLETED, {"message": "done"})
 
-    result = service._workflow_result_from_session(session)
+    result = build_run_result(session)
 
     assert result.steps[0].outputs[0].format == "structured_summary"
     assert result.steps[0].outputs[0].metadata["kind"] == "pr_classification"

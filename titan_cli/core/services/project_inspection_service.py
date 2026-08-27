@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from titan_cli.application.models.responses import (
+from titan_cli.core.services.models import (
     PluginInspection,
     ProjectInspection,
     WorkflowSummary,

@@ -2,11 +2,11 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 import threading
 
-from titan_cli.application.models.requests import StartWorkflowRequest
-from titan_cli.application.models.requests import SubmitInteractionResponseRequest
-from titan_cli.application.models.requests import SubmitPromptResponseRequest
-from titan_cli.application.runtime.status import RunSessionStatus
-from titan_cli.application.services.workflow_run_service import WorkflowRunService
+from titan_cli.engine.runs.models import StartWorkflowRequest
+from titan_cli.engine.runs.models import SubmitInteractionResponseRequest
+from titan_cli.engine.runs.models import SubmitPromptResponseRequest
+from titan_cli.engine.runs.status import RunSessionStatus
+from titan_cli.engine.runs.service import WorkflowRunService
 from titan_cli.core.workflows.workflow_sources import WorkflowInfo
 from titan_cli.engine.results import Error, Success
 from titan_cli.ports.protocol import ContentBlock
@@ -51,11 +51,12 @@ def test_start_workflow_creates_run_state():
     assert run.workflow_name == "demo"
     assert run.status == RunSessionStatus.FAILED
     assert run.events[0].type == "run_started"
-    assert run.events[-1].type == "run_failed"
+    assert run.events[-2].type == "run_failed"
+    assert run.events[-1].type == "run_result_emitted"
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_executes_successfully(mock_executor_cls, mock_secret_manager_cls):
     config = MagicMock()
     workflow = MagicMock(name="workflow")
@@ -80,12 +81,13 @@ def test_start_workflow_executes_successfully(mock_executor_cls, mock_secret_man
     assert run.status == RunSessionStatus.COMPLETED
     assert run.result_message == "workflow ok"
     assert run.events[0].type == "run_started"
-    assert run.events[-1].type == "run_completed"
+    assert run.events[-2].type == "run_completed"
+    assert run.events[-1].type == "run_result_emitted"
     mock_executor.execute.assert_called_once()
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_marks_failed_when_executor_returns_error(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -110,11 +112,12 @@ def test_start_workflow_marks_failed_when_executor_returns_error(
     assert response.status == RunSessionStatus.FAILED
     assert run.status == RunSessionStatus.FAILED
     assert run.result_message == "boom"
-    assert run.events[-1].type == "run_failed"
+    assert run.events[-2].type == "run_failed"
+    assert run.events[-1].type == "run_result_emitted"
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_waits_for_prompt_when_interaction_is_required(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -147,8 +150,8 @@ def test_start_workflow_waits_for_prompt_when_interaction_is_required(
     assert run.events[-1].type == "prompt_requested"
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_consumes_preseeded_prompt_responses(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -188,8 +191,8 @@ def test_start_workflow_consumes_preseeded_prompt_responses(
     assert not any(event.type == "prompt_answered" for event in run.events)
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_exposes_markdown_events_in_headless_runs(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -225,8 +228,8 @@ def test_start_workflow_exposes_markdown_events_in_headless_runs(
     )
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_exposes_interaction_events_in_headless_runs(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -264,8 +267,8 @@ def test_start_workflow_exposes_interaction_events_in_headless_runs(
     assert run.events[-1].type == "interaction_requested"
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_prompt_response_resumes_run(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -317,13 +320,14 @@ def test_submit_prompt_response_resumes_run(
     assert updated.pending_prompt is None
     assert updated.prompt_history[-1].value == "hello"
     assert not any(event.type == "workflow_run_resumed" for event in updated.events)
-    assert updated.events[-1].type == "run_completed"
+    assert updated.events[-2].type == "run_completed"
+    assert updated.events[-1].type == "run_result_emitted"
     assert state["calls"] == 2
     assert seen_start_step_indexes == [0, 0]
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_resumes_run(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -377,12 +381,13 @@ def test_submit_interaction_response_resumes_run(
     assert updated is not None
     assert updated.status == RunSessionStatus.COMPLETED
     assert updated.pending_interaction is None
-    assert updated.events[-1].type == "run_completed"
+    assert updated.events[-2].type == "run_completed"
+    assert updated.events[-1].type == "run_result_emitted"
     assert state["calls"] == 2
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_emits_semantic_diff_output(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -423,8 +428,8 @@ def test_start_workflow_emits_semantic_diff_output(
     assert output.metadata["kind"] == "unified_patch"
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_supports_two_consecutive_option_lists(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -521,8 +526,8 @@ def test_submit_interaction_response_supports_two_consecutive_option_lists(
     assert completed.pending_interaction is None
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_exposes_item_review_interaction_events(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -579,8 +584,8 @@ def test_start_workflow_exposes_item_review_interaction_events(
     assert run.events[-1].type == "interaction_requested"
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_resumes_item_review_with_edit(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -658,12 +663,13 @@ def test_submit_interaction_response_resumes_item_review_with_edit(
     assert updated is not None
     assert updated.status == RunSessionStatus.COMPLETED
     assert updated.pending_interaction is None
-    assert updated.events[-1].type == "run_completed"
+    assert updated.events[-2].type == "run_completed"
+    assert updated.events[-1].type == "run_result_emitted"
     assert call_count["value"] == 2
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_fails_run_for_unknown_item_review_item(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -726,12 +732,13 @@ def test_submit_interaction_response_fails_run_for_unknown_item_review_item(
     assert updated is not None
     assert updated.status == RunSessionStatus.FAILED
     assert updated.pending_interaction is None
-    assert updated.events[-1].type == "run_failed"
-    assert "unknown item_id" in updated.events[-1].payload["message"]
+    assert updated.events[-2].type == "run_failed"
+    assert updated.events[-1].type == "run_result_emitted"
+    assert "unknown item_id" in updated.events[-2].payload["message"]
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_fails_run_for_incomplete_item_review_without_exit(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -783,12 +790,13 @@ def test_submit_interaction_response_fails_run_for_incomplete_item_review_withou
     assert updated is not None
     assert updated.status == RunSessionStatus.FAILED
     assert updated.pending_interaction is None
-    assert updated.events[-1].type == "run_failed"
-    assert "must include one decision for every item" in updated.events[-1].payload["message"]
+    assert updated.events[-2].type == "run_failed"
+    assert updated.events[-1].type == "run_result_emitted"
+    assert "must include one decision for every item" in updated.events[-2].payload["message"]
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_allows_partial_item_review_with_exit_requested(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -848,12 +856,13 @@ def test_submit_interaction_response_allows_partial_item_review_with_exit_reques
 
     assert updated is not None
     assert updated.status == RunSessionStatus.COMPLETED
-    assert updated.events[-1].type == "run_completed"
+    assert updated.events[-2].type == "run_completed"
+    assert updated.events[-1].type == "run_result_emitted"
     assert call_count["value"] == 2
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_success_text_emits_visible_text_output_with_success_variant(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -889,8 +898,8 @@ def test_success_text_emits_visible_text_output_with_success_variant(
     assert outputs[1].payload["output"].metadata["variant"] == "muted"
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_loading_emits_progress_lifecycle_outputs(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -931,8 +940,8 @@ def test_loading_emits_progress_lifecycle_outputs(
     assert progress_outputs[0].metadata["progress_id"] == progress_outputs[1].metadata["progress_id"]
 
 
-@patch("titan_cli.application.services.workflow_run_service.SecretManager")
-@patch("titan_cli.application.services.workflow_run_service.WorkflowExecutor")
+@patch("titan_cli.engine.runs.service.SecretManager")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_cancel_run_during_resuming_transitions_to_cancelled(
     mock_executor_cls,
     mock_secret_manager_cls,
@@ -1001,4 +1010,5 @@ def test_cancel_run_during_resuming_transitions_to_cancelled(
     assert resumed_state is not None
     assert resumed_state.status == RunSessionStatus.CANCELLED
     assert resumed_state.result_message == "stop while resuming"
-    assert resumed_state.events[-1].type == "run_cancelled"
+    assert resumed_state.events[-2].type == "run_cancelled"
+    assert resumed_state.events[-1].type == "run_result_emitted"

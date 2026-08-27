@@ -5,18 +5,18 @@ from datetime import datetime, timezone
 
 from typer.testing import CliRunner
 
-from titan_cli.application.models.requests import StartWorkflowRequest
-from titan_cli.application.models.responses import WorkflowRunState
-from titan_cli.application.runtime.run_session import RunSession
-from titan_cli.application.runtime.status import RunSessionStatus
-from titan_cli.application.models.responses import KnownPluginSummary
-from titan_cli.application.models.responses import PluginMutationResult
-from titan_cli.application.models.responses import PluginSourcePreview
-from titan_cli.application.models.responses import PluginInspection
-from titan_cli.application.models.responses import ProjectInspection
-from titan_cli.application.models.responses import WorkflowDetail
-from titan_cli.application.models.responses import WorkflowStepSummary
-from titan_cli.application.models.responses import WorkflowSummary
+from titan_cli.engine.runs.models import StartWorkflowRequest
+from titan_cli.engine.runs.models import WorkflowRunState
+from titan_cli.engine.runs.session import RunSession
+from titan_cli.engine.runs.status import RunSessionStatus
+from titan_cli.core.services.models import KnownPluginSummary
+from titan_cli.core.services.models import PluginMutationResult
+from titan_cli.core.services.models import PluginSourcePreview
+from titan_cli.core.services.models import PluginInspection
+from titan_cli.core.services.models import ProjectInspection
+from titan_cli.core.services.models import WorkflowDetail
+from titan_cli.core.services.models import WorkflowStepSummary
+from titan_cli.core.services.models import WorkflowSummary
 from titan_cli.cli import app
 from titan_cli.commands.headless.runs import _command_log_fields
 from titan_cli.commands.headless.runs import _event_log_fields
@@ -164,6 +164,15 @@ def test_headless_runs_start_passes_headless_request_and_outputs_event_stream(mo
                 )
             )
             session.status = RunSessionStatus.COMPLETED
+            # The runtime now owns the terminal snapshot event (run_result_emitted)
+            self._publish(
+                EngineEvent(
+                    type=EventType.RUN_RESULT_EMITTED,
+                    run_id=session.run_id,
+                    sequence=3,
+                    payload={"run_result": self.get_run(session.run_id).result},
+                )
+            )
 
         def snapshot_events(self, run_id, after_sequence=0):
             return [event for event in self.session.events if event.sequence > after_sequence]
@@ -267,6 +276,15 @@ def test_headless_runs_start_event_stream_outputs_json_lines(monkeypatch):
                 )
             )
             session.status = RunSessionStatus.COMPLETED
+            # The runtime now owns the terminal snapshot event (run_result_emitted)
+            self._publish(
+                EngineEvent(
+                    type=EventType.RUN_RESULT_EMITTED,
+                    run_id=session.run_id,
+                    sequence=3,
+                    payload={"run_result": self.get_run(session.run_id).result},
+                )
+            )
 
         def snapshot_events(self, run_id, after_sequence=0):
             return [event for event in self.session.events if event.sequence > after_sequence]
@@ -413,6 +431,15 @@ def test_headless_runs_start_event_stream_reads_prompt_response_from_stdin(monke
                     run_id=self.session.run_id,
                     sequence=3,
                     payload={"message": "done"},
+                )
+            )
+            # The runtime now owns the terminal snapshot event (run_result_emitted)
+            self._publish(
+                EngineEvent(
+                    type=EventType.RUN_RESULT_EMITTED,
+                    run_id=self.session.run_id,
+                    sequence=4,
+                    payload={"run_result": self.get_run(request.run_id).result},
                 )
             )
             return self.get_run(request.run_id)
@@ -607,6 +634,15 @@ def test_headless_runs_start_accepts_interaction_response_commands(monkeypatch):
                     run_id=self.session.run_id,
                     sequence=3,
                     payload={"message": "done"},
+                )
+            )
+            # The runtime now owns the terminal snapshot event (run_result_emitted)
+            self._publish(
+                EngineEvent(
+                    type=EventType.RUN_RESULT_EMITTED,
+                    run_id=self.session.run_id,
+                    sequence=4,
+                    payload={"run_result": self.get_run(request.run_id).result},
                 )
             )
             return self.get_run(request.run_id)

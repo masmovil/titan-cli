@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from titan_cli.application.runtime.run_session import RunSession
+from titan_cli.engine.runs.session import RunSession
 
 
 class RunStore:

@@ -1483,8 +1483,6 @@ How to read these contracts:
 ??? info "`validate_review_actions`"
     Present each ReviewActionProposal to the user for approval, editing, or skipping.
 
-    Uses the semantic `interaction.item_review` capability to render one actionable item at a time with portable content blocks such as `text`, `diff`, `markdown`, and `structured_summary`.
-
     **Workflow usage**
 
     ```yaml
@@ -1498,11 +1496,7 @@ How to read these contracts:
 
     **Inputs (from ctx.data)**
 
-    | Name | Type | Description |
-    |------|------|-------------|
-    | review_action_proposals (List[ReviewActionProposal]) | - | Proposed review actions to validate item by item. |
-    | review_diff (str, optional) | - | Full PR diff used to extract relevant diff context for each reviewed item. |
-    | review_threads (List[UICommentThread], optional) | - | Existing review threads used to provide contextual thread history in the interaction surface. |
+    None documented.
 
     **Outputs (saved to ctx.data)**
 

@@ -16,10 +16,12 @@ from fastapi import WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from titan_cli.application.models.requests import StartWorkflowRequest
-from titan_cli.application.models.requests import SubmitInteractionResponseRequest
-from titan_cli.application.models.requests import SubmitPromptResponseRequest
-from titan_cli.application.runtime.status import RunSessionStatus
+from titan_cli.engine.runs import (
+    StartWorkflowRequest,
+    SubmitInteractionResponseRequest,
+    SubmitPromptResponseRequest,
+    TERMINAL_SESSION_STATUSES,
+)
 from titan_cli.ports.protocol import CommandType
 from titan_cli.ports.protocol import EngineCommand
 from titan_cli.ports.protocol import EngineEvent
@@ -267,11 +269,12 @@ async def _relay_run_events(
     event_queue: Queue[EngineEvent],
 ) -> None:
     last_sequence = 0
-    result_event_emitted = False
 
     for event in service.snapshot_events(run_id, after_sequence=last_sequence):
         await websocket.send_json({"type": "runtime_event", "event": to_jsonable(event)})
         last_sequence = event.sequence
+        if event.type == EventType.RUN_RESULT_EMITTED:
+            return
 
     while True:
         try:
@@ -280,22 +283,12 @@ async def _relay_run_events(
             run_state = service.get_run(run_id)
             if run_state is None:
                 return
-            if run_state.status in {
-                RunSessionStatus.COMPLETED,
-                RunSessionStatus.FAILED,
-                RunSessionStatus.CANCELLED,
-            } and not result_event_emitted:
-                result = run_state.result
-                if result is not None:
-                    result_event = EngineEvent(
-                        type=EventType.RUN_RESULT_EMITTED,
-                        run_id=run_state.run_id,
-                        sequence=last_sequence + 1,
-                        payload={"run_result": result},
-                    )
+            if run_state.status in TERMINAL_SESSION_STATUSES:
+                for event in service.snapshot_events(run_id, after_sequence=last_sequence):
                     await websocket.send_json(
-                        {"type": "runtime_event", "event": to_jsonable(result_event)}
+                        {"type": "runtime_event", "event": to_jsonable(event)}
                     )
+                    last_sequence = event.sequence
                 return
             continue
 
@@ -304,3 +297,5 @@ async def _relay_run_events(
 
         await websocket.send_json({"type": "runtime_event", "event": to_jsonable(event)})
         last_sequence = event.sequence
+        if event.type == EventType.RUN_RESULT_EMITTED:
+            return

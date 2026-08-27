@@ -15,3 +15,12 @@ class RunSessionStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+TERMINAL_SESSION_STATUSES = frozenset(
+    {
+        RunSessionStatus.COMPLETED,
+        RunSessionStatus.FAILED,
+        RunSessionStatus.CANCELLED,
+    }
+)

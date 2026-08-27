@@ -6,7 +6,7 @@ from collections import defaultdict
 from queue import Queue
 import threading
 
-from titan_cli.application.runtime.run_store import RunStore
+from titan_cli.engine.runs.store import RunStore
 from titan_cli.ports.protocol import EngineEvent
 
 

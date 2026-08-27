@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from titan_cli.application.models.requests import StartWorkflowRequest
-from titan_cli.application.models.responses import WorkflowRunState
-from titan_cli.application.runtime.status import RunSessionStatus
+from titan_cli.engine.runs.models import StartWorkflowRequest
+from titan_cli.engine.runs.models import WorkflowRunState
+from titan_cli.engine.runs.status import RunSessionStatus
 from titan_cli.ports.protocol import EngineEvent
 from titan_cli.ports.protocol import EventType
 from titan_cli.ports.protocol import OutputFormat
@@ -66,12 +66,19 @@ class FakeWorkflowRunService:
 
     def snapshot_events(self, run_id: str, after_sequence: int = 0):
         assert run_id == self.run_id
-        assert after_sequence == 0
-        return []
+        return [
+            event
+            for event in self.run_state.events
+            if event.sequence > after_sequence
+        ]
+
+    def _emit(self, event: EngineEvent) -> None:
+        self.run_state.events.append(event)
+        self.queue.put(event)
 
     def execute_run(self, session, request: StartWorkflowRequest) -> None:
         self.run_state.status = RunSessionStatus.RUNNING
-        self.queue.put(
+        self._emit(
             EngineEvent(
                 type=EventType.RUN_STARTED,
                 run_id=self.run_id,
@@ -80,6 +87,15 @@ class FakeWorkflowRunService:
             )
         )
         self.run_state.status = RunSessionStatus.COMPLETED
+        # The runtime now owns the terminal snapshot event (run_result_emitted)
+        self._emit(
+            EngineEvent(
+                type=EventType.RUN_RESULT_EMITTED,
+                run_id=self.run_id,
+                sequence=2,
+                payload={"run_result": self.result},
+            )
+        )
 
     def get_run(self, run_id: str):
         assert run_id == self.run_id

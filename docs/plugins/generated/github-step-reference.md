@@ -1429,8 +1429,6 @@ Convert deduplicated findings into ReviewActionProposal objects.
 
 Present each ReviewActionProposal to the user for approval, editing, or skipping.
 
-Uses the semantic `interaction.item_review` capability to render one actionable item at a time with portable content blocks such as `text`, `diff`, `markdown`, and `structured_summary`.
-
 **How to read this contract**
 
 - `Inputs (from ctx.data)` shows what the step expects before it runs.
@@ -1447,14 +1445,6 @@ Uses the semantic `interaction.item_review` capability to render one actionable 
 **Used by built-in workflows:** `review-pr`
 
 **Available to later steps:** `approved_action_proposals (List[ReviewActionProposal])`
-
-**Inputs (from ctx.data)**
-
-| Name | Type | Description |
-|------|------|-------------|
-| review_action_proposals (List[ReviewActionProposal]) | - | Proposed review actions to validate item by item. |
-| review_diff (str, optional) | - | Full PR diff used to extract relevant diff context for each reviewed item. |
-| review_threads (List[UICommentThread], optional) | - | Existing review threads used to provide contextual thread history in the interaction surface. |
 
 **Outputs (saved to ctx.data)**
 

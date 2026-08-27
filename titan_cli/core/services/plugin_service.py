@@ -8,7 +8,7 @@ from typing import Any
 import tomli
 import tomli_w
 
-from titan_cli.application.models.responses import (
+from titan_cli.core.services.models import (
     KnownPluginSummary,
     PluginMutationResult,
     PluginSourcePreview,

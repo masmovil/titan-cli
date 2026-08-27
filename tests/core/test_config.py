@@ -1001,7 +1001,7 @@ def test_global_plugin_source_is_scoped_to_active_project(tmp_path: Path, monkey
 
         config_b.load(skip_plugin_init=True)
         assert config_b.get_plugin_source_channel("sample") == "dev_local"
-        assert config_b.get_plugin_source_path("sample") == Path("/tmp/sample-dev")
+        assert config_b.get_plugin_source_path("sample") == Path("/tmp/sample-dev").resolve()
 
         os.chdir(project_a)
         config_a = TitanConfig(skip_plugin_init=True)

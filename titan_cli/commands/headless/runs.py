@@ -8,10 +8,13 @@ from typing import Any, Optional
 
 import typer
 
-from titan_cli.application.models.requests import StartWorkflowRequest
-from titan_cli.application.models.requests import SubmitInteractionResponseRequest
-from titan_cli.application.models.requests import SubmitPromptResponseRequest
-from titan_cli.application.runtime.status import RunSessionStatus
+from titan_cli.engine.runs import (
+    StartWorkflowRequest,
+    SubmitInteractionResponseRequest,
+    SubmitPromptResponseRequest,
+    RunSessionStatus,
+    TERMINAL_SESSION_STATUSES,
+)
 from titan_cli.commands.headless.common import (
     fail_headless_command,
     parse_json_array,
@@ -21,7 +24,6 @@ from titan_cli.core.logging import get_logger
 from titan_cli.ports.protocol import CommandType
 from titan_cli.ports.protocol import EngineCommand
 from titan_cli.ports.protocol import EngineEvent
-from titan_cli.ports.protocol import EventType
 from titan_cli.runtime.container import TitanRuntimeContainer
 from titan_cli.runtime.output import to_jsonable
 
@@ -229,26 +231,13 @@ def _run_event_stream_mode(container: TitanRuntimeContainer, request: StartWorkf
                 )
                 return
 
-            if run_state.status in {
-                RunSessionStatus.COMPLETED,
-                RunSessionStatus.FAILED,
-                RunSessionStatus.CANCELLED,
-            }:
+            if run_state.status in TERMINAL_SESSION_STATUSES:
                 if resume_worker is not None:
-                    resume_worker.join(timeout=0)
+                    resume_worker.join(timeout=5.0)
                     resume_worker = None
-                run_worker.join(timeout=0)
+                run_worker.join(timeout=5.0)
                 _emit_live_events()
-                if run_state.result is not None:
-                    result_event = EngineEvent(
-                        type=EventType.RUN_RESULT_EMITTED,
-                        run_id=run_state.run_id,
-                        sequence=last_sequence + 1,
-                        payload={"run_result": run_state.result},
-                    )
-                    _log_outbound_event(result_event)
-                    typer.echo(json.dumps(to_jsonable(result_event)))
-                    last_sequence = result_event.sequence
+                _emit_snapshot()
                 _log_protocol_state(
                     "headless_event_stream_finished",
                     run_id=session.run_id,

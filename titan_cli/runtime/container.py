@@ -1,11 +1,11 @@
 """Dependency composition for Titan command entrypoints."""
 
-from titan_cli.application.services.project_inspection_service import (
+from titan_cli.core.services.ai_connection_service import AIConnectionService
+from titan_cli.core.services.plugin_service import PluginService
+from titan_cli.core.services.project_inspection_service import (
     ProjectInspectionService,
 )
-from titan_cli.application.services.ai_connection_service import AIConnectionService
-from titan_cli.application.services.plugin_service import PluginService
-from titan_cli.application.services.workflow_run_service import WorkflowRunService
+from titan_cli.engine.runs.service import WorkflowRunService
 from titan_cli.core.config import TitanConfig
 
 
