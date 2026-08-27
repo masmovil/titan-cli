@@ -37,6 +37,7 @@ class TitanApp(App):
         Binding("q", "quit", "Quit", priority=True),
         Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
         Binding("ctrl+shift+c", "toggle_copy_mode", "Copy Mode"),
+        Binding("f2", "quick_cli", "AI CLI"),
         Binding("?", "help", "Help"),
     ]
 
@@ -95,6 +96,31 @@ class TitanApp(App):
 
         # TUI is automatically restored here
         return exit_code
+
+    def action_quick_cli(self) -> None:
+        """Open the quick default-CLI picker from any screen."""
+        from titan_cli.ai.router.availability import AIAvailabilityChecker
+        from titan_cli.core.security import create_broker_factory
+        from titan_cli.ui.tui.screens.ai_routing import QuickCliModal, installed_clis
+
+        if isinstance(self.screen, QuickCliModal):
+            return
+
+        ai_config = self.config.config.ai if self.config.config else None
+        broker = create_broker_factory(self.config.project_root).for_plugin("core")
+        checker = AIAvailabilityChecker(ai_config, broker)
+        installed = installed_clis(
+            checker.available_headless_clis(), checker.available_interactive_clis()
+        )
+        current = ai_config.default_cli if ai_config else None
+
+        def on_picked(cli_name) -> None:
+            if not cli_name or cli_name == current:
+                return
+            self.config.set_default_ai_cli(cli_name)
+            self.notify(f"Titan will run {cli_name}.")
+
+        self.push_screen(QuickCliModal(installed, current=current), callback=on_picked)
 
     def action_toggle_copy_mode(self) -> None:
         """Toggle copy mode - disables mouse capture to allow text selection."""

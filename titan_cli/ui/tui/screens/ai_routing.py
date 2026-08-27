@@ -279,6 +279,91 @@ class SelectProviderTypeModal(ModalScreen[Optional[str]]):
         self.dismiss(None)
 
 
+class QuickCliModal(ModalScreen[Optional[str]]):
+    """
+    Quick picker for the global default CLI, reachable from any screen via a keybinding.
+
+    The same single choice the AI Configuration screen's CLI section offers, without the
+    navigation: pick a CLI, Enter saves, Escape leaves everything untouched. Dismisses
+    with the chosen CLI command name, or `None` if cancelled.
+    """
+
+    DEFAULT_CSS = """
+    QuickCliModal {
+        align: center middle;
+    }
+
+    #quick-cli-container {
+        width: 74;
+        height: auto;
+        max-height: 26;
+        background: $surface-lighten-1;
+        border: solid $primary;
+        padding: 2;
+    }
+
+    #quick-cli-list {
+        height: auto;
+        max-height: 16;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [("escape", "dismiss_modal", "Cancel")]
+
+    def __init__(self, installed: Sequence[str], *, current: Optional[str], **kwargs):
+        super().__init__(**kwargs)
+        self.installed = list(installed)
+        self.current = current if current in self.installed else None
+
+    def compose(self) -> ComposeResult:
+        from titan_cli.external_cli.configs import CLI_REGISTRY
+
+        with Container(id="quick-cli-container"):
+            yield Static(f"{Icons.AI_CONFIG} Which CLI should Titan run?")
+            if not self.installed:
+                yield WarningText(
+                    f"{Icons.WARNING} No supported CLI is installed. "
+                    "Install one and reopen this picker."
+                )
+                yield DimText("Esc to close.")
+                return
+            options = []
+            for name in self.installed:
+                display_name = CLI_REGISTRY.get(name, {}).get("display_name", name)
+                marker = f" {Icons.CHECK}" if name == self.current else ""
+                options.append(
+                    StyledOption(
+                        id=name,
+                        title=f"{display_name}{marker}",
+                        description=f"command: {name}",
+                    )
+                )
+            yield StyledOptionList(*options, id="quick-cli-list")
+            yield DimText("Enter to set it · Esc to cancel.")
+
+    def on_mount(self) -> None:
+        if self.current is None or not self.installed:
+            return
+        index = self.installed.index(self.current)
+        self.call_after_refresh(self._highlight, index)
+
+    def _highlight(self, index: int) -> None:
+        try:
+            option_list = self.query_one(StyledOptionList)
+        except NoMatches:
+            return
+        option_list.highlighted = index
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "quick-cli-list":
+            return
+        self.dismiss(event.option.id)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+
 class TaskRoutingRow(Container):
     """One task, what currently serves it, and how to change that."""
 
@@ -563,6 +648,7 @@ __all__ = [
     "TaskRouting",
     "TaskRoutingRow",
     "CliDefaultPicker",
+    "QuickCliModal",
     "SelectProviderTypeModal",
     "build_task_routings",
     "executable_types",
