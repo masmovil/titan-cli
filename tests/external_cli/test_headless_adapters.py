@@ -17,7 +17,11 @@ from titan_cli.external_cli.adapters.base import HeadlessResponse, SupportedCLI
 from titan_cli.external_cli.adapters.claude import ClaudeHeadlessAdapter
 from titan_cli.external_cli.adapters.codex import CodexHeadlessAdapter
 from titan_cli.external_cli.adapters.gemini import GeminiHeadlessAdapter
-from titan_cli.external_cli.adapters.opencode import OpenCodeHeadlessAdapter
+from titan_cli.external_cli.adapters.opencode import (
+    _HEADLESS_PERMISSIONS,
+    _HEADLESS_PREAMBLE as _OPENCODE_PREAMBLE,
+    OpenCodeHeadlessAdapter,
+)
 from titan_cli.external_cli.adapters.registry import (
     HEADLESS_ADAPTER_REGISTRY,
     get_headless_adapter,
@@ -416,17 +420,32 @@ class TestOpenCodeHeadlessAdapter(unittest.TestCase):
         mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
         self.adapter.execute("my prompt", cwd="/repo", timeout=45)
 
-        mock_run.assert_called_once_with(
-            ["opencode", "run", "--format", "json", "my prompt"],
-            capture_output=True,
-            text=True,
-            cwd="/repo",
-            timeout=45,
-            # Detached from the controlling tty so opencode cannot draw its
-            # status bar over Titan's TUI via /dev/tty.
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(
+            mock_run.call_args.args[0],
+            ["opencode", "run", "--format", "json", _OPENCODE_PREAMBLE + "my prompt"],
         )
+        self.assertEqual(kwargs["cwd"], "/repo")
+        self.assertEqual(kwargs["timeout"], 45)
+        # Detached from the controlling tty so opencode cannot draw its
+        # status bar over Titan's TUI via /dev/tty.
+        self.assertEqual(kwargs["stdin"], subprocess.DEVNULL)
+        self.assertTrue(kwargs["start_new_session"])
+
+    @patch("subprocess.run")
+    def test_execute_exports_readonly_permission_override(self, mock_run):
+        # Headless opencode auto-rejects "ask" permissions and the run dies without
+        # an answer; the env var scopes read-only git allows to Titan's subprocess
+        # without touching the user's own opencode config.
+        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+        self.adapter.execute("prompt")
+
+        env = mock_run.call_args.kwargs["env"]
+        self.assertEqual(json.loads(env["OPENCODE_PERMISSION"]), _HEADLESS_PERMISSIONS)
+        self.assertEqual(_HEADLESS_PERMISSIONS["edit"], "deny")
+        self.assertEqual(_HEADLESS_PERMISSIONS["bash"]["*"], "deny")
+        # The rest of the environment is inherited, not replaced.
+        self.assertIn("PATH", env)
 
     @patch("subprocess.run")
     def test_execute_with_model_adds_flag(self, mock_run):
@@ -501,6 +520,21 @@ class TestOpenCodeHeadlessAdapter(unittest.TestCase):
         response = self.adapter.execute("prompt")
 
         self.assertEqual(response.stdout, "The real answer")
+
+    @patch("subprocess.run")
+    def test_execute_falls_back_to_last_narration_when_run_dies_on_a_tool(self, mock_run):
+        # A run that ends on a tool_use (denied permission, tool error) has no text
+        # after the last tool; the last narration beats returning an empty string.
+        jsonl = "\n".join([
+            json.dumps({"type": "text", "part": {"text": "Reviewing the repo state"}}),
+            json.dumps({"type": "tool_use", "part": {"tool": "read"}}),
+            json.dumps({"type": "text", "part": {"text": "Checking the commit log"}}),
+            json.dumps({"type": "tool_use", "part": {"tool": "bash", "state": {"status": "error"}}}),
+        ])
+        mock_run.return_value = MagicMock(stdout=jsonl, stderr="", returncode=0)
+        response = self.adapter.execute("prompt")
+
+        self.assertEqual(response.stdout, "Checking the commit log")
 
     @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="opencode", timeout=60))
     def test_execute_timeout(self, _):

@@ -6,6 +6,7 @@ Parses JSONL event output to extract the agent's response.
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -14,6 +15,44 @@ from typing import Any, Optional
 from .base import HeadlessResponse, SupportedCLI
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+_HEADLESS_PERMISSIONS = {
+    "edit": "deny",
+    "bash": {
+        "git status*": "allow",
+        "git diff*": "allow",
+        "git log*": "allow",
+        "git show*": "allow",
+        "git branch*": "allow",
+        "*": "deny",
+    },
+}
+"""Per-process permission override exported as OPENCODE_PERMISSION on every run.
+
+Headless opencode auto-rejects any tool call its config maps to "ask" (it cannot
+prompt without a TTY), and a rejection ends the run mid-plan with no answer —
+observed live: a PR-description run died on `git log` and produced zero output.
+The env var scopes the fix to Titan's own subprocess: the user's opencode.json
+is never touched (it may be JSONC with comments, which a rewrite would destroy),
+and interactive opencode sessions keep their own rules. Read-shaped git commands
+are the whole reason Titan routes repo tasks to a CLI, so they are allowed;
+edits and every other command stay denied while unattended. File reading and
+code search tools are allowed by opencode's own defaults.
+"""
+
+_HEADLESS_PREAMBLE = (
+    "Headless session constraints: file edits and shell commands are unavailable "
+    "here, except read-only git commands (git status / diff / log / show / branch) "
+    "— any other command is denied and would end the run without an answer. Work "
+    "with file reading, code search, and those git commands only, and always finish "
+    "by writing the final answer to the request.\n\n"
+)
+"""Prepended to every prompt so the model plans around the denied tools.
+
+A denied tool call is only reported to the model after it commits to that plan,
+and an unattended run has no user to re-approve — telling it the boundaries up
+front is what keeps it answering instead of stalling on a rejection.
+"""
 
 
 class OpenCodeHeadlessAdapter:
@@ -64,7 +103,7 @@ class OpenCodeHeadlessAdapter:
         if model is not None:
             # OpenCode expects "provider/model" (e.g. "anthropic/claude-sonnet-4-5").
             cmd += ["-m", model]
-        cmd.append(prompt)
+        cmd.append(_HEADLESS_PREAMBLE + prompt)
         try:
             result = subprocess.run(
                 cmd,
@@ -72,6 +111,7 @@ class OpenCodeHeadlessAdapter:
                 text=True,
                 cwd=cwd,
                 timeout=timeout,
+                env={**os.environ, "OPENCODE_PERMISSION": json.dumps(_HEADLESS_PERMISSIONS)},
                 # opencode draws a status bar by writing to /dev/tty directly,
                 # bypassing the captured pipes and corrupting Titan's own TUI.
                 # A new session has no controlling terminal, so that open fails
@@ -118,6 +158,7 @@ class OpenCodeHeadlessAdapter:
 
         final_texts = []
         post_tool_texts = []
+        all_texts = []
         for line in jsonl_output.strip().split("\n"):
             if not line:
                 continue
@@ -138,9 +179,15 @@ class OpenCodeHeadlessAdapter:
             if not text:
                 continue
             post_tool_texts.append(text)
+            all_texts.append(text)
 
             phase = part.get("metadata", {}).get("openai", {}).get("phase")
             if phase == "final_answer":
                 final_texts.append(text)
 
-        return "\n".join(final_texts or post_tool_texts).strip()
+        # A run that dies on a tool call (denied permission, tool error) ends with
+        # a tool_use and leaves post_tool_texts empty. The narration before it is
+        # not the answer, but it beats returning nothing: the caller's contract
+        # check gets real content to reject and the user sees what the model was
+        # doing when the run stopped.
+        return "\n".join(final_texts or post_tool_texts or all_texts[-1:]).strip()
