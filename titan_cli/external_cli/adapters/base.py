@@ -6,6 +6,7 @@ to abstract away CLI-specific flags and output parsing.
 Titan interacts only with this generic interface.
 """
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
@@ -26,6 +27,21 @@ class SupportedCLI(StrEnum):
     ANTIGRAVITY = "agy"
 
 
+_QUOTA_PATTERNS = re.compile(
+    # Google (gemini / agy): gRPC status plus human phrasing like
+    # "Individual quota reached" / "Quota exceeded".
+    r"resource[_ ]exhausted"
+    r"|quota\b.{0,60}\b(reached|exceeded|exhausted)"
+    r"|(reached|exceeded)\b.{0,60}\bquota"
+    # OpenAI (codex, and opencode on OpenAI): API error type.
+    r"|insufficient[_ ]quota"
+    # Anthropic (claude): "Claude usage limit reached", "You've reached your usage limit".
+    r"|usage limit"
+    r"|out of (free )?credits",
+    re.IGNORECASE,
+)
+
+
 @dataclass
 class HeadlessResponse:
     """Result of a headless CLI execution."""
@@ -36,6 +52,20 @@ class HeadlessResponse:
     @property
     def succeeded(self) -> bool:
         return self.exit_code == 0
+
+    @property
+    def quota_exhausted(self) -> bool:
+        """Whether this failure looks like an exhausted usage quota.
+
+        Best-effort, pattern-based: each CLI phrases it differently and none of
+        them expose a machine-readable code, so this matches the known provider
+        signatures in whatever channel the CLI used. Only meaningful on failed
+        runs — a successful answer that merely talks about quotas must not
+        trigger it, so it is always False when the run succeeded.
+        """
+        if self.succeeded:
+            return False
+        return bool(_QUOTA_PATTERNS.search(f"{self.stderr}\n{self.stdout}"))
 
 
 @runtime_checkable

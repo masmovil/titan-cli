@@ -298,6 +298,27 @@ def test_headless_nonzero_exit_returns_stderr(monkeypatch):
     assert isinstance(result, AIExecutionError)
     assert result.error_code == "EXECUTION_FAILED"
     assert result.error_message == "model overloaded"
+
+
+def test_headless_quota_exhaustion_gets_its_own_error_code(monkeypatch):
+    executor = _executor(AIRouteDecision(provider=AIProviderType.CLI_HEADLESS, cli="agy"))
+    adapter = FakeAdapter(
+        response=HeadlessResponse(
+            stdout="",
+            stderr="RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 166h",
+            exit_code=1,
+        )
+    )
+    monkeypatch.setattr(
+        "titan_cli.ai.router.executor.get_headless_adapter", lambda cli: adapter
+    )
+
+    result = executor.generate_text("prompt", policy=declared_step)
+
+    assert isinstance(result, AIExecutionError)
+    assert result.error_code == "QUOTA_EXHAUSTED"
+    assert "run out of usage quota" in result.error_message
+    assert "RESOURCE_EXHAUSTED" in result.error_message
     assert result.details["exit_code"] == 1
 
 

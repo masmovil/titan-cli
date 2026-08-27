@@ -72,6 +72,12 @@ class OpenCodeHeadlessAdapter:
                 text=True,
                 cwd=cwd,
                 timeout=timeout,
+                # opencode draws a status bar by writing to /dev/tty directly,
+                # bypassing the captured pipes and corrupting Titan's own TUI.
+                # A new session has no controlling terminal, so that open fails
+                # and opencode runs truly headless.
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
             )
             return HeadlessResponse(
                 stdout=self._parse_json_output(result.stdout),
@@ -99,14 +105,19 @@ class OpenCodeHeadlessAdapter:
         """
         Parse JSONL output from `opencode run --format json`.
 
-        Each line is an event; the assistant's answer arrives as "text" events
-        whose payload sits under `part.text`. Other event types (step_start,
-        step_finish, tool events) carry no response text and are skipped.
+        Each line is an event; the assistant's answer arrives as "text" events whose
+        payload sits under `part.text`. In agentic runs the model also narrates between
+        tool calls ("Reviewing the repo state...") as ordinary "text" events, so joining
+        every one of them would prepend narration to the answer. Two rules separate them:
+        text parts some providers tag with phase "final_answer" win outright; otherwise
+        each "tool_use" event discards the texts before it, since narration precedes tool
+        work and the answer comes after the last tool.
         """
         if not jsonl_output or not jsonl_output.strip():
             return ""
 
-        text_parts = []
+        final_texts = []
+        post_tool_texts = []
         for line in jsonl_output.strip().split("\n"):
             if not line:
                 continue
@@ -115,9 +126,21 @@ class OpenCodeHeadlessAdapter:
             except json.JSONDecodeError:
                 continue
 
-            if event.get("type") == "text":
-                text = event.get("part", {}).get("text", "")
-                if text:
-                    text_parts.append(text)
+            event_type = event.get("type")
+            if event_type == "tool_use":
+                post_tool_texts.clear()
+                continue
+            if event_type != "text":
+                continue
 
-        return "\n".join(text_parts).strip()
+            part = event.get("part", {})
+            text = part.get("text", "")
+            if not text:
+                continue
+            post_tool_texts.append(text)
+
+            phase = part.get("metadata", {}).get("openai", {}).get("phase")
+            if phase == "final_answer":
+                final_texts.append(text)
+
+        return "\n".join(final_texts or post_tool_texts).strip()

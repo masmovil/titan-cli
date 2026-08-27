@@ -4,10 +4,15 @@ Tests for external_cli.adapters — HeadlessCliAdapter implementations and regis
 
 import json
 import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from titan_cli.external_cli.adapters.antigravity import AntigravityHeadlessAdapter
+from titan_cli.external_cli.adapters.antigravity import (
+    _HEADLESS_PREAMBLE,
+    AntigravityHeadlessAdapter,
+)
 from titan_cli.external_cli.adapters.base import HeadlessResponse, SupportedCLI
 from titan_cli.external_cli.adapters.claude import ClaudeHeadlessAdapter
 from titan_cli.external_cli.adapters.codex import CodexHeadlessAdapter
@@ -44,6 +49,33 @@ class TestHeadlessResponse(unittest.TestCase):
     def test_failed_when_exit_code_nonzero(self):
         r = HeadlessResponse(stdout="", stderr="err", exit_code=1)
         self.assertFalse(r.succeeded)
+
+    def test_quota_exhausted_matches_known_provider_signatures(self):
+        signatures = [
+            # Google (gemini / agy)
+            "RESOURCE_EXHAUSTED (code 429): Individual quota reached. Resets in 166h",
+            "Quota exceeded for quota metric 'Generate requests'",
+            # OpenAI (codex)
+            "You exceeded your current quota, please check your plan (insufficient_quota)",
+            # Anthropic (claude)
+            "Claude usage limit reached|1756290000",
+        ]
+        for text in signatures:
+            with self.subTest(text=text):
+                r = HeadlessResponse(stdout="", stderr=text, exit_code=1)
+                self.assertTrue(r.quota_exhausted)
+
+    def test_quota_exhausted_checks_stdout_too(self):
+        r = HeadlessResponse(stdout="usage limit reached", stderr="", exit_code=1)
+        self.assertTrue(r.quota_exhausted)
+
+    def test_quota_exhausted_false_on_success_even_if_text_mentions_quota(self):
+        r = HeadlessResponse(stdout="Your quota was exceeded last week", stderr="", exit_code=0)
+        self.assertFalse(r.quota_exhausted)
+
+    def test_quota_exhausted_false_on_unrelated_failure(self):
+        r = HeadlessResponse(stdout="", stderr="model overloaded", exit_code=1)
+        self.assertFalse(r.quota_exhausted)
 
 
 # ── ClaudeHeadlessAdapter ─────────────────────────────────────────────────────
@@ -390,6 +422,10 @@ class TestOpenCodeHeadlessAdapter(unittest.TestCase):
             text=True,
             cwd="/repo",
             timeout=45,
+            # Detached from the controlling tty so opencode cannot draw its
+            # status bar over Titan's TUI via /dev/tty.
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
         )
 
     @patch("subprocess.run")
@@ -432,6 +468,39 @@ class TestOpenCodeHeadlessAdapter(unittest.TestCase):
         response = self.adapter.execute("prompt")
 
         self.assertEqual(response.stdout, "ok")
+
+    @patch("subprocess.run")
+    def test_execute_discards_narration_before_tool_calls(self, mock_run):
+        # Agentic runs narrate between tool calls as plain "text" events; only what
+        # comes after the last tool is the answer.
+        jsonl = "\n".join([
+            json.dumps({"type": "text", "part": {"text": "Reviewing the repo state"}}),
+            json.dumps({"type": "tool_use", "part": {"tool": "read"}}),
+            json.dumps({"type": "text", "part": {"text": "Now checking the diff"}}),
+            json.dumps({"type": "tool_use", "part": {"tool": "bash"}}),
+            json.dumps({"type": "text", "part": {"text": "The real answer"}}),
+        ])
+        mock_run.return_value = MagicMock(stdout=jsonl, stderr="", returncode=0)
+        response = self.adapter.execute("prompt")
+
+        self.assertEqual(response.stdout, "The real answer")
+
+    @patch("subprocess.run")
+    def test_execute_prefers_final_answer_phase_over_narration(self, mock_run):
+        # Some providers tag the answer explicitly; narration in the same step must not
+        # be joined in front of it.
+        jsonl = "\n".join([
+            json.dumps({"type": "tool_use", "part": {"tool": "read"}}),
+            json.dumps({"type": "text", "part": {"text": "Let me summarize"}}),
+            json.dumps({"type": "text", "part": {
+                "text": "The real answer",
+                "metadata": {"openai": {"phase": "final_answer"}},
+            }}),
+        ])
+        mock_run.return_value = MagicMock(stdout=jsonl, stderr="", returncode=0)
+        response = self.adapter.execute("prompt")
+
+        self.assertEqual(response.stdout, "The real answer")
 
     @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="opencode", timeout=60))
     def test_execute_timeout(self, _):
@@ -486,6 +555,16 @@ class TestAntigravityHeadlessAdapter(unittest.TestCase):
 
     def setUp(self):
         self.adapter = AntigravityHeadlessAdapter()
+        # execute() provisions agy's settings file; point it at a temp dir so no
+        # test ever touches the real one in the user's home.
+        self._settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._settings_dir.cleanup)
+        self.settings_path = Path(self._settings_dir.name) / "settings.json"
+        patcher = patch(
+            "titan_cli.external_cli.adapters.antigravity._SETTINGS_PATH", self.settings_path
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_cli_name(self):
         self.assertEqual(self.adapter.cli_name, SupportedCLI.ANTIGRAVITY)
@@ -504,7 +583,7 @@ class TestAntigravityHeadlessAdapter(unittest.TestCase):
         response = self.adapter.execute("review this", cwd="/tmp", timeout=30)
 
         mock_run.assert_called_once_with(
-            ["agy", "--print", "review this"],
+            ["agy", "--print", _HEADLESS_PREAMBLE + "review this"],
             capture_output=True,
             text=True,
             cwd="/tmp",
@@ -526,7 +605,7 @@ class TestAntigravityHeadlessAdapter(unittest.TestCase):
         )
 
         called_cmd = mock_run.call_args.args[0]
-        self.assertEqual(called_cmd[-2:], ["--print", "the prompt"])
+        self.assertEqual(called_cmd[-2:], ["--print", _HEADLESS_PREAMBLE + "the prompt"])
 
     @patch("subprocess.run")
     def test_execute_strips_ansi_codes(self, mock_run):
@@ -564,7 +643,7 @@ class TestAntigravityHeadlessAdapter(unittest.TestCase):
         self.adapter.execute("review this", cwd="/tmp", timeout=45, json_schema=schema)
 
         mock_run.assert_called_once_with(
-            ["agy", "--output-format", "json", "--json-schema", json.dumps(schema), "--print", "review this"],
+            ["agy", "--output-format", "json", "--json-schema", json.dumps(schema), "--print", _HEADLESS_PREAMBLE + "review this"],
             capture_output=True,
             text=True,
             cwd="/tmp",
@@ -608,6 +687,23 @@ class TestAntigravityHeadlessAdapter(unittest.TestCase):
         self.assertIn("quota exceeded", response.stderr)
 
     @patch("subprocess.run")
+    def test_execute_with_json_schema_surfaces_error_field_when_response_empty(self, mock_run):
+        # Hard failures (e.g. quota exhaustion) leave `response` empty and put the
+        # cause in an error field — that detail must reach the user, not a generic
+        # "reported an error" message.
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps(
+                {"status": "FAILED", "response": "", "error": "RESOURCE_EXHAUSTED (429): Individual quota reached"}
+            ),
+            stderr="",
+            returncode=1,
+        )
+        response = self.adapter.execute("prompt", json_schema={"type": "object"})
+
+        self.assertFalse(response.succeeded)
+        self.assertIn("RESOURCE_EXHAUSTED", response.stderr)
+
+    @patch("subprocess.run")
     def test_execute_with_json_schema_falls_back_on_unparseable_envelope(self, mock_run):
         mock_run.return_value = MagicMock(stdout="not json at all", stderr="", returncode=0)
         response = self.adapter.execute("prompt", json_schema={"type": "object"})
@@ -649,6 +745,54 @@ class TestAntigravityHeadlessAdapter(unittest.TestCase):
         called_cmd = mock_run.call_args.args[0]
         self.assertIn("--model", called_cmd)
         self.assertIn("gemini-3-pro", called_cmd)
+
+    # ── read-permission provisioning ──────────────────────────────────────────
+
+    @patch("subprocess.run")
+    def test_execute_creates_settings_with_read_rules_when_absent(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        self.adapter.execute("prompt")
+
+        settings = json.loads(self.settings_path.read_text())
+        self.assertIn("read_file(*)", settings["permissions"]["allow"])
+
+    @patch("subprocess.run")
+    def test_execute_merges_rules_preserving_existing_settings(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        self.settings_path.write_text(json.dumps({
+            "colorScheme": "dark",
+            "permissions": {"allow": ["command(git status)"]},
+        }))
+
+        self.adapter.execute("prompt")
+
+        settings = json.loads(self.settings_path.read_text())
+        self.assertEqual(settings["colorScheme"], "dark")
+        self.assertIn("command(git status)", settings["permissions"]["allow"])
+        self.assertIn("read_file(*)", settings["permissions"]["allow"])
+
+    @patch("subprocess.run")
+    def test_execute_does_not_rewrite_settings_when_rules_present(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        from titan_cli.external_cli.adapters.antigravity import _READ_ONLY_PERMISSIONS
+
+        original = json.dumps({"permissions": {"allow": list(_READ_ONLY_PERMISSIONS)}})
+        self.settings_path.write_text(original)
+
+        self.adapter.execute("prompt")
+
+        self.assertEqual(self.settings_path.read_text(), original)
+
+    @patch("subprocess.run")
+    def test_execute_leaves_malformed_settings_alone_and_still_runs(self, mock_run):
+        mock_run.return_value = MagicMock(stdout="ok", stderr="", returncode=0)
+        self.settings_path.write_text("{not valid json")
+
+        response = self.adapter.execute("prompt")
+
+        self.assertEqual(self.settings_path.read_text(), "{not valid json")
+        self.assertEqual(response.stdout, "ok")
+        mock_run.assert_called_once()
 
 
 # ── Registry ──────────────────────────────────────────────────────────────────
