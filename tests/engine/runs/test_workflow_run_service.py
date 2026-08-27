@@ -231,6 +231,48 @@ def test_start_workflow_exposes_markdown_events_in_headless_runs(
 
 @patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
+def test_start_workflow_exposes_ai_chip_events_in_headless_runs(
+    mock_executor_cls,
+    mock_secret_manager_cls,
+):
+    config = MagicMock()
+    workflow = MagicMock(name="workflow")
+    config.workflows.discover.return_value = []
+    config.workflows.get_workflow.return_value = workflow
+    config.project_root = MagicMock()
+    config.registry.list_installed.return_value = []
+    config.config.ai = None
+    mock_secret_manager_cls.return_value = MagicMock()
+
+    def _execute(_workflow, ctx, params_override=None, start_step_index=0):
+        ctx.current_step = 1
+        ctx.current_step_id = "ai_analyze"
+        ctx.current_step_name = "AI Analyze Issue"
+        ctx.textual.ai_chip("LiteLLM / rpl-qwen2.5")
+        return Success("workflow ok")
+
+    mock_executor = mock_executor_cls.return_value
+    mock_executor.execute.side_effect = _execute
+
+    service = WorkflowRunService(config=config)
+    response = service.start_workflow(StartWorkflowRequest(workflow_name="demo"))
+    run = service.get_run(response.run_id)
+
+    assert response.status == RunSessionStatus.COMPLETED
+    assert run is not None
+    chip_outputs = [
+        event.payload["output"]
+        for event in run.events
+        if event.type == "output_emitted"
+        and event.payload["output"].metadata.get("presentation") == "ai_chip"
+    ]
+    assert len(chip_outputs) == 1
+    assert chip_outputs[0].content == "LiteLLM / rpl-qwen2.5"
+    assert chip_outputs[0].metadata["variant"] == "muted"
+
+
+@patch("titan_cli.engine.runs.service.create_broker_factory")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_exposes_interaction_events_in_headless_runs(
     mock_executor_cls,
     mock_secret_manager_cls,

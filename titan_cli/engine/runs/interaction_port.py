@@ -93,7 +93,32 @@ class RunInteractionPort(HeadlessInteractionPort):
         HeadlessInteractionPort.info(self, message)
         self._emit_text_output(message, variant=ContentBlockVariant.MUTED)
 
-    def _emit_text_output(self, text: str, *, variant: ContentBlockVariant) -> None:
+    def ai_chip(self, text: str) -> None:
+        HeadlessInteractionPort.ai_chip(self, text)
+        self._emit_text_output(
+            text,
+            variant=ContentBlockVariant.MUTED,
+            metadata={"presentation": "ai_chip"},
+        )
+
+    def _emit_text_output(
+        self,
+        text: str,
+        *,
+        variant: ContentBlockVariant,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> None:
+        output_metadata = {"variant": variant.value}
+        output_metadata.update(metadata or {})
+        self._emit_output_payload(
+            OutputPayload(
+                format=OutputFormat.TEXT,
+                content=text,
+                metadata=output_metadata,
+            )
+        )
+
+    def _emit_output_payload(self, output: OutputPayload) -> None:
         if self._suppress_replayed_prefix:
             return
         self._service._append_event(
@@ -101,11 +126,7 @@ class RunInteractionPort(HeadlessInteractionPort):
             EventType.OUTPUT_EMITTED,
             {
                 "step": self._step_ref(),
-                "output": OutputPayload(
-                    format=OutputFormat.TEXT,
-                    content=text,
-                    metadata={"variant": variant.value},
-                ),
+                "output": output,
             },
         )
 

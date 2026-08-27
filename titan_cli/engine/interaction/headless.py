@@ -29,6 +29,9 @@ class HeadlessInteractionPort(InteractionPort):
         self.messages.append(("markdown", markdown_text))
         self.step_output(markdown_text)
 
+    def ai_chip(self, text: str) -> None:
+        self.messages.append(("ai_chip", text))
+
     def begin_step(self, step_name: str) -> None:
         self.messages.append(("step_started", step_name))
 

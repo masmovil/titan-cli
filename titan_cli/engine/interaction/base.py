@@ -61,6 +61,15 @@ class InteractionPort(ABC):
         """Legacy-compatible alias for warning text."""
         self.warning(message)
 
+    def ai_chip(self, text: str) -> None:
+        """Announce the AI route used by a step.
+
+        Textual renders this as a compact chip. Non-visual adapters keep the
+        same semantic signal as muted output so steps can depend on one
+        interaction contract regardless of the active UI.
+        """
+        self.dim_text(text)
+
     def bold_text(self, message: str) -> None:
         """Legacy-compatible alias for emphasized text output."""
         self.step_output(message)
