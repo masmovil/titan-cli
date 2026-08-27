@@ -21,7 +21,7 @@ from titan_cli.core.workflows.ai_usage_discovery import (
 from textual.widgets import Static
 
 from titan_cli.ui.tui.app import TitanApp
-from titan_cli.ui.tui.widgets import Button, SegmentedSwitch
+from titan_cli.ui.tui.widgets import Button, StyledOptionList
 from titan_cli.ui.tui.screens.ai_config import AIConfigScreen
 from titan_cli.ui.tui.screens.ai_routing import (
     CliDefaultPicker,
@@ -443,9 +443,9 @@ class TestScreenMounts:
         assert captured["tasks"] == []
         assert captured["clis"] == []
 
-    def test_moving_the_cli_switch_saves_and_keeps_the_user_where_they_are(self, monkeypatch):
+    def test_selecting_a_cli_saves_and_keeps_the_user_where_they_are(self, monkeypatch):
         """
-        Moving across the switch IS the choice, so it saves on each keypress - which means it
+        Selecting from the list IS the choice, so it saves on Enter - which means it
         must not rebuild the control the user is operating, or their next keypress goes
         nowhere.
         """
@@ -462,13 +462,14 @@ class TestScreenMounts:
                 await pilot.pause()
                 screen = app.screen
                 result["before"] = str(screen.query_one("#cli-status", Static).renderable)
-                switch = screen.query_one(SegmentedSwitch)
-                switch.focus()
+                cli_list = screen.query_one("#cli-default-list", StyledOptionList)
+                cli_list.focus()
+                cli_list.highlighted = 1
                 await pilot.pause()
-                await pilot.press("right")
+                await pilot.press("enter")
                 await pilot.pause()
                 result["after"] = str(screen.query_one("#cli-status", Static).renderable)
-                result["focus_kept"] = screen.focused is switch
+                result["focus_kept"] = screen.focused is cli_list
 
         asyncio.run(run())
 
@@ -479,8 +480,8 @@ class TestScreenMounts:
 
     def test_confirming_the_only_installed_cli_saves_it(self, monkeypatch):
         """
-        With one CLI installed the switch pre-selects it as a suggestion, so the only
-        possible pick re-selects the current segment - that confirmation must still save.
+        With one CLI installed the list pre-highlights it as a suggestion, so the only
+        possible pick selects the already-highlighted row - that confirmation must save.
         """
         config = self._config()
         saved = []
@@ -495,10 +496,10 @@ class TestScreenMounts:
                 await pilot.pause()
                 screen = app.screen
                 result["before"] = str(screen.query_one("#cli-status", Static).renderable)
-                switch = screen.query_one(SegmentedSwitch)
-                switch.focus()
+                cli_list = screen.query_one("#cli-default-list", StyledOptionList)
+                cli_list.focus()
                 await pilot.pause()
-                await pilot.press("home")
+                await pilot.press("enter")
                 await pilot.pause()
                 result["after"] = str(screen.query_one("#cli-status", Static).renderable)
 

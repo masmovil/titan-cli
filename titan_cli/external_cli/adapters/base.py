@@ -22,6 +22,8 @@ class SupportedCLI(StrEnum):
     CLAUDE = "claude"
     GEMINI = "gemini"
     CODEX = "codex"
+    OPENCODE = "opencode"
+    ANTIGRAVITY = "agy"
 
 
 @dataclass
