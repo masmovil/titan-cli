@@ -1,6 +1,7 @@
 import asyncio
 import errno
 import json
+import os
 import threading
 import time
 
@@ -24,7 +25,7 @@ from titan_cli.core.oauth import (
     QueuedOAuthEventSink,
     build_oauth_credential_key,
 )
-from titan_cli.core.secrets import ResolvedSecret
+from titan_cli.core.security.oauth_tokens import ResolvedOAuthSecret
 
 
 class FakeSecretManager:
@@ -44,12 +45,24 @@ class FakeSecretManager:
         self,
         key: str,
         namespace: str = "titan",
-    ) -> ResolvedSecret | None:
+    ) -> ResolvedOAuthSecret | None:
         for scope in ("env", "project", "user"):
             scoped_key = (scope, namespace, key)
             if scoped_key in self.scoped_values:
-                return ResolvedSecret(self.scoped_values[scoped_key], scope)
+                origin = "keyring" if scope == "user" else scope
+                storage_scope = None if scope == "env" else scope
+                return ResolvedOAuthSecret(
+                    self.scoped_values[scoped_key],
+                    origin,
+                    storage_scope,
+                )
         return None
+
+    def resolve_env(self, key: str) -> str | None:
+        value = os.environ.get(key)
+        if not value or not value.strip():
+            return None
+        return value.strip()
 
     def get_from_scope(
         self,
@@ -237,7 +250,9 @@ def test_oauth_storage_context_partitions_user_scope_storage() -> None:
 
     assert ragnarok_key != other_project_key
     assert json.loads(secrets.values[ragnarok_key])["access_token"] == "ragnarok-token"
-    assert json.loads(secrets.values[other_project_key])["access_token"] == "other-token"
+    assert (
+        json.loads(secrets.values[other_project_key])["access_token"] == "other-token"
+    )
 
 
 def test_oauth_token_set_normalizes_scalar_scope() -> None:
@@ -460,7 +475,7 @@ def test_oauth_manager_refreshes_token_inside_expiry_margin(
     assert credential.source == "oauth-refresh"
 
 
-@pytest.mark.parametrize("storage_scope", ["env", "project"])
+@pytest.mark.parametrize("storage_scope", ["user", "project"])
 def test_oauth_manager_refresh_preserves_original_storage_scope(
     monkeypatch,
     tmp_path,
@@ -509,6 +524,52 @@ def test_oauth_manager_refresh_preserves_original_storage_scope(
         secrets.scoped_values[(storage_scope, "titan", secret_key)]
     )
     assert stored_payload["access_token"] == "fresh-token"
+
+
+def test_oauth_manager_refreshes_env_origin_without_persisting(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
+    secrets = FakeSecretManager()
+    request = _request()
+    store = OAuthTokenStore(secrets)
+    secret_key = store.build_secret_key(request)
+    secrets.scoped_values[("env", "titan", secret_key)] = json.dumps(
+        OAuthTokenSet(
+            access_token="almost-expired-token",
+            refresh_token="refresh-token",
+            expires_at=int(time.time()) + 120,
+        ).to_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    class RefreshProvider:
+        async def refresh(self, request, token_set, sink):
+            return OAuthTokenSet(
+                access_token="fresh-token",
+                refresh_token=token_set.refresh_token,
+                expires_at=int(time.time()) + 3600,
+            )
+
+        async def authorize(self, request, sink):
+            raise AssertionError("authorize should not run")
+
+    manager = OAuthManager(
+        secrets,
+        providers={"google": RefreshProvider()},
+        token_store=store,
+        lock_manager=OAuthLockManager(lock_dir=tmp_path, enable_file_locks=False),
+        refresh_margin_seconds=300,
+    )
+
+    credential = asyncio.run(manager.get_credential(request))
+
+    assert credential.access_token == "fresh-token"
+    assert credential.source == "oauth-refresh"
+    assert secrets.set_calls == []
+    assert secrets.delete_calls == []
 
 
 def test_oauth_manager_refresh_preserves_omitted_refresh_token(
@@ -740,9 +801,9 @@ def test_oauth_manager_reports_legacy_secret_source_scope(
 ) -> None:
     monkeypatch.delenv("OAUTH_ACCESS_TOKEN", raising=False)
     secrets = FakeSecretManager()
-    secrets.scoped_values[
-        (scope, "titan", "demo_legacy_access_token")
-    ] = " legacy-token "
+    secrets.scoped_values[(scope, "titan", "demo_legacy_access_token")] = (
+        " legacy-token "
+    )
     sink = CollectingOAuthEventSink()
     manager = _manager(secrets, tmp_path)
 
@@ -913,7 +974,7 @@ def test_oauth_manager_noninteractive_refresh_failure_uses_legacy_secret(
     assert credential.source == "keyring:demo_legacy_access_token"
 
 
-@pytest.mark.parametrize("storage_scope", ["user", "env", "project"])
+@pytest.mark.parametrize("storage_scope", ["user", "project"])
 def test_oauth_manager_noninteractive_invalid_token_deletes_before_legacy_fallback(
     monkeypatch,
     tmp_path,
@@ -1358,7 +1419,7 @@ def test_oauth_manager_interactive_authorizes_after_refresh_failure(
     assert secrets.delete_calls == []
 
 
-@pytest.mark.parametrize("storage_scope", ["env", "project"])
+@pytest.mark.parametrize("storage_scope", ["user", "project"])
 def test_oauth_manager_relogin_preserves_scope_for_token_without_refresh_token(
     monkeypatch,
     tmp_path,
@@ -1400,7 +1461,8 @@ def test_oauth_manager_relogin_preserves_scope_for_token_without_refresh_token(
     assert credential.access_token == "new-login-token"
     assert secrets.set_calls[-1][0] == old_secret_key
     assert secrets.set_calls[-1][2] == storage_scope
-    assert ("user", "titan", old_secret_key) not in secrets.scoped_values
+    other_scope = "project" if storage_scope == "user" else "user"
+    assert (other_scope, "titan", old_secret_key) not in secrets.scoped_values
     stored_payload = json.loads(
         secrets.scoped_values[(storage_scope, "titan", old_secret_key)]
     )
@@ -1446,7 +1508,7 @@ def test_oauth_manager_keeps_stored_token_when_refresh_and_relogin_fail(
     assert secrets.scoped_values[("user", "titan", old_secret_key)] == old_payload
 
 
-@pytest.mark.parametrize("storage_scope", ["env", "project"])
+@pytest.mark.parametrize("storage_scope", ["user", "project"])
 def test_oauth_manager_deletes_explicitly_invalid_token_before_relogin(
     monkeypatch,
     tmp_path,
@@ -1490,7 +1552,8 @@ def test_oauth_manager_deletes_explicitly_invalid_token_before_relogin(
     assert secrets.delete_calls[-1] == (old_secret_key, storage_scope)
     assert secrets.set_calls[-1][0] == old_secret_key
     assert secrets.set_calls[-1][2] == storage_scope
-    assert ("user", "titan", old_secret_key) not in secrets.scoped_values
+    other_scope = "project" if storage_scope == "user" else "user"
+    assert (other_scope, "titan", old_secret_key) not in secrets.scoped_values
     stored_payload = json.loads(
         secrets.scoped_values[(storage_scope, "titan", old_secret_key)]
     )

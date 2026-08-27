@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
 from typing import Protocol
-
-from titan_cli.core.secrets import ScopeType, SecretManager
 
 from .events import NullOAuthEventSink, OAuthEvent, OAuthEventSink
 from .exceptions import (
@@ -26,7 +23,7 @@ from .models import (
     OAuthTokenSet,
     build_oauth_credential_key,
 )
-from .storage import OAuthTokenStore
+from .storage import OAuthSecretOrigin, OAuthStorageScope, OAuthTokenStore
 
 
 class OAuthProvider(Protocol):
@@ -60,11 +57,11 @@ def _validate_refresh_margin_seconds(refresh_margin_seconds: object) -> int:
     return refresh_margin_seconds
 
 
-def _legacy_secret_source(secret_key: str, scope: ScopeType) -> str:
+def _legacy_secret_source(secret_key: str, origin: OAuthSecretOrigin) -> str:
     """Build a non-secret source label for a resolved legacy credential."""
-    if scope == "env":
+    if origin == "env":
         return f"env:{secret_key.upper()}"
-    if scope == "project":
+    if origin == "project":
         return f"project:{secret_key}"
     return f"keyring:{secret_key}"
 
@@ -74,14 +71,13 @@ class OAuthManager:
 
     def __init__(
         self,
-        secrets: SecretManager,
+        secrets: object | None = None,
         *,
         providers: dict[str, OAuthProvider] | None = None,
         token_store: OAuthTokenStore | None = None,
         lock_manager: OAuthLockManager | None = None,
         refresh_margin_seconds: int = 300,
     ) -> None:
-        self.secrets = secrets
         self.providers = providers or {}
         self.token_store = token_store or OAuthTokenStore(secrets)
         self.lock_manager = lock_manager or OAuthLockManager()
@@ -191,11 +187,13 @@ class OAuthManager:
                 return credential
 
             stored_token_set = self.token_store.read_with_scope(request)
-            reauthorize_storage_scope: ScopeType = (
-                stored_token_set.scope if stored_token_set else "user"
+            reauthorize_storage_scope: OAuthStorageScope = (
+                stored_token_set.storage_scope
+                if stored_token_set and stored_token_set.storage_scope
+                else "user"
             )
             if stored_token_set and stored_token_set.token_set.refresh_token:
-                storage_scope = stored_token_set.scope
+                storage_scope = stored_token_set.storage_scope
                 self._emit(
                     event_sink,
                     "oauth.refresh.started",
@@ -223,24 +221,27 @@ class OAuthManager:
                         credential_key,
                         "OAuth refresh failed.",
                     )
-                    self._delete_token_set_or_emit_failure(
-                        request,
-                        scope=storage_scope,
-                        sink=event_sink,
-                        operation_id=operation_id,
-                        credential_key=credential_key,
-                        failure_event_type="oauth.refresh.failed",
-                        failure_message="Stale OAuth credential could not be deleted.",
-                    )
-                    reauthorize_storage_scope = storage_scope
-                    self._emit(
-                        event_sink,
-                        "oauth.refresh.stale_deleted",
-                        operation_id,
-                        request,
-                        credential_key,
-                        "Deleted stale OAuth credential after refresh failure.",
-                    )
+                    if storage_scope is not None:
+                        self._delete_token_set_or_emit_failure(
+                            request,
+                            scope=storage_scope,
+                            sink=event_sink,
+                            operation_id=operation_id,
+                            credential_key=credential_key,
+                            failure_event_type="oauth.refresh.failed",
+                            failure_message=(
+                                "Stale OAuth credential could not be deleted."
+                            ),
+                        )
+                        reauthorize_storage_scope = storage_scope
+                        self._emit(
+                            event_sink,
+                            "oauth.refresh.stale_deleted",
+                            operation_id,
+                            request,
+                            credential_key,
+                            "Deleted stale OAuth credential after refresh failure.",
+                        )
                     if not request.interactive:
                         legacy_credential = self._legacy_after_refresh_failure(
                             event_sink,
@@ -270,7 +271,8 @@ class OAuthManager:
                         if legacy_credential:
                             return legacy_credential
                         raise
-                    reauthorize_storage_scope = storage_scope
+                    if storage_scope is not None:
+                        reauthorize_storage_scope = storage_scope
                 except Exception as exc:
                     self._emit(
                         event_sink,
@@ -290,18 +292,22 @@ class OAuthManager:
                         if legacy_credential:
                             return legacy_credential
                         raise OAuthTokenRefreshError(str(exc)) from exc
-                    reauthorize_storage_scope = storage_scope
+                    if storage_scope is not None:
+                        reauthorize_storage_scope = storage_scope
                 else:
-                    self._write_token_set_or_emit_failure(
-                        request,
-                        refreshed,
-                        scope=storage_scope,
-                        sink=event_sink,
-                        operation_id=operation_id,
-                        credential_key=credential_key,
-                        failure_event_type="oauth.refresh.failed",
-                        failure_message="OAuth refreshed credential could not be saved.",
-                    )
+                    if storage_scope is not None:
+                        self._write_token_set_or_emit_failure(
+                            request,
+                            refreshed,
+                            scope=storage_scope,
+                            sink=event_sink,
+                            operation_id=operation_id,
+                            credential_key=credential_key,
+                            failure_event_type="oauth.refresh.failed",
+                            failure_message=(
+                                "OAuth refreshed credential could not be saved."
+                            ),
+                        )
                     credential = self._credential_from_token_set(
                         request,
                         credential_key,
@@ -413,7 +419,7 @@ class OAuthManager:
         request: OAuthRequest,
         token_set: OAuthTokenSet,
         *,
-        scope: ScopeType = "user",
+        scope: OAuthStorageScope = "user",
         sink: OAuthEventSink | None = None,
     ) -> str:
         """Persist a token set under the request's credential lock."""
@@ -449,7 +455,7 @@ class OAuthManager:
         request: OAuthRequest,
         token_set: OAuthTokenSet,
         *,
-        scope: ScopeType = "user",
+        scope: OAuthStorageScope = "user",
         sink: OAuthEventSink | None = None,
     ) -> str:
         """Persist a token set from synchronous code."""
@@ -503,7 +509,7 @@ class OAuthManager:
     ) -> OAuthCredential | None:
         if not request.access_token_env_var:
             return None
-        token = os.environ.get(request.access_token_env_var, "").strip()
+        token = self.token_store.read_env_secret(request.access_token_env_var)
         if not token:
             return None
         return OAuthCredential(
@@ -522,7 +528,7 @@ class OAuthManager:
         credential_key: str,
     ) -> OAuthCredential | None:
         for secret_key in request.legacy_secret_keys:
-            resolved_secret = self.secrets.get_with_scope(secret_key)
+            resolved_secret = self.token_store.read_legacy_secret(secret_key)
             if resolved_secret and resolved_secret.value.strip():
                 return OAuthCredential(
                     access_token=resolved_secret.value.strip(),
@@ -531,7 +537,7 @@ class OAuthManager:
                     provider=request.provider,
                     connection_id=request.connection_id,
                     credential_key=credential_key,
-                    source=_legacy_secret_source(secret_key, resolved_secret.scope),
+                    source=_legacy_secret_source(secret_key, resolved_secret.origin),
                 )
         return None
 
@@ -561,7 +567,7 @@ class OAuthManager:
         request: OAuthRequest,
         token_set: OAuthTokenSet,
         *,
-        scope: ScopeType,
+        scope: OAuthStorageScope,
         sink: OAuthEventSink,
         operation_id: str,
         credential_key: str,
@@ -587,7 +593,7 @@ class OAuthManager:
         self,
         request: OAuthRequest,
         *,
-        scope: ScopeType,
+        scope: OAuthStorageScope,
         sink: OAuthEventSink,
         operation_id: str,
         credential_key: str,
@@ -661,9 +667,7 @@ class OAuthManager:
         if not token_set.is_valid(
             refresh_margin_seconds=self.refresh_margin_seconds,
         ):
-            raise error_cls(
-                f"OAuth {action} returned a token that expires too soon."
-            )
+            raise error_cls(f"OAuth {action} returned a token that expires too soon.")
 
     def _credential_from_token_set(
         self,
