@@ -1,0 +1,8 @@
+name: "Docker Build & Push"
+description: "Build (and push, per target config) every Docker image configured for this project"
+
+steps:
+  - id: build_push_images
+    name: "Build Docker Images"
+    plugin: docker
+    step: build_push_images

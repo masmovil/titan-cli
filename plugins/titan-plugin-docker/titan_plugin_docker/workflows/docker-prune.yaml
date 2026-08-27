@@ -1,0 +1,23 @@
+name: "Docker Prune"
+description: "Show Docker disk usage, pick which resource categories to clean up, and prune them"
+
+steps:
+  - id: disk_usage_before
+    name: "Docker Disk Usage"
+    plugin: docker
+    step: disk_usage
+
+  - id: select_prune_targets
+    name: "Select What to Prune"
+    plugin: docker
+    step: select_prune_targets
+
+  - id: prune_resources
+    name: "Prune Docker Resources"
+    plugin: docker
+    step: prune_resources
+
+  - id: disk_usage_after
+    name: "Docker Disk Usage (after)"
+    plugin: docker
+    step: disk_usage

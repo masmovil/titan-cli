@@ -53,19 +53,19 @@ Same location, but logs are also displayed on console with colors.
 
 ### Development Mode (titan-dev)
 
-**Triggered by:**
+**Triggered by** (see `_is_development_mode()` in `titan_cli/core/logging/config.py`):
 - `TITAN_ENV=development`
+- Running via the `titan-dev` executable (detected from `argv[0]`)
 - `--debug` flag
-- Running in a TTY (terminal)
 
-**Console output:** Colorized, human-readable
+**Console output:** Colorized, human-readable (structlog `ConsoleRenderer`)
 ```
-2026-02-17 10:30:45 | INFO     | titan.cli:main:42 - cli_invoked command=None verbose=False debug=True
-2026-02-17 10:30:46 | INFO     | titan.workflow:execute:120 - workflow_started name=create_pr steps=5
-2026-02-17 10:30:48 | ERROR    | titan.git:commit:55 - commit_failed error="No changes to commit"
+2026-02-17 10:30:45 [info     ] cli_invoked                    [titan.cli] command=None verbose=False debug=True
+2026-02-17 10:30:46 [info     ] workflow_started               [titan.workflow] name=create_pr steps=5
+2026-02-17 10:30:48 [error    ] commit_failed                  [titan.git] error="No changes to commit"
 ```
 
-**File output:** JSON
+**File output:** JSON, at DEBUG level
 ```json
 {"event": "cli_invoked", "level": "info", "timestamp": "2026-02-17T10:30:45Z", "command": null}
 {"event": "workflow_started", "level": "info", "timestamp": "2026-02-17T10:30:46Z", "name": "create_pr", "steps": 5}
@@ -81,7 +81,11 @@ Same location, but logs are also displayed on console with colors.
 commit_failed error="No changes to commit"
 ```
 
-**File output:** JSON (same as dev)
+**File output:** JSON, at INFO level (dev mode logs to file at DEBUG level instead)
+
+**Note:** When the Textual TUI is launched (without devtools), `disable_console_logging()` removes the console handler entirely — logs go only to the file. With `--devtools`, console logging stays enabled so `textual console` can capture it.
+
+**Session separator:** On every run, a plaintext `SESSION START` separator line is written to the log file before the JSON handler attaches. Easy to find session boundaries: `grep "SESSION START" ~/.local/state/titan/logs/titan.log`. This also means the log file is not pure JSON (see jq examples below).
 
 ---
 
@@ -90,7 +94,7 @@ commit_failed error="No changes to commit"
 ### Basic Usage
 
 ```python
-from titan_cli.core.logging.config import get_logger
+from titan_cli.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -226,7 +230,7 @@ Each architectural layer has specific rules about what to log and what to protec
 
 ---
 
-### Network Layer (`clients/network/`)
+### Network Layer (`plugins/titan-plugin-*/titan_plugin_*/clients/network/`)
 
 **Pattern:** Log directly in the base method (`run_command`, `make_request`, etc.)
 
@@ -259,7 +263,7 @@ self._logger.debug("graphql_ok", op_type=op_type, duration=...)
 
 ---
 
-### Service Layer (`clients/services/`)
+### Service Layer (`plugins/titan-plugin-*/titan_plugin_*/clients/services/`)
 
 **Pattern:** Use `@log_client_operation()` decorator — do NOT add manual logs inside service methods.
 
@@ -288,15 +292,28 @@ def get_branches(self):
 
 ---
 
-### AI Agents (`agents/`)
+### AI Agents (`plugins/titan-plugin-*/titan_plugin_*/agents/`)
 
-**Pattern:** Add `operation=` to `AgentRequest` — logging is handled centrally in `BaseAIAgent.generate()`.
+**Pattern:** Add `operation=` to `AgentRequest` — logging is handled centrally in `BaseAIAgent.generate()` (defined in `titan_cli/ai/agents/base.py`).
 
 **Never** add manual logs around `self.generate(request)` calls.
 
 `BaseAIAgent.generate()` automatically logs:
 - `ai_call_ok` at DEBUG: `provider`, `operation`, `tokens`, `max_tokens`, `duration`
 - `ai_call_failed` at DEBUG: `provider`, `operation`, `max_tokens`, `duration`
+
+Contract enforcement (see [ai-agents.md](ai-agents.md)) adds, at INFO:
+- `ai_contract_parse_failed`: `provider`, `operation`, `attempt`, `error`, `response_chars` —
+  the answer missed its declared shape and a repair call is about to run
+- `ai_contract_degraded`: both attempts failed and the contract's defaults were used
+- `ai_contract_failed` at ERROR: both attempts failed with no defaults; raising
+
+Counting `ai_contract_parse_failed` per `operation` is how you find out whether a contract
+actually holds on a given provider.
+
+Generation through a local CLI (`titan_cli/ai/headless_generator.py`) adds:
+- `ai_agent_cli_ok` at INFO: `cli`, `duration`, `response_chars`, `schema_sent`
+- `ai_agent_cli_failed` at ERROR: `cli`, `exit_code`, `duration`
 
 **NEVER log:**
 - `request.context` — contains diffs, issue descriptions, PR content
@@ -328,6 +345,7 @@ self._logger.debug("AI responded", tokens=response.tokens_used)  # already logge
 - `dependency_detection` — Jira dependency analysis
 - `subtask_suggestion` — Jira subtask suggestion
 - `comment_generation` — Jira comment generation
+- `code_review` — AI code review of PR files (GitHub plugin)
 
 ---
 
@@ -368,7 +386,7 @@ Regardless of component or log level:
 ### In CLI Commands (cli.py)
 
 ```python
-from titan_cli.core.logging.config import get_logger
+from titan_cli.core.logging import get_logger
 
 logger = get_logger("titan.cli")
 
@@ -386,7 +404,7 @@ def my_command():
 ### In Workflow Steps
 
 ```python
-from titan_cli.core.logging.config import get_logger
+from titan_cli.core.logging import get_logger
 
 logger = get_logger("titan.workflows.create_pr")
 
@@ -415,7 +433,7 @@ def create_pr_step(ctx: WorkflowContext) -> WorkflowResult:
 ### In Plugin Services
 
 ```python
-from titan_cli.core.logging.config import get_logger
+from titan_cli.core.logging import get_logger
 
 logger = get_logger("titan.plugins.jira")
 
@@ -442,7 +460,7 @@ class JiraService:
 ### In Error Handling
 
 ```python
-from titan_cli.core.logging.config import get_logger
+from titan_cli.core.logging import get_logger
 
 logger = get_logger("titan.github")
 
@@ -487,8 +505,8 @@ TITAN_ENV=development titan-dev
 # Watch logs as they're written
 tail -f ~/.local/state/titan/logs/titan.log
 
-# With jq for pretty JSON
-tail -f ~/.local/state/titan/logs/titan.log | jq .
+# With jq for pretty JSON (filter out plaintext SESSION START separator lines)
+tail -f ~/.local/state/titan/logs/titan.log | grep --line-buffered '^{' | jq .
 ```
 
 ### Search Logs
@@ -511,7 +529,9 @@ grep 'titan.github' ~/.local/state/titan/logs/titan.log | jq .
 grep '"level": "error"' ~/.local/state/titan/logs/titan.log | wc -l
 
 # Most common events
-jq -r '.event' ~/.local/state/titan/logs/titan.log | sort | uniq -c | sort -rn
+# Note: the log file also contains plaintext SESSION START separator lines,
+# so filter to JSON lines before piping to jq:
+grep '^{' ~/.local/state/titan/logs/titan.log | jq -r '.event' | sort | uniq -c | sort -rn
 
 # Errors grouped by module
 grep '"level": "error"' ~/.local/state/titan/logs/titan.log | jq -r '.logger_name' | sort | uniq -c
@@ -577,7 +597,7 @@ chmod 755 ~/.local/state/titan/logs/
 ls -lh ~/.local/state/titan/logs/
 ```
 
-**Reduce retention** (edit `logging_config.py`):
+**Reduce retention** (edit `titan_cli/core/logging/config.py`):
 ```python
 backupCount=3,  # Instead of 5
 ```
@@ -603,4 +623,4 @@ titan --debug    # Show DEBUG logs
 
 ---
 
-**Last updated:** 2026-02-17
+**Last updated:** 2026-08-04

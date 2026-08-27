@@ -39,6 +39,10 @@ class ClaudeHeadlessAdapter:
     def supports_effort_control(self) -> bool:
         return True
 
+    @property
+    def supports_model_selection(self) -> bool:
+        return True
+
     def is_available(self) -> bool:
         return shutil.which("claude") is not None
 
@@ -50,6 +54,7 @@ class ClaudeHeadlessAdapter:
         json_schema: Optional[dict[str, Any]] = None,
         disallowed_tools: Optional[list[str]] = None,
         effort: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> HeadlessResponse:
         cmd = ["claude", "--print"]
         if json_schema is not None:
@@ -62,6 +67,8 @@ class ClaudeHeadlessAdapter:
             cmd += [f"--disallowedTools={','.join(disallowed_tools)}"]
         if effort is not None:
             cmd += ["--effort", effort]
+        if model is not None:
+            cmd += ["--model", model]
         cmd.append(prompt)
         try:
             result = subprocess.run(

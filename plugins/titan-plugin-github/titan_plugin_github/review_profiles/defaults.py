@@ -44,7 +44,32 @@ DEFAULT_REVIEW_PROFILE = ReviewProfile(
         ],
     },
     file_roles={
-        "tests": ["**/test/**", "**/tests/**", "**/*test*", "**/*spec*"],
+        # Anchored on directories and separators, never on a bare "test" substring:
+        # path_matches_any lowercases both sides, so "**/*test*" also claims latest.py,
+        # attestation.py and contest/. CamelCase conventions (FooTest.kt) are covered by
+        # the case-sensitive regexes in manifest_operations instead.
+        "tests": [
+            "**/test/**",
+            "**/tests/**",
+            "**/spec/**",
+            "**/specs/**",
+            "**/androidTest/**",
+            "**/integrationTest/**",
+            "**/sharedTest/**",
+            "**/functionalTest/**",
+            "**/test_*.py",
+            "**/*_test.py",
+            "**/*_spec.py",
+            "**/*_test.go",
+            "**/*.test.js",
+            "**/*.test.ts",
+            "**/*.test.jsx",
+            "**/*.test.tsx",
+            "**/*.spec.js",
+            "**/*.spec.ts",
+            "**/*.spec.jsx",
+            "**/*.spec.tsx",
+        ],
         "config_or_contracts": [
             "**/*config*",
             "**/*schema*",

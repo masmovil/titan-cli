@@ -35,7 +35,16 @@ class BaseScreen(Screen):
     }
     """
 
-    def __init__(self, config: TitanConfig, title: str = "Titan CLI", show_back: bool = False, show_status_bar: bool = True, **kwargs):
+    def __init__(
+        self,
+        config: TitanConfig,
+        title: str = "Titan CLI",
+        show_back: bool = False,
+        show_favorite: bool = False,
+        is_favorite: bool = False,
+        show_status_bar: bool = True,
+        **kwargs,
+    ):
         """
         Initialize base screen.
 
@@ -43,18 +52,27 @@ class BaseScreen(Screen):
             config: TitanConfig instance
             title: Title to display in header
             show_back: Whether to show back button in header
+            show_favorite: Whether to show favorite button in header
+            is_favorite: Initial favorite state for the header button
             show_status_bar: Whether to show status bar at bottom
         """
         super().__init__(**kwargs)
         self.config = config
         self.screen_title = title
         self.show_back = show_back
+        self.show_favorite = show_favorite
+        self.is_favorite = is_favorite
         self.show_status_bar = show_status_bar
 
     def compose(self) -> ComposeResult:
         """Compose the base screen layout."""
-        # Header with title and optional back button
-        yield HeaderWidget(title=self.screen_title, show_back=self.show_back)
+        # Header with title and optional back/favorite buttons
+        yield HeaderWidget(
+            title=self.screen_title,
+            show_back=self.show_back,
+            show_favorite=self.show_favorite,
+            is_favorite=self.is_favorite,
+        )
 
         # Content area - subclasses define this
         yield from self.compose_content()
@@ -114,7 +132,7 @@ class BaseScreen(Screen):
         status_bar.ai_info = ai_info
         status_bar.project_name = project_name
 
-    def on_resume(self) -> None:
+    def on_screen_resume(self) -> None:
         """Called when screen is resumed (e.g., after another screen is dismissed)."""
         # Refresh status bar with latest config values
         if self.show_status_bar:
@@ -134,3 +152,11 @@ class BaseScreen(Screen):
     def action_go_back(self) -> None:
         """Go back to previous screen. Override in subclasses if needed."""
         self.app.pop_screen()
+
+    def on_header_widget_favorite_pressed(self, message: HeaderWidget.FavoritePressed) -> None:
+        """Handle favorite button press from header."""
+        self.action_toggle_favorite()
+
+    def action_toggle_favorite(self) -> None:
+        """Toggle favorite status for the screen's subject. Override in subclasses."""
+        pass

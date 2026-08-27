@@ -1092,3 +1092,176 @@ def test_project_must_explicitly_enable_plugin(tmp_path: Path, monkeypatch, mock
         assert "ragnarok" not in config_instance.get_enabled_plugins()
     finally:
         os.chdir(original_cwd)
+
+
+def test_get_favorite_workflows_empty_when_no_config(tmp_path: Path, monkeypatch, mocker):
+    """No project_sources entry in the global config means no favorites."""
+    mocker.patch('titan_cli.core.config.PluginRegistry')
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    global_config_path = tmp_path / "home" / ".titan" / "config.toml"
+    global_config_path.parent.mkdir(parents=True)
+    with open(global_config_path, "wb") as f:
+        tomli_w.dump({}, f)
+
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
+    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: None)
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+        config_instance = TitanConfig()
+
+        assert config_instance.get_favorite_workflows() == []
+        assert config_instance.is_favorite_workflow("release-notes") is False
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_toggle_favorite_workflow_adds_and_persists(tmp_path: Path, monkeypatch, mocker):
+    """Toggling a non-favorited workflow marks it favorite and writes it to disk, scoped to the project."""
+    mocker.patch('titan_cli.core.config.PluginRegistry')
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    global_config_path = tmp_path / "home" / ".titan" / "config.toml"
+    global_config_path.parent.mkdir(parents=True)
+    with open(global_config_path, "wb") as f:
+        tomli_w.dump({}, f)
+
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
+    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: None)
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+        config_instance = TitanConfig()
+        result = config_instance.toggle_favorite_workflow("release-notes")
+    finally:
+        os.chdir(original_cwd)
+
+    assert result is True
+    assert config_instance.is_favorite_workflow("release-notes") is True
+
+    with open(global_config_path, "rb") as f:
+        data = tomli.load(f)
+    project_key = _project_scope_key(project_dir)
+    assert data["project_sources"][project_key]["workflows"]["favorites"] == ["release-notes"]
+    assert data["project_sources"][project_key]["project_path"] == str(project_dir.resolve())
+
+
+def test_toggle_favorite_workflow_removes_when_already_favorited(tmp_path: Path, monkeypatch, mocker):
+    """Toggling an already-favorited workflow removes it, leaving other favorites intact."""
+    mocker.patch('titan_cli.core.config.PluginRegistry')
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    global_config_path = tmp_path / "home" / ".titan" / "config.toml"
+    global_config_path.parent.mkdir(parents=True)
+    project_key = _project_scope_key(project_dir)
+    with open(global_config_path, "wb") as f:
+        tomli_w.dump(
+            {
+                "project_sources": {
+                    project_key: {
+                        "project_path": str(project_dir.resolve()),
+                        "workflows": {"favorites": ["release-notes", "create-pr"]},
+                    }
+                }
+            },
+            f,
+        )
+
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
+    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: None)
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+        config_instance = TitanConfig()
+        result = config_instance.toggle_favorite_workflow("release-notes")
+    finally:
+        os.chdir(original_cwd)
+
+    assert result is False
+    assert config_instance.is_favorite_workflow("release-notes") is False
+    assert config_instance.is_favorite_workflow("create-pr") is True
+
+
+def test_toggle_favorite_workflow_preserves_other_global_config_sections(tmp_path: Path, monkeypatch, mocker):
+    """Toggling a favorite must not clobber unrelated global config sections."""
+    mocker.patch('titan_cli.core.config.PluginRegistry')
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    global_config_path = tmp_path / "home" / ".titan" / "config.toml"
+    global_config_path.parent.mkdir(parents=True)
+    with open(global_config_path, "wb") as f:
+        tomli_w.dump(
+            {
+                "ai": {
+                    "default_connection": "anthropic",
+                    "connections": {
+                        "anthropic": {
+                            "connection_type": "direct_provider",
+                            "provider": "anthropic",
+                            "default_model": "claude-3-5-sonnet",
+                            "name": "Global Claude",
+                            "temperature": 0.7,
+                            "max_tokens": 4096,
+                        }
+                    },
+                }
+            },
+            f,
+        )
+
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
+    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: None)
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+        config_instance = TitanConfig()
+        config_instance.toggle_favorite_workflow("release-notes")
+    finally:
+        os.chdir(original_cwd)
+
+    with open(global_config_path, "rb") as f:
+        data = tomli.load(f)
+
+    project_key = _project_scope_key(project_dir)
+    assert data["project_sources"][project_key]["workflows"]["favorites"] == ["release-notes"]
+    assert data["ai"]["default_connection"] == "anthropic"
+    assert data["ai"]["connections"]["anthropic"]["name"] == "Global Claude"
+
+
+def test_favorite_workflows_isolated_between_projects(tmp_path: Path, monkeypatch, mocker):
+    """Favoriting a workflow name in one project must not affect a same-named workflow in another project."""
+    mocker.patch('titan_cli.core.config.PluginRegistry')
+
+    project_a = tmp_path / "project_a"
+    project_b = tmp_path / "project_b"
+    project_a.mkdir()
+    project_b.mkdir()
+    global_config_path = tmp_path / "home" / ".titan" / "config.toml"
+    global_config_path.parent.mkdir(parents=True)
+    with open(global_config_path, "wb") as f:
+        tomli_w.dump({}, f)
+
+    monkeypatch.setattr(TitanConfig, "GLOBAL_CONFIG", global_config_path)
+    monkeypatch.setattr(TitanConfig, "_find_project_config", lambda self, path: None)
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_a)
+        config_a = TitanConfig()
+        config_a.toggle_favorite_workflow("create-pr")
+
+        os.chdir(project_b)
+        config_b = TitanConfig()
+
+        assert config_b.is_favorite_workflow("create-pr") is False
+    finally:
+        os.chdir(original_cwd)

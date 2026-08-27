@@ -9,6 +9,35 @@ from titan_plugin_slack.oauth import SlackOAuthResult
 from titan_plugin_slack.screens.slack_config_screen import SlackConfigScreen
 
 
+class FakeBroker:
+    """Dict-backed stand-in honoring the SecretBroker surface the screen uses."""
+
+    def __init__(self, values=None):
+        self.values = dict(values or {})
+        self.stored = {}
+        self.deleted = []
+        self.store_error = None
+
+    def exists(self, key):
+        return self.values.get(key) is not None
+
+    def store(self, key, value):
+        if self.store_error is not None:
+            raise self.store_error
+        self.values[key] = value
+        self.stored[key] = value
+
+    def delete(self, key):
+        self.deleted.append(key)
+        self.values.pop(key, None)
+
+    def create_client(self, key, builder, required=True):
+        value = self.values.get(key)
+        if value is None and required:
+            raise KeyError(key)
+        return builder(value)
+
+
 def _build_config(tmp_path: Path, token: str | None = None, plugin_config: dict | None = None):
     config = MagicMock()
     config._global_config_path = tmp_path / "config.toml"
@@ -20,9 +49,12 @@ def _build_config(tmp_path: Path, token: str | None = None, plugin_config: dict 
     if plugin_config is not None:
         config.config.plugins["slack"] = MagicMock(config=plugin_config)
 
-    secrets = MagicMock()
-    secrets.get.return_value = token
-    config.secrets = secrets
+    broker = FakeBroker(
+        {"demo-project_slack_user_token": token} if token else {}
+    )
+    config.broker = broker
+    config.broker_factory = MagicMock()
+    config.broker_factory.for_plugin.return_value = broker
     config.load = MagicMock()
     return config
 
@@ -47,9 +79,6 @@ def test_slack_config_screen_reports_connection_state(tmp_path: Path) -> None:
             "default_channels": ["general", "release-notes"],
         },
     )
-    config.secrets.get.side_effect = lambda key: {
-        "demo-project_slack_user_token": "xoxp-token",
-    }.get(key)
     screen = SlackConfigScreen(config)
 
     state = screen._get_connection_state()
@@ -81,9 +110,9 @@ def test_slack_config_screen_disconnect_only_deletes_project_token(tmp_path: Pat
     )
     screen._disconnect()
 
-    config.secrets.delete.assert_any_call("demo-project_slack_user_token", scope="user")
-    config.secrets.delete.assert_any_call("demo-project_slack_refresh_token", scope="user")
-    config.secrets.delete.assert_any_call("demo-project_slack_token_expires_at", scope="user")
+    assert "demo-project_slack_user_token" in config.broker.deleted
+    assert "demo-project_slack_refresh_token" in config.broker.deleted
+    assert "demo-project_slack_token_expires_at" in config.broker.deleted
     with open(config.project_config_path, "rb") as f:
         data = tomli.load(f)
 
@@ -110,9 +139,9 @@ def test_slack_config_screen_remove_project_config_clears_plugin_entry_and_token
 
     screen._remove_project_config()
 
-    config.secrets.delete.assert_any_call("demo-project_slack_user_token", scope="user")
-    config.secrets.delete.assert_any_call("demo-project_slack_refresh_token", scope="user")
-    config.secrets.delete.assert_any_call("demo-project_slack_token_expires_at", scope="user")
+    assert "demo-project_slack_user_token" in config.broker.deleted
+    assert "demo-project_slack_refresh_token" in config.broker.deleted
+    assert "demo-project_slack_token_expires_at" in config.broker.deleted
     with open(config.project_config_path, "rb") as f:
         data = tomli.load(f)
 
@@ -207,7 +236,7 @@ def test_slack_config_screen_oauth_connect_fails_when_keyring_write_fails(tmp_pa
         authed_user_id="U123",
     )
     screen._perform_oauth_connect = MagicMock(return_value=expected)
-    config.secrets.set.side_effect = RuntimeError("keyring unavailable")
+    config.broker.store_error = RuntimeError("keyring unavailable")
     screen._remove_project_config = MagicMock()
 
     asyncio.run(screen._run_oauth_connect("123", ["general"]))

@@ -102,12 +102,19 @@ class TitanApp(App):
         current = getattr(self, '_copy_mode', False)
         self._copy_mode = not current
 
-        # Disable/enable mouse capture globally
+        if self._driver is None:
+            return
+
+        # Disable/enable mouse reporting at the terminal driver level.
+        # `self.mouse_capture = ...` used to be set here, but that attribute
+        # doesn't exist on Textual's App - it never actually stopped the
+        # terminal's SGR mouse-reporting escape codes, so this toggle was a
+        # no-op besides the notification.
         if self._copy_mode:
             # Disable mouse - allows terminal selection
-            self.mouse_capture = False
+            self._driver._disable_mouse_support()
             self.notify("📋 Copy Mode ON - Use mouse to select text, press Ctrl+Shift+C to exit", timeout=3)
         else:
             # Re-enable mouse
-            self.mouse_capture = True
+            self._driver._enable_mouse_support()
             self.notify("🖱️  Copy Mode OFF - Mouse interactions restored", timeout=3)

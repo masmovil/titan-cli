@@ -1,7 +1,12 @@
 from titan_plugin_github.models.review_enums import ChecklistCategory, ExclusionReason, PRSizeClass, ReviewStrategyType
 from titan_plugin_github.models.review_models import ReviewChecklistItem
 from titan_plugin_github.models.review_models import ChangeManifest, ChangedFileEntry, PullRequestManifest
-from titan_plugin_github.models.review_profile_models import CandidateExclusions, ReviewAxisRule, ReviewProfile
+from titan_plugin_github.models.review_profile_models import (
+    CandidateExclusions,
+    CandidateScoringRule,
+    ReviewAxisRule,
+    ReviewProfile,
+)
 from titan_plugin_github.operations.review_strategy_operations import (
     build_deterministic_review_plan,
     classify_pr,
@@ -248,6 +253,47 @@ def test_score_review_candidates_uses_custom_profile_thresholds_and_rules():
     assert "security or access-sensitive area" not in auth_candidate.reasons
 
 
+def test_score_review_candidates_does_not_apply_path_rules_to_tests():
+    """A test file whose name matches a production scoring rule (e.g. *util*) must not
+    inherit that rule's criticality — it scores on its own change size plus the test bonus."""
+    manifest = make_manifest(
+        [
+            ChangedFileEntry(path="src/utils/EntertainmentUtils.kt", status="modified", additions=90, deletions=10),
+            ChangedFileEntry(
+                path="tests/utils/EntertainmentUtilsTest.kt",
+                status="modified",
+                additions=90,
+                deletions=10,
+                is_test=True,
+            ),
+        ]
+    )
+    profile = ReviewProfile(
+        version=1,
+        change_patterns={},
+        file_roles={},
+        candidate_scoring=[
+            CandidateScoringRule(
+                name="shared_helper",
+                patterns=["**/*utils*"],
+                score_delta=5,
+                reason="shared helper or policy surface",
+            )
+        ],
+        candidate_exclusions=CandidateExclusions(),
+        review_axes={},
+    )
+
+    candidates, _ = score_review_candidates(manifest, review_profile=profile)
+    prod = next(candidate for candidate in candidates if candidate.path == "src/utils/EntertainmentUtils.kt")
+    test = next(candidate for candidate in candidates if candidate.path == "tests/utils/EntertainmentUtilsTest.kt")
+
+    assert "shared helper or policy surface" in prod.reasons
+    assert "shared helper or policy surface" not in test.reasons
+    assert "test file with meaningful changes" in test.reasons
+    assert prod.score > test.score
+
+
 def test_score_review_candidates_keeps_reviewable_documentation_paths():
     manifest = make_manifest(
         [
@@ -341,3 +387,24 @@ def test_deterministic_plan_uses_profile_review_axes():
     plan = build_deterministic_review_plan(candidates, excluded, checklist, strategy, review_profile=profile)
 
     assert ChecklistCategory.SECURITY in plan.review_axes
+
+
+def test_classify_pr_comment_threads_do_not_change_size_class():
+    """review-quality-010: review activity must not inflate the size class — a review's
+    own published comments would otherwise push the same unchanged PR into a bigger
+    class on the next run, changing focus/budget between passes."""
+    manifest = make_manifest(
+        [
+            ChangedFileEntry(path=f"src/file_{idx}.py", status="modified", additions=40, deletions=10)
+            for idx in range(10)
+        ]
+    )
+
+    quiet = classify_pr(manifest, comment_entries=0, comment_threads=0)
+    noisy = classify_pr(manifest, comment_entries=40, comment_threads=25)
+
+    assert noisy.size_class == quiet.size_class
+    assert noisy.complexity_score == quiet.complexity_score
+    # The activity signal is still captured — just not as size.
+    assert noisy.active_review is True
+    assert quiet.active_review is False

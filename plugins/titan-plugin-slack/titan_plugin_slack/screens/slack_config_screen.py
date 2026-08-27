@@ -164,8 +164,12 @@ class SlackConfigScreen(BaseScreen):
             return {}
         return plugin_cfg.config if hasattr(plugin_cfg, "config") else {}
 
+    def _broker(self):
+        """Broker scoped to the slack namespace, minted from the app config."""
+        return self.config.broker_factory.for_plugin("slack")
+
     def _has_user_token(self) -> bool:
-        return bool(self.config.secrets.get(self._get_project_token_key()))
+        return self._broker().exists(self._get_project_token_key())
 
     def _get_project_name(self) -> str:
         project_name = self.config.get_project_name()
@@ -426,20 +430,22 @@ class SlackConfigScreen(BaseScreen):
                 }
             )
             config_written = True
-            self.config.secrets.set(
-                self._get_project_token_key(), result.access_token, scope="user"
-            )
+            broker = self._broker()
+            broker.store(self._get_project_token_key(), result.access_token)
             if result.refresh_token:
-                self.config.secrets.set(
-                    self._get_project_refresh_token_key(), result.refresh_token, scope="user"
+                broker.store(
+                    self._get_project_refresh_token_key(), result.refresh_token
                 )
             if result.expires_in:
-                self.config.secrets.set(
+                broker.store(
                     self._get_project_token_expires_at_key(),
                     str(int(time.time()) + result.expires_in),
-                    scope="user",
                 )
             token_written = True
+            # The plugin reads this token while initializing, and the config
+            # reload above ran before the token existed. Nothing in the config
+            # files changed since, so only an explicit rebuild picks it up.
+            self.config.load(force_plugin_init=True)
             self._reconfigure_project_mode = False
             self._has_changes = True
             self.app.notify("Slack connected successfully.", severity="information")
@@ -447,13 +453,10 @@ class SlackConfigScreen(BaseScreen):
         except Exception as exc:
             if token_written:
                 try:
-                    self.config.secrets.delete(self._get_project_token_key(), scope="user")
-                    self.config.secrets.delete(
-                        self._get_project_refresh_token_key(), scope="user"
-                    )
-                    self.config.secrets.delete(
-                        self._get_project_token_expires_at_key(), scope="user"
-                    )
+                    broker = self._broker()
+                    broker.delete(self._get_project_token_key())
+                    broker.delete(self._get_project_refresh_token_key())
+                    broker.delete(self._get_project_token_expires_at_key())
                 except Exception:
                     pass
 
@@ -468,9 +471,15 @@ class SlackConfigScreen(BaseScreen):
 
     def _validate_connection(self) -> None:
         plugin_config = self._load_plugin_config()
-        client = SlackClient(
-            user_token=self.config.secrets.get(self._get_project_token_key()) or "",
-            team_id=plugin_config.get("default_team_id"),
+        # The token crosses into the client constructor inside the broker
+        # call; the screen receives the constructed client, never the value.
+        client = self._broker().create_client(
+            self._get_project_token_key(),
+            lambda token: SlackClient(
+                user_token=token or "",
+                team_id=plugin_config.get("default_team_id"),
+            ),
+            required=False,
         )
         result = client.auth_test()
 
@@ -493,18 +502,23 @@ class SlackConfigScreen(BaseScreen):
                 raise RuntimeError(err)
 
     def _disconnect(self) -> None:
-        self.config.secrets.delete(self._get_project_token_key(), scope="user")
-        self.config.secrets.delete(self._get_project_refresh_token_key(), scope="user")
-        self.config.secrets.delete(self._get_project_token_expires_at_key(), scope="user")
+        broker = self._broker()
+        broker.delete(self._get_project_token_key())
+        broker.delete(self._get_project_refresh_token_key())
+        broker.delete(self._get_project_token_expires_at_key())
+        # Same reason as connecting: the token the plugin holds lives outside the
+        # config files, so dropping it has to be announced explicitly.
+        self.config.load(force_plugin_init=True)
         self._reconfigure_project_mode = False
         self._has_changes = True
         self.app.notify("Slack account disconnected for this project.", severity="information")
         self._refresh_view()
 
     def _remove_project_config(self) -> None:
-        self.config.secrets.delete(self._get_project_token_key(), scope="user")
-        self.config.secrets.delete(self._get_project_refresh_token_key(), scope="user")
-        self.config.secrets.delete(self._get_project_token_expires_at_key(), scope="user")
+        broker = self._broker()
+        broker.delete(self._get_project_token_key())
+        broker.delete(self._get_project_refresh_token_key())
+        broker.delete(self._get_project_token_expires_at_key())
         project_cfg_path = self.config.project_config_path
         if project_cfg_path and project_cfg_path.exists():
             with open(project_cfg_path, "rb") as f:

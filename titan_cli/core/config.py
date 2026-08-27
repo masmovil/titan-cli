@@ -1,15 +1,16 @@
 # core/config.py
 from copy import deepcopy
 import hashlib
+import json
 from pathlib import Path
 import re
 from typing import List, Optional
 import tomli
-from .models import TitanConfigModel
+from .models import AIConfig, AIPreferences, TitanConfigModel
 from .migrations import MigrationManager
 from .plugins.plugin_registry import PluginRegistry
 from .workflows import WorkflowRegistry, ProjectStepSource, UserStepSource
-from .secrets import SecretManager
+from .security import create_broker_factory
 from .errors import ConfigParseError, ConfigWriteError
 from .utils import find_project_root
 from .logging import get_logger
@@ -34,12 +35,13 @@ class TitanConfig:
         self.registry = registry or PluginRegistry()
 
         # These are initialized in load() after config is read
-        self.secrets = None  # Set by load()
+        self.broker_factory = None  # Set by load()
         self._project_root = None  # Set by load()
         self._active_project_path = None  # Set by load()
         self._workflow_registry = None  # Set by load()
         self._plugin_warnings = []
         self._plugin_sync_events = []
+        self._plugin_fingerprint = None  # Set by load(); see _compute_plugin_fingerprint
 
         # Use custom global config path if provided (for testing), otherwise use default
         self._global_config_path = global_config_path or self.GLOBAL_CONFIG
@@ -47,13 +49,23 @@ class TitanConfig:
         # Initial load
         self.load(skip_plugin_init=skip_plugin_init)
 
-    def load(self, skip_plugin_init: bool = False):
+    def load(self, skip_plugin_init: bool = False, force_plugin_init: bool = False):
         """
         Reloads the entire configuration from disk, including global config
         and the project config from the current working directory.
 
+        Rebuilding the plugin registry costs roughly a hundred times more than
+        rereading the config files, so it only happens when something the
+        registry depends on actually changed. Callers that just want fresh
+        config values - a status bar, a connection list - pay the cheap path
+        without asking for it.
+
         Args:
             skip_plugin_init: If True, skip plugin initialization. Useful during setup wizards.
+            force_plugin_init: If True, rebuild the plugin registry even when the
+                configuration looks unchanged. For callers that changed something
+                the fingerprint cannot see, such as a stored credential a plugin
+                reads while initializing.
         """
         # Load global config
         self.global_config = self._load_and_migrate_toml(
@@ -77,16 +89,16 @@ class TitanConfig:
         merged = self._merge_configs(self.global_config, self.project_config)
         self.config = TitanConfigModel(**merged)
 
-        # Re-initialize dependencies that depend on the final config
-        # Use project root for secrets
-        self.secrets = SecretManager(project_path=project_root if project_root.is_dir() else None)
+        # Re-initialize dependencies that depend on the final config.
+        # Config never holds the vault itself: it holds the factory of
+        # namespace-scoped brokers, which is all screens and plugins get.
+        self.broker_factory = create_broker_factory(
+            project_path=project_root if project_root.is_dir() else None
+        )
 
         # Reset and re-initialize plugins (unless skipped during setup)
         if not skip_plugin_init:
-            self.registry.reset()
-            self.registry.initialize_plugins(config=self, secrets=self.secrets)
-            self._plugin_warnings = self.registry.list_failed()
-            self._plugin_sync_events = self.registry.list_sync_events()
+            self._refresh_plugins(merged, force=force_plugin_init)
 
         # Re-initialize WorkflowRegistry using project root
         project_step_source = ProjectStepSource(project_root=project_root)
@@ -99,6 +111,57 @@ class TitanConfig:
             config=self
         )
 
+
+    def _refresh_plugins(self, merged: dict, force: bool = False) -> None:
+        """
+        Rebuild the plugin registry, but only when it would come out different.
+
+        Every screen reloads config on resume, and rebuilding means importing and
+        initializing every installed plugin - about a second, against ten
+        milliseconds for rereading the files. Skipping the rebuild when nothing
+        plugin-related changed is what keeps that from being paid on every
+        screen transition.
+        """
+        fingerprint = self._compute_plugin_fingerprint(merged)
+
+        if not force and fingerprint == self._plugin_fingerprint:
+            logger.debug("plugin_registry_reused")
+            return
+
+        self.registry.reset()
+        self.registry.initialize_plugins(config=self, broker_factory=self.broker_factory)
+        self._plugin_warnings = self.registry.list_failed()
+        self._plugin_sync_events = self.registry.list_sync_events()
+        self._plugin_fingerprint = fingerprint
+        logger.debug("plugin_registry_rebuilt", forced=force)
+
+    @staticmethod
+    def _compute_plugin_fingerprint(merged: dict) -> str:
+        """
+        Everything the built registry depends on, as one comparable value.
+
+        Two inputs: the `[plugins.*]` configuration (which plugins are enabled
+        and how each is configured) and the set of installed entry points (so a
+        plugin installed or removed mid-session is noticed). Enumerating entry
+        points costs a few milliseconds against the second a rebuild costs, which
+        is what makes checking cheaper than assuming.
+
+        A credential a plugin reads while initializing is deliberately NOT here -
+        secrets live outside the config files and hashing them to compare would
+        mean holding them in memory for no other reason. Callers that change one
+        pass `force_plugin_init=True`.
+        """
+        from importlib.metadata import entry_points
+
+        plugins_config = merged.get("plugins", {})
+        installed = sorted(ep.name for ep in entry_points(group="titan.plugins"))
+
+        payload = json.dumps(
+            {"plugins": plugins_config, "installed": installed},
+            sort_keys=True,
+            default=str,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()
 
     def _find_project_config(self, start_path: Optional[Path] = None) -> Optional[Path]:
         """Search for .titan/config.toml up the directory tree"""
@@ -299,7 +362,10 @@ class TitanConfig:
         config_data["config_version"] = (
             self.config.config_version if getattr(self, "config", None) else "1.0"
         )
-        config_data["ai"] = ai_config
+        # TOML has no null: an unset default is an absent key, not a None value. Without this,
+        # having no default connection at all (a CLI-only setup, or deleting the last connection)
+        # would fail on write.
+        config_data["ai"] = {k: v for k, v in ai_config.items() if v is not None}
         self._write_global_config(config_data)
 
     def upsert_ai_connection(self, connection_id: str, connection_data: dict) -> None:
@@ -348,6 +414,92 @@ class TitanConfig:
             ai_cfg["default_connection"] = next(iter(connections), None)
 
         self.save_ai_connections_config(ai_cfg)
+
+    def set_default_ai_cli(self, cli_name: str) -> None:
+        """
+        Set the global default CLI, used for both headless and interactive CLI work.
+
+        Which CLI is installed is not checked here: an uninstalled default surfaces at
+        resolution time as an error naming it, which is more useful than refusing to save.
+        """
+        ai_cfg = self.get_ai_connections_config()
+        ai_cfg["default_cli"] = cli_name
+        self.save_ai_connections_config(ai_cfg)
+        self._sync_in_memory_default_cli(cli_name)
+
+    def clear_default_ai_cli(self) -> None:
+        """Remove the global default CLI, if one is set."""
+        ai_cfg = self.get_ai_connections_config()
+        ai_cfg.pop("default_cli", None)
+        self.save_ai_connections_config(ai_cfg)
+        self._sync_in_memory_default_cli(None)
+
+    def _sync_in_memory_default_cli(self, cli_name: Optional[str]) -> None:
+        """
+        Keep the parsed `self.config.ai.default_cli` in step with what was just written.
+
+        TitanConfig lives for the whole session, so anything resolving a route right after -
+        a workflow step, or the screen repainting its rows - would otherwise keep using the
+        previous value until a full reload.
+        """
+        if not getattr(self, "config", None):
+            return
+        if self.config.ai:
+            self.config.ai.default_cli = cli_name
+        else:
+            self.config.ai = AIConfig(default_cli=cli_name)
+
+    def get_ai_preferences_config(self) -> dict:
+        """Return global AI preferences: one provider choice per AI task."""
+        config_data = self._load_and_migrate_toml(
+            self._global_config_path,
+            migration_manager=self.global_migration_manager,
+        )
+        ai_cfg = config_data.setdefault("ai", {})
+        prefs = ai_cfg.setdefault("preferences", {})
+        prefs.setdefault("tasks", {})
+        return prefs
+
+    def save_ai_preferences_config(self, preferences: dict) -> None:
+        """Persist global AI preferences without touching AI connections."""
+        config_data = self._load_and_migrate_toml(
+            self._global_config_path,
+            migration_manager=self.global_migration_manager,
+        )
+        config_data["config_version"] = (
+            self.config.config_version if getattr(self, "config", None) else "1.0"
+        )
+        config_data.setdefault("ai", {})["preferences"] = preferences
+        self._write_global_config(config_data)
+        self._sync_in_memory_ai_preferences(preferences)
+
+    def _sync_in_memory_ai_preferences(self, preferences: dict) -> None:
+        """
+        Keep the already-parsed `self.config.ai.preferences` in sync with what
+        was just persisted to disk, so a caller holding this same TitanConfig
+        instance (e.g. a workflow step, in the same process) sees the new
+        preference immediately, without needing a full `.load()`.
+        """
+        if not getattr(self, "config", None):
+            return
+        parsed = AIPreferences(**preferences)
+        if self.config.ai:
+            self.config.ai.preferences = parsed
+        else:
+            self.config.ai = AIConfig(preferences=parsed)
+
+    def upsert_task_ai_preference(self, task: str, preference_data: dict) -> None:
+        """Create or update a persisted preference for an AI task."""
+        prefs = self.get_ai_preferences_config()
+        prefs["tasks"][task] = preference_data
+        self.save_ai_preferences_config(prefs)
+
+    def delete_task_ai_preference(self, task: str) -> None:
+        """Delete a persisted task-level AI preference, if present."""
+        prefs = self.get_ai_preferences_config()
+        if task in prefs["tasks"]:
+            del prefs["tasks"][task]
+            self.save_ai_preferences_config(prefs)
 
     def _write_toml(self, path: Path, data: dict) -> None:
         """Write raw TOML data to disk."""
@@ -528,6 +680,73 @@ class TitanConfig:
             config_data.pop("project_sources", None)
 
         self._write_global_config(config_data)
+
+    def get_favorite_workflows(self) -> list:
+        """Return the list of favorited workflow names for the active project."""
+        config_data = self._load_toml(self._global_config_path)
+        project_sources = config_data.get("project_sources")
+        if not isinstance(project_sources, dict):
+            return []
+        project_key = self._find_project_source_scope_key(project_sources)
+        project_table = project_sources.get(project_key) if project_key else None
+        if not isinstance(project_table, dict):
+            return []
+        workflows = project_table.get("workflows")
+        if not isinstance(workflows, dict):
+            return []
+        favorites = workflows.get("favorites", [])
+        return list(favorites) if isinstance(favorites, list) else []
+
+    def is_favorite_workflow(self, name: str) -> bool:
+        """Return whether a workflow is marked as favorite."""
+        return name in self.get_favorite_workflows()
+
+    def toggle_favorite_workflow(self, name: str) -> bool:
+        """Toggle a workflow's favorite status for the active project in the global user config.
+
+        Returns:
+            The new favorite state (True if now favorited, False if removed).
+        """
+        config_data = self._load_toml(self._global_config_path)
+        project_sources = config_data.get("project_sources")
+        if not isinstance(project_sources, dict):
+            project_sources = {}
+            config_data["project_sources"] = project_sources
+
+        project_key = self._find_project_source_scope_key(project_sources) or self._get_project_source_scope_key()
+        project_table = project_sources.get(project_key)
+        if not isinstance(project_table, dict):
+            project_table = {}
+            project_sources[project_key] = project_table
+        project_table["project_path"] = str((self._project_root or Path.cwd()).resolve())
+
+        workflows = project_table.get("workflows")
+        if not isinstance(workflows, dict):
+            workflows = {}
+            project_table["workflows"] = workflows
+
+        favorites = workflows.get("favorites")
+        if not isinstance(favorites, list):
+            favorites = []
+            workflows["favorites"] = favorites
+        if name in favorites:
+            favorites.remove(name)
+            is_now_favorite = False
+        else:
+            favorites.append(name)
+            is_now_favorite = True
+
+        if not favorites:
+            workflows.pop("favorites", None)
+        if not workflows:
+            project_table.pop("workflows", None)
+        if self._project_source_table_empty(project_table) and project_key in project_sources:
+            project_sources.pop(project_key, None)
+        if not project_sources and "project_sources" in config_data:
+            config_data.pop("project_sources", None)
+
+        self._write_global_config(config_data)
+        return is_now_favorite
 
     def _get_project_source_scope_key(self) -> str:
         """Return the global-config key used to scope local plugin overrides per project."""

@@ -29,7 +29,6 @@ For full contract details for every public step, including documented inputs, ou
 | `prompt_for_issue_body_step` | Prompt and Selection | `create-issue-ai` |
 | `prompt_for_self_assign` | Prompt and Selection | `create-issue-ai` |
 | `prompt_for_labels` | Prompt and Selection | `create-pr-ai` |
-| `select_cli` | Prompt and Selection | - |
 | `ai_suggest_issue_title_and_body` | Issue Creation | `create-issue-ai` |
 | `preview_and_confirm_issue` | Issue Creation | - |
 | `create_issue` | Issue Creation | `create-issue-ai` |
@@ -53,6 +52,7 @@ For full contract details for every public step, including documented inputs, ou
 | `ai_review_findings` | Code Review | - |
 | `normalize_findings` | Code Review | - |
 | `dedupe_findings` | Code Review | - |
+| `verify_findings` | Code Review | - |
 | `build_new_comment_actions` | Code Review | - |
 | `validate_review_actions` | Code Review | - |
 | `submit_review_actions` | Code Review | - |
@@ -85,7 +85,6 @@ Use these steps when a workflow needs interactive user input before creation or 
 - `prompt_for_issue_body_step`: capture the raw issue request before AI expansion
 - `prompt_for_self_assign`: ask whether the current user should be assigned to the issue
 - `prompt_for_labels`: prompt for repository labels and save the selection to a configurable context key
-- `select_cli`: choose which external CLI a workflow should use
 
 ## Issue Creation
 
@@ -124,6 +123,7 @@ These are advanced review-pipeline steps for structured AI-assisted code review.
 - `ai_review_findings`: run targeted AI analysis and produce candidate findings
 - `normalize_findings`: normalize raw findings into workflow-friendly structures
 - `dedupe_findings`: remove duplicate or overlapping findings before submission
+- `verify_findings`: adversarial AI pass that drops findings refuted against the code (fail-open)
 - `build_new_comment_actions`: translate findings into GitHub review actions
 - `validate_review_actions`: validate those review actions before posting
 - `submit_review_actions`: submit review comments or review actions to GitHub
@@ -1389,6 +1389,14 @@ How to read these contracts:
 ??? info "`ai_review_findings`"
     Second AI call: find actionable problems in the exact code context.
 
+    When `findings_synthesis_enabled` is `true` in the project review profile
+    (`.titan/review/profile.yaml`, default `false`) and the PR touches more than one
+    focus file, one extra best-effort cross-file synthesis batch runs after the
+    per-file batches: every reviewed file's hunks together (hunks_only, no expansion),
+    instructed to look only for cross-file inconsistencies introduced by the PR.
+    Skipped silently when the combined hunks exceed the prompt budget; its findings
+    are deduped against the per-file batches' findings before aggregation.
+
     **Workflow usage**
 
     ```yaml
@@ -1477,6 +1485,50 @@ How to read these contracts:
     | Result | Saved for later steps | Description |
     |--------|-----------------------|-------------|
     | `Success or Error` | - | - |
+
+
+??? info "`verify_findings`"
+    Adversarial verification pass: one batched AI call (low effort) tries to REFUTE
+    each non-nit finding against the code it targets; findings refuted with evidence
+    are dropped before the human gate. Fail-open: any CLI, parse, or budget problem
+    keeps all findings. Gated by `findings_verification_enabled` in the project
+    review profile (`.titan/review/profile.yaml`, default `false` — opt in per
+    project; disabled by default because in observed real reviews the pass has
+    not refuted findings and only added latency).
+
+    **Workflow usage**
+
+    ```yaml
+    - plugin: github
+      step: verify_findings
+      on_error: continue
+    ```
+
+    **Used by built-in workflows:** `review-pr`
+
+    **Available to later steps:** `deduped_findings` (verified set), `refuted_findings`
+
+    **Inputs (from ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `deduped_findings` | List[Finding] | Findings after duplicate removal |
+    | `review_context_batches` | List[FocusContextBatch] | Source of the focused hunks shown to the verifier |
+    | `review_strategy` | ReviewStrategy | Prompt budget cap |
+
+    **Outputs (saved to ctx.data)**
+
+    | Name | Type | Description |
+    |------|------|-------------|
+    | `deduped_findings` | List[Finding] | Verified findings (refuted ones removed) |
+    | `refuted_findings` | List[Finding] | Findings dropped by the verifier, with reasons shown in the UI |
+
+    **Returns**
+
+    | Result | Saved for later steps | Description |
+    |--------|-----------------------|-------------|
+    | `Success` | `deduped_findings`, `refuted_findings` | Verification applied. |
+    | `Skip` | - | No findings, only nits, verification disabled, no CLI, over budget, or verification failed (fail-open). |
 
 
 ??? info "`build_new_comment_actions`"

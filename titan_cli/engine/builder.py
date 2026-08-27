@@ -7,10 +7,11 @@ from typing import Optional, Any
 
 from titan_cli.core.plugins.plugin_registry import PluginRegistry
 from titan_cli.core.models import AIConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import create_ai_provider, create_broker_factory
 from .context import WorkflowContext
 from titan_cli.ai.client import AIClient
 from titan_cli.ai.exceptions import AIConfigurationError
+from titan_cli.ai.router import AIExecutor
 
 
 class WorkflowContextBuilder:
@@ -19,7 +20,6 @@ class WorkflowContextBuilder:
 
     Example:
         plugin_registry = PluginRegistry()
-        secrets = SecretManager()
         ai_config = AIConfig(
             default_connection="default",
             connections={
@@ -31,15 +31,15 @@ class WorkflowContextBuilder:
                 }
             },
         )
-        ctx = WorkflowContextBuilder(plugin_registry, secrets, ai_config) \\
+        ctx = WorkflowContextBuilder(plugin_registry, ai_config=ai_config) \\
             .with_ai() \\
+            .with_ai_router() \\
             .build()
     """
 
     def __init__(
         self,
         plugin_registry: PluginRegistry,
-        secrets: SecretManager,
         ai_config: Optional[AIConfig] = None
     ):
         """
@@ -47,19 +47,20 @@ class WorkflowContextBuilder:
 
         Args:
             plugin_registry: The PluginRegistry instance.
-            secrets: The SecretManager instance.
             ai_config: Optional AI configuration.
         """
         self._plugin_registry = plugin_registry
-        self._secrets = secrets
         self._ai_config = ai_config
 
         # Service clients
         self._ai = None
+        self._ai_router = None
+        self._titan_config = None
         self._git = None
         self._github = None
         self._jira = None
         self._slack = None
+        self._docker = None
 
         # Plugin managers (keyed by plugin name)
         self._plugin_managers: dict = {}
@@ -78,11 +79,46 @@ class WorkflowContextBuilder:
             # Convenience - auto-create from ai_config
             if self._ai_config:
                 try:
-                    self._ai = AIClient(self._ai_config, self._secrets)
+                    self._ai = AIClient(self._ai_config, create_ai_provider)
                 except AIConfigurationError:
                     self._ai = None
             else:
                 self._ai = None
+        return self
+
+    def with_ai_router(self, ai_router: Optional[Any] = None) -> WorkflowContextBuilder:
+        """
+        Add the AI execution façade steps route their AI calls through.
+
+        Args:
+            ai_router: Optional AIExecutor instance (auto-created if None)
+
+        Note:
+            `ctx.ai` stays available and unchanged for steps that talk to a
+            remote connection directly; `ctx.ai_router` is what honors the
+            user's per-task provider preference.
+        """
+        if ai_router:
+            self._ai_router = ai_router
+        else:
+            self._ai_router = AIExecutor(
+                self._ai_config,
+                provider_factory=create_ai_provider,
+                secret_broker=create_broker_factory().for_plugin("core"),
+            )
+        return self
+
+    def with_titan_config(self, titan_config: Optional[Any] = None) -> WorkflowContextBuilder:
+        """
+        Add the TitanConfig instance, for steps that need to persist user
+        preferences (e.g. `upsert_task_ai_preference`).
+
+        Args:
+            titan_config: The TitanConfig instance in scope at the call site.
+                There is no auto-create path - TitanConfig requires a
+                PluginRegistry/project root already resolved elsewhere.
+        """
+        self._titan_config = titan_config
         return self
 
     def with_git(self, git_client: Optional[Any] = None) -> WorkflowContextBuilder:
@@ -198,16 +234,45 @@ class WorkflowContextBuilder:
                 self._slack = None
         return self
 
+    def with_docker(self, docker_client: Optional[Any] = None) -> WorkflowContextBuilder:
+        """
+        Add Docker client to workflow context.
+
+        The Docker client is optional and only used by Docker plugin steps.
+        Other plugin steps will have ctx.docker = None and should ignore it.
+
+        Args:
+            docker_client: Optional DockerClient instance (auto-loaded if None).
+                          If plugin is not available or fails to load, sets ctx.docker = None.
+
+        Returns:
+            Self for method chaining
+        """
+        if docker_client:
+            self._docker = docker_client
+        else:
+            docker_plugin = self._plugin_registry.get_plugin("docker")
+            if docker_plugin and docker_plugin.is_available():
+                try:
+                    self._docker = docker_plugin.get_client()
+                except Exception:
+                    self._docker = None
+            else:
+                self._docker = None
+        return self
+
 
     def build(self) -> WorkflowContext:
         """Build the WorkflowContext."""
         return WorkflowContext(
-            secrets=self._secrets,
             plugin_manager=self._plugin_registry,
+            titan_config=self._titan_config,
             ai=self._ai,
+            ai_router=self._ai_router,
             git=self._git,
             github=self._github,
             github_managers=self._plugin_managers.get("github"),
             jira=self._jira,
             slack=self._slack,
+            docker=self._docker,
         )

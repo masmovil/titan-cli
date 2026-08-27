@@ -98,6 +98,27 @@ class WorktreeService:
             return ClientError(error_message=str(e), error_code="WORKTREE_REMOVE_ERROR")
 
     @log_client_operation()
+    def prune_worktrees(self) -> ClientResult[None]:
+        """
+        Prune worktree administrative metadata for directories that no longer exist.
+
+        Git keeps a record under ``.git/worktrees`` for every registered worktree. When
+        the directory is deleted by hand (or a removal is interrupted), that record is
+        left behind and ``git worktree add`` on the same path fails as "already
+        registered", while ``git worktree remove`` fails as "not a working tree".
+        Pruning clears those stale records so the path becomes reusable.
+
+        Returns:
+            ClientResult[None]
+        """
+        try:
+            self.git.run_command(["git", "worktree", "prune"])
+            return ClientSuccess(data=None, message="Pruned stale worktree metadata")
+
+        except GitError as e:
+            return ClientError(error_message=str(e), error_code="WORKTREE_PRUNE_ERROR")
+
+    @log_client_operation()
     def list_worktrees(self) -> ClientResult[List[UIGitWorktree]]:
         """
         List all worktrees.

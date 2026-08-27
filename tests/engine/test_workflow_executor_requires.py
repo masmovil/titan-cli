@@ -18,7 +18,7 @@ def make_executor_with_plugin(step_name: str, step_func):
 
 
 def make_context():
-    return WorkflowContext(secrets=MagicMock(), data={})
+    return WorkflowContext(data={})
 
 
 def test_plugin_step_uses_requires_field_before_params_requires():

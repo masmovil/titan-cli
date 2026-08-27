@@ -143,3 +143,65 @@ def test_execute_command_step_cwd_from_context(mock_context, mock_popen):
     assert "pwd" in result.message
     mock_popen.assert_called_once()
     assert mock_popen.call_args[1]['cwd'] == "/custom/path"
+
+
+# --- Environment inheritance ---
+
+def test_env_inherits_console_environment_but_never_project_secrets(mock_context, mock_popen, tmp_path):
+    """
+    A command step inherits the user's console environment. What must NEVER
+    ride along are Titan-managed project secrets: the vault keeps them in
+    memory, out of os.environ.
+    """
+    from titan_cli.core.security._vault import SecretManager
+
+    (tmp_path / ".titan").mkdir()
+    (tmp_path / ".titan" / "secrets.env").write_text("PROJECT_TOKEN='tok_project'\n")
+    SecretManager(project_path=tmp_path)  # loading project secrets touches nothing global
+
+    with patch.dict(os.environ, {"MY_SHELL_VAR": "shell_value"}):
+        step_model = WorkflowStepModel(command="env", id="t", name="Env")
+        execute_command_step(step_model, mock_context)
+
+    passed_env = mock_popen.call_args[1]['env']
+    assert passed_env["MY_SHELL_VAR"] == "shell_value"
+    assert "PROJECT_TOKEN" not in passed_env
+
+
+# --- Redaction of the resolved command echo ---
+
+def test_command_echo_is_redacted(mock_context, mock_popen):
+    """A secret interpolated from ctx.data is masked in the UI echo."""
+    from titan_cli.core.security import redaction
+    redaction.clear_registry()
+    try:
+        redaction.register_secret("tok_secret_value")
+        mock_context.data = {"api_token": "tok_secret_value"}
+        step_model = WorkflowStepModel(command="curl -H 'Auth: ${api_token}'", id="t", name="Curl")
+        result = execute_command_step(step_model, mock_context)
+
+        mock_context.textual.text.assert_any_call(
+            f"Executing command: curl -H 'Auth: {redaction.REDACTED}'"
+        )
+        # The subprocess still receives the real value.
+        assert any("tok_secret_value" in arg for arg in mock_popen.call_args[1]['args'])
+        # And the Success message is masked too.
+        assert "tok_secret_value" not in result.message
+    finally:
+        redaction.clear_registry()
+
+
+def test_command_stdout_echo_is_redacted(mock_context, mock_popen):
+    from titan_cli.core.security import redaction
+    redaction.clear_registry()
+    try:
+        redaction.register_secret("tok_secret_value")
+        mock_process = mock_popen.return_value
+        mock_process.communicate.return_value = ("token=tok_secret_value\n", "")
+        mock_process.returncode = 0
+        step_model = WorkflowStepModel(command="echo token", id="t", name="Echo")
+        execute_command_step(step_model, mock_context)
+
+        mock_context.textual.text.assert_any_call(f"token={redaction.REDACTED}\n")
+    finally:
+        redaction.clear_registry()

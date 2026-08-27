@@ -6,6 +6,9 @@ Uses AI to enhance the brief description into a detailed issue description.
 
 from pathlib import Path
 from jinja2 import Template
+from titan_cli.ai.router.declaration import declare_ai_usage
+from titan_cli.ai.router.enums import AIProviderType
+from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from titan_cli.ui.tui.widgets import Panel
 from titan_plugin_jira.constants import (
@@ -19,6 +22,15 @@ from titan_plugin_jira.constants import (
 )
 
 
+@declare_ai_usage(
+    task="jira_issue_enhancement",
+    # One prompt in, one structured text block out: a remote connection or a
+    # headless CLI can serve it. Remote stays the default - there is no repo
+    # for a CLI to read here, and it is markedly slower.
+    executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+    preferred=[AIProviderType.REMOTE],
+    enforces=True,
+)
 def ai_enhance_issue_description(ctx: WorkflowContext) -> WorkflowResult:
     """
     Use AI to generate title and enhance the brief description into a detailed description.
@@ -52,8 +64,7 @@ def ai_enhance_issue_description(ctx: WorkflowContext) -> WorkflowResult:
     ctx.textual.dim_text(InfoMessages.GENERATING_AI_DESC)
     ctx.textual.text("")
 
-    # Check if AI is available
-    if not ctx.ai:
+    if not ctx.ai_router:
         ctx.textual.mount(Panel(ErrorMessages.AI_NOT_AVAILABLE, panel_type="warning"))
         ctx.data["enhanced_description"] = brief_description
         ctx.data["title"] = DEFAULT_TITLE
@@ -68,26 +79,31 @@ def ai_enhance_issue_description(ctx: WorkflowContext) -> WorkflowResult:
         issue_type=issue_type, brief_description=brief_description
     )
 
-    # Call AI
     with ctx.textual.loading("Generating description with AI..."):
-        try:
-            from titan_cli.ai.models import AIMessage
+        result = ctx.ai_router.generate_text(
+            prompt,
+            policy=ai_enhance_issue_description,
+            announce=ctx.textual.ai_chip,
+        )
 
-            messages = [AIMessage(role="user", content=prompt)]
-            ai_response = ctx.ai.generate(messages)
-            response = (
-                ai_response.content
-                if hasattr(ai_response, "content")
-                else str(ai_response)
-            )
-        except Exception as e:
+    match result:
+        case AIExecutionSuccess(data=response):
+            pass
+        case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
+            # Keep the user's own words rather than leaving the issue empty.
+            ctx.textual.mount(Panel(disabled_message, panel_type="warning"))
+            ctx.data["enhanced_description"] = brief_description
+            ctx.data["title"] = DEFAULT_TITLE
+            ctx.textual.end_step("skip")
+            return Skip(disabled_message)
+        case AIExecutionError(error_message=err):
             ctx.textual.mount(
-                Panel(ErrorMessages.AI_GENERATION_FAILED.format(error=str(e)), panel_type="error")
+                Panel(ErrorMessages.AI_GENERATION_FAILED.format(error=err), panel_type="error")
             )
             ctx.data["enhanced_description"] = brief_description
             ctx.data["title"] = DEFAULT_TITLE
             ctx.textual.end_step("error")
-            return Error(f"ai_generation_failed: {e}")
+            return Error(f"ai_generation_failed: {err}")
 
     # Parse AI response
     parsed = _parse_ai_response(response)

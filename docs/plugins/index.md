@@ -11,7 +11,7 @@ plugin clients directly and compose workflows from reusable public steps.
 
 ## Official plugins
 
-Titan ships with four official plugins:
+Titan ships with five official plugins:
 
 | Plugin | Description |
 |--------|-------------|
@@ -19,6 +19,7 @@ Titan ships with four official plugins:
 | **github** | Create PRs with AI descriptions, manage issues, code reviews |
 | **jira** | Search issues, AI-powered analysis, workflow automation |
 | **slack** | Personal Slack auth, workspace summaries, and reusable Slack workflow steps |
+| **docker** | Docker Compose lifecycle management and image build/push workflows |
 
 Enable them per project in `.titan/config.toml`:
 
@@ -33,6 +34,9 @@ enabled = true
 enabled = true
 
 [plugins.slack]
+enabled = true
+
+[plugins.docker]
 enabled = true
 ```
 
@@ -78,3 +82,37 @@ path = "/absolute/path/to/local/plugin/repo"
 
 In `dev_local`, Titan loads the plugin directly from the local repository. In `stable`,
 Titan prepares an isolated local runtime for the pinned commit.
+
+## Version compatibility
+
+A plugin is built against the Titan plugin API of a specific titan-cli range. When the
+two drift apart — a project pinned to an old plugin version after upgrading titan-cli,
+or updating a plugin beyond what the installed titan-cli supports — the plugin cannot
+load. Titan detects this in both directions:
+
+- **Declared contract.** The plugin's `pyproject.toml` dependency on `titan-cli` is the
+  compatibility contract. Titan checks it before loading a plugin, before installing
+  one, and before applying an update — an update whose target version requires a
+  different titan-cli is rejected with a message telling you which side to upgrade,
+  instead of leaving a broken pin.
+- **Fallback detection.** If a plugin with loose bounds imports a `titan_cli.*` module
+  that does not exist in the running titan-cli, the failure is reported as a version
+  incompatibility ("update the plugin"), not as a generic crash.
+
+An incompatible or crashed plugin appears as **Load failed** in Plugin Management, with
+the reason in the details panel. A failed plugin with a stable pin can still be updated
+from there (the pin lives in the project config, not in the plugin), so a broken pinned
+version is never a dead end.
+
+**For plugin authors:**
+
+- Declare an accurate `titan-cli` bound and keep it honest, e.g.
+  `titan-cli = ">=0.8.0,<0.9"`. A bound like `>=0.6.0` promises compatibility with
+  every future titan-cli, which no plugin can keep; without a real upper bound only
+  the fallback detection protects your users.
+- When migrating to a renamed or moved titan-cli API, prefer a release that supports
+  **both** APIs (`try: import new / except ImportError: import old`) so projects can
+  upgrade titan-cli and the plugin in either order. Drop the shim, and raise the lower
+  bound, one release later.
+- Bump your plugin's MAJOR (or clearly flag the release) when a version stops
+  supporting a titan-cli range that the previous release supported.

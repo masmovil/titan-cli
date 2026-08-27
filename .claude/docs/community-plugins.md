@@ -139,17 +139,47 @@ This gives dependency isolation per `plugin + commit` while still using the curr
 
 ## Update Flow
 
-Only `stable` community plugins can be updated.
+Only `stable` community plugins can be updated. A plugin whose load failed can still be
+updated: the pin lives in project config, not in the loaded plugin, and update is the
+standard way out of a broken pinned version.
 
 Update behavior:
 
 1. check latest release/tag from the repo host
 2. resolve that ref to a full SHA
-3. update the current project's `.titan/config.toml`
-4. prepare the runtime for the new commit
-5. reload Titan config/registry
+3. compatibility gate: fetch the candidate's `pyproject.toml` at that SHA and check its
+   declared `titan-cli` requirement against the running version — a positively-detected
+   incompatibility aborts the update with an explanatory notify (fetch/parse failures do
+   not block)
+4. update the current project's `.titan/config.toml`
+5. prepare the runtime for the new commit
+6. reload Titan config/registry
 
 `dev_local` has no update flow by design.
+
+---
+
+## Version Compatibility
+
+The compatibility contract between a plugin and titan-cli is the plugin's declared
+`titan-cli` dependency in its `pyproject.toml`.
+
+- `parse_plugin_metadata` (community_sources.py) extracts it as `titan_requirement`
+  (PEP 621 and Poetry layouts, including `^`/`~` translation).
+- `get_titan_incompatibility(metadata, current_version)` returns a message or `None`.
+  Absent/unparseable requirements never block.
+- Enforced in three places: `_load_local_plugin` (plugin_registry.py, before import;
+  raises `PluginIncompatibleError`), the install screen (blocking panel before writing
+  the pin), and the update flow (step 3 above).
+- Fallback heuristic: a `ModuleNotFoundError` for a `titan_cli.*` module during plugin
+  import is re-raised as `PluginIncompatibleError` — a missing Titan API means the
+  plugin was built for a different titan-cli, and the raw traceback misleads.
+- UI: failed plugins show as "Load failed" (not "Not installed") in Plugin Management,
+  with the error in the details panel and Update still available.
+
+Contributor rule for breaking `titan_cli.*` changes (deprecation aliases, coordinated
+plugin releases): see `docs/contributing/architecture.md`, "Plugin API Compatibility
+Rule".
 
 ---
 

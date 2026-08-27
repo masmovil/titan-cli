@@ -28,9 +28,8 @@ steps:
     step: ai_code_assistant
     params:
       context_key: "jira_task_context"
-      cli_preference: "auto"
       # This workflow's whole purpose is handing the issue off to an AI CLI, so skip the
-      # "do you want AI assistance?" prompt and go straight to CLI selection/launch.
+      # "do you want AI assistance?" prompt and go straight to the launch.
       ask_confirmation: false
       fail_on_decline: false
 

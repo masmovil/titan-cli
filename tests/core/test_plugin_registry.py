@@ -7,7 +7,7 @@ from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.plugins.community_sources import PluginChannel
 from titan_cli.core.plugins.runtime import PluginRuntimePaths, PluginRuntimeResult
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker, SecretBrokerFactory
 
 
 # A proper mock class to represent a loaded plugin
@@ -18,7 +18,7 @@ class MockPlugin(TitanPlugin):
     def __init__(self):
         self._initialized = False
         self.received_config = None
-        self.received_secrets = None
+        self.received_broker = None
 
     @property
     def name(self) -> str:
@@ -32,10 +32,10 @@ class MockPlugin(TitanPlugin):
     def dependencies(self) -> list[str]:
         return self._dependencies
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         self._initialized = True
         self.received_config = config
-        self.received_secrets = secrets
+        self.received_broker = broker
 
     def is_available(self) -> bool:
         return True
@@ -146,9 +146,9 @@ def test_plugin_registry_dependency_resolution(mocker):
     registry.discover()
     
     mock_config = MagicMock(spec=TitanConfig)
-    mock_secrets = MagicMock(spec=SecretManager)
+    mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_secrets)
+    registry.initialize_plugins(mock_config, mock_broker_factory)
 
     plugin_one = registry.get_plugin("plugin_one")
     plugin_two = registry.get_plugin("plugin_two")
@@ -175,9 +175,9 @@ def test_plugin_registry_unresolved_dependency(mocker):
     registry.discover()
     
     mock_config = MagicMock(spec=TitanConfig)
-    mock_secrets = MagicMock(spec=SecretManager)
+    mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_secrets)
+    registry.initialize_plugins(mock_config, mock_broker_factory)
 
     failed_plugins = registry.list_failed()
     assert "plugin_dependent" in failed_plugins
@@ -186,7 +186,7 @@ def test_plugin_registry_unresolved_dependency(mocker):
 
 def test_plugin_registry_plugin_initialization_context(mocker):
     """
-    Test that config and secrets are passed correctly to plugin initialize method.
+    Test that config and a plugin-scoped broker are passed to plugin initialize.
     """
     mock_ep = MagicMock()
     mock_ep.name = "test_plugin"
@@ -202,13 +202,14 @@ def test_plugin_registry_plugin_initialization_context(mocker):
     registry.discover()
     
     mock_config = MagicMock(spec=TitanConfig)
-    mock_secrets = MagicMock(spec=SecretManager)
+    mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_secrets)
+    registry.initialize_plugins(mock_config, mock_broker_factory)
 
     plugin_instance = registry.get_plugin("test_plugin")
     assert plugin_instance.received_config is mock_config
-    assert plugin_instance.received_secrets is mock_secrets
+    assert plugin_instance.received_broker is mock_broker_factory.for_plugin.return_value
+    mock_broker_factory.for_plugin.assert_called_once_with("test_plugin")
 
 
 def test_apply_source_overrides_loads_dev_local_plugin(tmp_path, mocker):
@@ -375,3 +376,104 @@ def test_list_enabled_delegates_to_config_effective_enabled_plugins():
 
     assert registry.list_enabled(config) == ["git", "github"]
     config.get_enabled_plugins.assert_called_once_with()
+
+
+# ---------------------------------------------------------------------------
+# titan-cli compatibility gate in _load_local_plugin
+# ---------------------------------------------------------------------------
+
+from titan_cli.core.errors import PluginIncompatibleError  # noqa: E402
+from titan_cli.core.plugins.plugin_registry import _load_local_plugin  # noqa: E402
+
+
+def _write_sample_plugin(plugin_dir, pyproject_extra="", plugin_body=None):
+    plugin_dir.mkdir()
+    package_dir = plugin_dir / "sample_plugin"
+    package_dir.mkdir()
+    (plugin_dir / "pyproject.toml").write_text(
+        f"""
+[project]
+name = "sample-plugin"
+version = "0.1.0"
+{pyproject_extra}
+
+[project.entry-points."titan.plugins"]
+sample = "sample_plugin.plugin:SamplePlugin"
+""".strip(),
+        encoding="utf-8",
+    )
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "plugin.py").write_text(
+        plugin_body
+        or """
+from titan_cli.core.plugins.plugin_base import TitanPlugin
+
+
+class SamplePlugin(TitanPlugin):
+    @property
+    def name(self) -> str:
+        return "sample"
+""".strip(),
+        encoding="utf-8",
+    )
+
+
+def test_load_local_plugin_rejects_incompatible_declared_bound(tmp_path):
+    plugin_dir = tmp_path / "incompatible_plugin"
+    _write_sample_plugin(
+        plugin_dir,
+        pyproject_extra='dependencies = ["titan-cli>=999.0"]',
+    )
+
+    import pytest
+
+    with pytest.raises(PluginIncompatibleError) as excinfo:
+        _load_local_plugin(plugin_dir, "sample")
+
+    assert "requires titan-cli >=999.0" in str(excinfo.value)
+
+
+def test_load_local_plugin_translates_missing_titan_api_to_incompatibility(tmp_path):
+    plugin_dir = tmp_path / "stale_api_plugin"
+    _write_sample_plugin(
+        plugin_dir,
+        plugin_body="""
+from titan_cli.core.module_that_never_existed import Something
+from titan_cli.core.plugins.plugin_base import TitanPlugin
+
+
+class SamplePlugin(TitanPlugin):
+    @property
+    def name(self) -> str:
+        return "sample"
+""".strip(),
+    )
+
+    import pytest
+
+    with pytest.raises(PluginIncompatibleError) as excinfo:
+        _load_local_plugin(plugin_dir, "sample")
+
+    assert "does not exist in titan-cli" in str(excinfo.value)
+
+
+def test_load_local_plugin_propagates_unrelated_missing_modules(tmp_path):
+    plugin_dir = tmp_path / "broken_dep_plugin"
+    _write_sample_plugin(
+        plugin_dir,
+        plugin_body="""
+import package_that_is_not_installed
+from titan_cli.core.plugins.plugin_base import TitanPlugin
+
+
+class SamplePlugin(TitanPlugin):
+    @property
+    def name(self) -> str:
+        return "sample"
+""".strip(),
+    )
+
+    import pytest
+
+    with pytest.raises(ModuleNotFoundError):
+        _load_local_plugin(plugin_dir, "sample")

@@ -6,10 +6,15 @@ Specific agents live in their respective plugins.
 """
 
 from .base import BaseAIAgent, AgentRequest, AgentResponse, AIGenerator
+from .contracts import AgentContract, ContractParse, JsonContract, TextContract
 
 __all__ = [
     "BaseAIAgent",
     "AgentRequest",
     "AgentResponse",
+    "AgentContract",
     "AIGenerator",
+    "ContractParse",
+    "JsonContract",
+    "TextContract",
 ]

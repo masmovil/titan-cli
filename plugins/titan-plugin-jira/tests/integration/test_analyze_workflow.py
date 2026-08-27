@@ -4,10 +4,11 @@ Integration tests for the analyze-jira-issues workflow.
 These tests verify the complete workflow execution with mocked JIRA API responses.
 """
 
+import json
+
 import pytest
 from unittest.mock import MagicMock, Mock
 from titan_cli.engine import WorkflowContextBuilder, Success, Error, Skip
-from titan_cli.core.secrets import SecretManager
 from titan_cli.core.result import ClientSuccess
 from titan_plugin_jira.models import UIJiraIssue
 
@@ -117,47 +118,38 @@ def mock_jira_client():
     return client
 
 
+# One answer serving all of the agent's calls: each call's contract reads only
+# the fields it declared and ignores the rest.
+#
+# It has to be a real answer rather than prose. With prose every call fails its
+# contract, spends a repair retry, and degrades to empty defaults - so a test
+# asserting "this produced nothing" could no longer tell a working feature flag
+# apart from a response nothing could parse.
+AI_ANALYSIS_ANSWER = json.dumps(
+    {
+        "functional": ["Fix authentication validation logic"],
+        "non_functional": ["Login responds in under 200ms"],
+        "acceptance_criteria": ["Valid credentials log the user in"],
+        "technical_approach": "Patch the session validation path",
+        "risks": ["Security regression in the auth flow"],
+        "edge_cases": ["Expired session token"],
+        "complexity": "High",
+        "effort": "3-5 days",
+        "dependencies": ["AUTH-100"],
+        "subtasks": [{"summary": "Add unit tests", "description": "Cover the validation logic"}],
+    }
+)
+
+
 @pytest.fixture
 def mock_ai_client():
-    """Mock AI client with sample analysis."""
+    """Mock AI client answering every one of the agent's calls."""
     client = MagicMock()
     client.is_available.return_value = True
 
-    # Mock AI response
     mock_response = Mock()
-    mock_response.content = """
-## 1. Issue Overview
-This is a critical authentication bug affecting user login functionality.
-
-## 2. Requirements Breakdown
-- Fix authentication validation logic
-- Ensure credentials are properly verified
-- Test on both mobile and web platforms
-
-## 3. Technical Considerations
-- Backend authentication service
-- Database user verification
-- Session management
-
-## 4. Potential Challenges
-- May require database schema changes
-- Need to ensure backward compatibility
-- Security implications must be carefully reviewed
-
-## 5. Implementation Approach
-1. Review authentication flow
-2. Add unit tests for validation logic
-3. Fix the bug
-4. Test on all platforms
-
-## 6. Missing Information
-- Error messages users are seeing
-- Frequency of the issue
-- Specific platforms affected
-
-## 7. Estimated Complexity
-**High** - Involves security-critical authentication logic and multi-platform testing.
-"""
+    mock_response.content = AI_ANALYSIS_ANSWER
+    mock_response.usage = {"total_tokens": 100}
     client.generate.return_value = mock_response
 
     return client
@@ -191,11 +183,8 @@ def mock_views():
 @pytest.fixture
 def workflow_context(mock_jira_client, mock_ai_client, mock_ui_components, mock_views):
     """Build workflow context with mocked dependencies."""
-    secrets = SecretManager()
-
     ctx = WorkflowContextBuilder(
         plugin_registry=None,  # Not needed for this test
-        secrets=secrets,
         ai_config=None
     ).build()
 
@@ -530,6 +519,11 @@ def test_agent_feature_flag_requirement_extraction(mock_ai_client, mock_jira_cli
     assert len(analysis.non_functional_requirements) == 0
     assert len(analysis.acceptance_criteria) == 0
 
+    # The flags left enabled did produce something. Without this the test would
+    # also pass if nothing were ever parsed, which is what it used to do.
+    assert len(analysis.risks) > 0
+    assert len(analysis.dependencies) > 0
+
 
 def test_agent_feature_flag_risk_analysis(mock_ai_client, mock_jira_client):
     """Test that enable_risk_analysis flag controls risk analysis."""
@@ -717,7 +711,8 @@ def test_workflow_data_flow_without_get_issue():
     # Mock AI
     mock_ai.is_available.return_value = True
     mock_response = Mock()
-    mock_response.content = "AI analysis result"
+    mock_response.content = AI_ANALYSIS_ANSWER
+    mock_response.usage = {"total_tokens": 100}
     mock_ai.generate.return_value = mock_response
 
     # Mock textual input (user selects first issue)

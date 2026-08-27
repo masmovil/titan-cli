@@ -17,7 +17,13 @@ from titan_cli.core.logging import get_logger
 from titan_cli.ai.agents.base import BaseAIAgent, AgentRequest
 from titan_cli.core.result import ClientSuccess, ClientError
 from .config_loader import load_agent_config
-from .response_parser import JiraAgentParser
+from .contracts import (
+    COMMENT_CONTRACT,
+    DEPENDENCY_CONTRACT,
+    REQUIREMENTS_CONTRACT,
+    RISK_CONTRACT,
+    SUBTASK_CONTRACT,
+)
 from .validators import IssueValidator
 from .token_tracker import TokenTracker, TokenBudget, OperationType
 from .prompts import JiraAgentPrompts
@@ -83,22 +89,22 @@ class JiraAgent(BaseAIAgent):
         ```
     """
 
-    def __init__(self, ai_client, jira_client=None):
+    def __init__(self, generator, jira_client=None):
         """
         Initialize JiraAgent.
 
         Args:
-            ai_client: The AIClient instance (provides AI capabilities)
+            generator: Anything implementing AIGenerator - a remote connection
+                or a local CLI. This agent works the same either way.
             jira_client: Optional JIRA client for issue operations
         """
-        super().__init__(ai_client)
+        super().__init__(generator)
         self.jira = jira_client
 
         # Load configuration from TOML (once per agent instance)
         self.config = load_agent_config("jira_agent")
 
         # Initialize robust response parser
-        self.parser = JiraAgentParser(strict=False)
 
         # Initialize input validator
         self.validator = IssueValidator(
@@ -326,6 +332,7 @@ class JiraAgent(BaseAIAgent):
             temperature=self.config.temperature,
             system_prompt=self.config.requirements_system_prompt,
             operation="requirements_extraction",
+            contract=REQUIREMENTS_CONTRACT,
         )
 
         try:
@@ -342,7 +349,7 @@ class JiraAgent(BaseAIAgent):
             logger.info("=" * 80)
 
         # Parse response
-        result = self._parse_requirements_response(response.content)
+        result = dict(response.parsed)
 
         # Debug: Log parsing result if debug enabled
         if self.config.enable_debug_output:
@@ -387,11 +394,12 @@ class JiraAgent(BaseAIAgent):
             temperature=self.config.temperature,
             system_prompt=self.config.requirements_system_prompt,
             operation="risk_analysis",
+            contract=RISK_CONTRACT,
         )
 
         try:
             response = self.generate(request)
-            result = self._parse_risk_response(response.content)
+            result = dict(response.parsed)
             result["tokens_used"] = response.tokens_used
             return result
         except Exception as e:
@@ -428,11 +436,12 @@ class JiraAgent(BaseAIAgent):
             temperature=self.config.temperature,
             system_prompt=self.config.requirements_system_prompt,
             operation="dependency_detection",
+            contract=DEPENDENCY_CONTRACT,
         )
 
         try:
             response = self.generate(request)
-            result = self._parse_dependencies_response(response.content)
+            result = dict(response.parsed)
             result["tokens_used"] = response.tokens_used
             return result
         except Exception as e:
@@ -471,13 +480,15 @@ class JiraAgent(BaseAIAgent):
             temperature=self.config.temperature,
             system_prompt=self.config.subtask_suggestion_prompt,
             operation="subtask_suggestion",
+            contract=SUBTASK_CONTRACT,
         )
 
         try:
             response = self.generate(request)
-            result = self._parse_subtasks_response(response.content)
-            result["tokens_used"] = response.tokens_used
-            return result
+            return {
+                "subtasks": self._valid_subtasks(response.parsed),
+                "tokens_used": response.tokens_used,
+            }
         except Exception as e:
             logger.error(f"AI generation failed for subtask suggestion: {e}")
             raise
@@ -530,47 +541,36 @@ class JiraAgent(BaseAIAgent):
                 temperature=self.config.temperature,
                 system_prompt=self.config.comment_generation_prompt,
                 operation="comment_generation",
+                contract=COMMENT_CONTRACT,
             )
 
             response = self.generate(request)
 
-            # Extract comment
-            if "COMMENT:" in response.content:
-                comment = response.content.split("COMMENT:", 1)[1].strip()
-                return comment
+            # The prompt asks for a "COMMENT:" label, but the comment is the
+            # whole answer either way: a model that writes the comment without
+            # the label has still done the job, and discarding it - which is
+            # what requiring the label used to mean - throws away a good answer
+            # over a formatting detail.
+            comment = response.parsed
+            if "COMMENT:" in comment:
+                comment = comment.split("COMMENT:", 1)[1].strip()
 
-            return None
+            return comment or None
 
         except Exception as e:
             logger.error(f"Failed to generate comment: {e}")
             return None
 
-    # ==================== RESPONSE PARSING METHODS ====================
+    @staticmethod
+    def _valid_subtasks(parsed: Dict[str, Any]) -> list:
+        """
+        Keep only subtasks Jira could actually create.
 
-    def _parse_requirements_response(self, content: str) -> Dict[str, Any]:
+        A subtask with no summary has no title, so it is dropped rather than
+        sent on to fail at creation time.
         """
-        Parse requirements extraction response.
-        Uses robust parser with JSON-first strategy and regex fallback.
-        """
-        return self.parser.parse_requirements(content)
-
-    def _parse_risk_response(self, content: str) -> Dict[str, Any]:
-        """
-        Parse risk analysis response.
-        Uses robust parser with JSON-first strategy and regex fallback.
-        """
-        return self.parser.parse_risks(content)
-
-    def _parse_dependencies_response(self, content: str) -> Dict[str, Any]:
-        """
-        Parse dependencies detection response.
-        Uses robust parser with JSON-first strategy and regex fallback.
-        """
-        return self.parser.parse_dependencies(content)
-
-    def _parse_subtasks_response(self, content: str) -> Dict[str, Any]:
-        """
-        Parse subtasks suggestion response.
-        Uses robust parser with JSON-first strategy and regex fallback.
-        """
-        return self.parser.parse_subtasks(content)
+        return [
+            {"summary": item.get("summary", ""), "description": item.get("description", "")}
+            for item in parsed.get("subtasks", [])
+            if isinstance(item, dict) and item.get("summary")
+        ]

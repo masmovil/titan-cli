@@ -1,6 +1,6 @@
 # core/models/__init__.py
 from enum import StrEnum
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -98,16 +98,19 @@ class AIConfig(BaseModel):
     default_connection: Optional[str] = Field(
         None, description="Default AI connection ID"
     )
+    default_cli: Optional[str] = Field(
+        None,
+        description="Default CLI name, used for both headless and interactive CLI work",
+    )
     connections: Dict[str, AIConnectionConfig] = Field(default_factory=dict)
 
-    @model_validator(mode="after")
-    def validate_default_connection(self) -> "AIConfig":
-        """Ensure the default connection exists when configured."""
-        if self.default_connection and self.default_connection not in self.connections:
-            raise ValueError(
-                f"Default connection '{self.default_connection}' not found in configured connections."
-            )
-        return self
+    # Neither default is validated against what exists. A default pointing at something that
+    # is gone - a connection renamed by hand, a CLI uninstalled - is a real problem, but it is
+    # not a reason to refuse to load: rejecting the config here makes the application
+    # unstartable, and the only screen that could repair the value is inside it. Both are
+    # instead reported at resolution time, by name, with the app running and the config screen
+    # reachable. (For `default_cli` there is a second reason: the set of known CLIs lives in
+    # `titan_cli.external_cli`, which sits above this module in the dependency graph.)
 
     @property
     def default(self) -> Optional[str]:
@@ -118,6 +121,53 @@ class AIConfig(BaseModel):
     def providers(self) -> Dict[str, AIConnectionConfig]:
         """Backward-compatible alias used by older callers."""
         return self.connections
+
+    preferences: Optional["AIPreferences"] = Field(
+        None, description="Persisted routing preferences, one per AI task"
+    )
+
+
+class AIProviderPreference(BaseModel):
+    """
+    A persisted choice of which KIND of provider to use for an AI task.
+
+    Only the provider type is stored. Which connection or which CLI serves it is a single
+    global choice (`AIConfig.default_connection` / `AIConfig.default_cli`), so changing the
+    default in one place changes every task that uses that kind of provider.
+    """
+
+    provider: str = Field(..., description="AIProviderType value, e.g. 'remote', 'cli_headless'")
+
+
+class AIPreferences(BaseModel):
+    """
+    Persisted AI routing preferences, keyed by task.
+
+    The task is the only scope: one choice per kind of work, applied wherever
+    that work happens.
+    """
+
+    tasks: Dict[str, AIProviderPreference] = Field(default_factory=dict)
+
+
+AIConfig.model_rebuild()
+
+
+class SecurityConfig(BaseModel):
+    """
+    Security posture for third-party plugin execution.
+
+    `community_plugins` names the isolation model community plugins run
+    under. Only "in_process" exists today; "worker" and "sandbox" are the
+    planned future values — declaring the key now means existing configs
+    already state their posture explicitly when those land. An unknown
+    value fails validation loudly rather than silently running in-process.
+    """
+
+    community_plugins: Literal["in_process"] = Field(
+        "in_process",
+        description="Isolation model for community plugins (future: worker | sandbox).",
+    )
 
 
 class TitanConfigModel(BaseModel):
@@ -133,4 +183,7 @@ class TitanConfigModel(BaseModel):
     ai: Optional[AIConfig] = Field(None, description="AI connection configuration.")
     plugins: Dict[str, PluginConfig] = Field(
         default_factory=dict, description="Dictionary of plugin configurations."
+    )
+    security: Optional[SecurityConfig] = Field(
+        None, description="Security posture for third-party plugin execution."
     )

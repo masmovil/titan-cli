@@ -6,17 +6,29 @@ extraction). Guards against silently reverting to the old inline
 """
 
 from titan_plugin_github.managers.prompt_budget_manager import get_prompt_budget_manager
-from titan_plugin_github.models.review_enums import ChecklistCategory, FileChangeStatus, FileReadMode, FileReviewPriority, PRSizeClass, ReviewStrategyType
+from titan_plugin_github.models.review_enums import (
+    ChecklistCategory,
+    ContextRequestType,
+    FileChangeStatus,
+    FileReadMode,
+    FileReviewPriority,
+    PRSizeClass,
+    ReviewStrategyType,
+)
 from titan_plugin_github.models.review_models import (
     ChangeManifest,
     ChangedFileEntry,
+    ContextRequest,
     FileReviewPlan,
     PullRequestManifest,
     ReviewChecklistItem,
     ReviewPlan,
     ReviewStrategy,
 )
-from titan_plugin_github.operations.context_resolution_operations import build_review_context_package
+from titan_plugin_github.operations.context_resolution_operations import (
+    build_review_context_package,
+    resolve_file_read_access,
+)
 
 
 def make_diff(path: str, added_line: str) -> str:
@@ -67,7 +79,6 @@ def test_build_review_context_package_batches_by_manager_content_budget():
         max_focus_files=10,
         max_prompt_chars=4000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -77,6 +88,43 @@ def test_build_review_context_package_batches_by_manager_content_budget():
     assert len(package.batches) == 3
     assert [batch.batch_id for batch in package.batches] == ["batch_1", "batch_2", "batch_3"]
     assert [list(batch.files_context.keys()) for batch in package.batches] == [["a.py"], ["b.py"], ["c.py"]]
+
+
+def test_direct_strategy_overflow_spills_to_extra_batch_instead_of_dropping():
+    """A tiny PR's single-call strategy used to DROP the file that didn't fit next
+    to an earlier, generously-resolved one — a small file could lose its entire
+    review because a sibling resolved to a rich read mode first. Overflow now
+    spills into extra batches — coverage is never silently lost at packaging time."""
+    paths = ["big_first.py", "second.py"]
+    diff = "".join(make_diff(path, "x" * 3000) for path in paths)
+    plan = ReviewPlan(
+        focus_files=[
+            FileReviewPlan(path=path, priority=FileReviewPriority.HIGH, read_mode=FileReadMode.HUNKS_ONLY)
+            for path in paths
+        ],
+        review_axes=[ChecklistCategory.FUNCTIONAL_CORRECTNESS],
+    )
+    manifest = make_manifest(paths)
+    checklist = [
+        ReviewChecklistItem(
+            id=ChecklistCategory.FUNCTIONAL_CORRECTNESS,
+            name="Functional correctness",
+            description="Does it work",
+        )
+    ]
+    strategy = ReviewStrategy(
+        strategy=ReviewStrategyType.DIRECT_FINDINGS,
+        size_class=PRSizeClass.TINY,
+        max_focus_files=4,
+        max_prompt_chars=4000,
+        max_comment_entries=5,
+    )
+
+    package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
+
+    reviewed_paths = {path for batch in package.batches for path in batch.files_context}
+    assert reviewed_paths == set(paths)
+    assert len(package.batches) == 2
 
 
 def test_build_review_context_package_keeps_small_files_in_one_batch():
@@ -103,7 +151,6 @@ def test_build_review_context_package_keeps_small_files_in_one_batch():
         max_focus_files=10,
         max_prompt_chars=20000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -142,7 +189,6 @@ def test_worktree_reference_entries_get_a_high_fixed_cost_and_split_batches():
         max_focus_files=10,
         max_prompt_chars=2000 + 3500,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -183,7 +229,6 @@ def test_worktree_reference_files_are_capped_at_one_per_batch_even_with_ample_bu
         max_focus_files=10,
         max_prompt_chars=100_000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -218,7 +263,6 @@ def test_mixed_batch_closes_before_a_second_worktree_reference_file():
         max_focus_files=10,
         max_prompt_chars=100_000,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
     package = build_review_context_package(plan, diff, manifest, checklist, comment_context=[], strategy=strategy)
@@ -226,3 +270,204 @@ def test_mixed_batch_closes_before_a_second_worktree_reference_file():
     assert len(package.batches) == 2
     assert list(package.batches[0].files_context.keys()) == ["inline.py", "a.py"]
     assert list(package.batches[1].files_context.keys()) == ["b.py"]
+
+
+# ---------------------------------------------------------------------------
+# File-read access: never pair the PR's diff with another revision's file content
+# ---------------------------------------------------------------------------
+
+HEAD_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+OTHER_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+
+class TestResolveFileReadAccess:
+    def test_worktree_is_always_trusted(self):
+        access = resolve_file_read_access("/tmp/titan-review-1")
+
+        assert access.allowed is True
+        assert access.source == "worktree"
+
+    def test_worktree_does_not_need_sha_verification(self):
+        """The worktree is checked out at the PR ref, so a mismatching local
+        checkout is irrelevant."""
+        access = resolve_file_read_access(
+            "/tmp/titan-review-1", head_sha=HEAD_SHA, checkout_sha=OTHER_SHA, checkout_dirty=True
+        )
+
+        assert access.allowed is True
+
+    def test_clean_checkout_at_head_is_trusted(self):
+        access = resolve_file_read_access(
+            None, head_sha=HEAD_SHA, checkout_sha=HEAD_SHA, checkout_dirty=False
+        )
+
+        assert access.allowed is True
+        assert access.source == "checkout"
+
+    def test_checkout_on_another_revision_is_rejected(self):
+        """The bug this guards: worktree creation failed, the user is on another
+        branch, and full-file reads would review code that is not in the PR."""
+        access = resolve_file_read_access(
+            None, head_sha=HEAD_SHA, checkout_sha=OTHER_SHA, checkout_dirty=False
+        )
+
+        assert access.allowed is False
+        assert access.source == "none"
+        assert "aaaaaaaa" in access.reason and "bbbbbbbb" in access.reason
+
+    def test_dirty_checkout_at_head_is_rejected(self):
+        access = resolve_file_read_access(
+            None, head_sha=HEAD_SHA, checkout_sha=HEAD_SHA, checkout_dirty=True
+        )
+
+        assert access.allowed is False
+        assert "uncommitted" in access.reason
+
+    def test_unverifiable_dirty_state_at_head_is_rejected(self):
+        access = resolve_file_read_access(
+            None, head_sha=HEAD_SHA, checkout_sha=HEAD_SHA, checkout_dirty=None
+        )
+
+        assert access.allowed is False
+        assert access.source == "none"
+        assert "could not be verified" in access.reason
+
+    def test_unknown_checkout_sha_is_rejected(self):
+        access = resolve_file_read_access(None, head_sha=HEAD_SHA, checkout_sha=None)
+
+        assert access.allowed is False
+
+    def test_unknown_head_sha_is_rejected(self):
+        access = resolve_file_read_access(None, head_sha=None, checkout_sha=HEAD_SHA)
+
+        assert access.allowed is False
+
+    def test_no_information_at_all_is_rejected(self):
+        assert resolve_file_read_access(None).allowed is False
+
+
+def _single_file_setup(read_mode, path="a.py"):
+    diff = make_diff(path, "added_line = 1")
+    plan = ReviewPlan(
+        focus_files=[
+            FileReviewPlan(path=path, priority=FileReviewPriority.HIGH, read_mode=read_mode)
+        ],
+        review_axes=[ChecklistCategory.FUNCTIONAL_CORRECTNESS],
+    )
+    checklist = [
+        ReviewChecklistItem(
+            id=ChecklistCategory.FUNCTIONAL_CORRECTNESS,
+            name="Functional correctness",
+            description="Does it work",
+        )
+    ]
+    strategy = ReviewStrategy(
+        strategy=ReviewStrategyType.BATCHED_FINDINGS,
+        size_class=PRSizeClass.SMALL,
+        max_focus_files=10,
+        max_prompt_chars=100_000,
+        max_comment_entries=5,
+    )
+    return diff, plan, make_manifest([path]), checklist, strategy
+
+
+class TestBuildPackageWithoutFileReads:
+    def test_full_file_degrades_to_hunks_only(self, tmp_path):
+        """A real file exists at cwd, but it is the wrong revision — it must be ignored."""
+        (tmp_path / "a.py").write_text("content from the wrong branch\n" * 5)
+        diff, plan, manifest, checklist, strategy = _single_file_setup(FileReadMode.FULL_FILE)
+
+        package = build_review_context_package(
+            plan, diff, manifest, checklist,
+            comment_context=[], strategy=strategy,
+            cwd=str(tmp_path), allow_file_reads=False,
+        )
+
+        entry = package.batches[0].files_context["a.py"]
+        assert entry.read_mode == FileReadMode.HUNKS_ONLY
+        assert entry.full_content is None
+        assert "wrong branch" not in "".join(entry.hunks)
+
+    def test_expanded_hunks_degrades_to_hunks_only(self, tmp_path):
+        (tmp_path / "a.py").write_text("content from the wrong branch\n" * 5)
+        diff, plan, manifest, checklist, strategy = _single_file_setup(FileReadMode.EXPANDED_HUNKS)
+
+        package = build_review_context_package(
+            plan, diff, manifest, checklist,
+            comment_context=[], strategy=strategy,
+            cwd=str(tmp_path), allow_file_reads=False,
+        )
+
+        entry = package.batches[0].files_context["a.py"]
+        assert entry.read_mode == FileReadMode.HUNKS_ONLY
+        assert entry.expanded_hunks == []
+
+    def test_full_file_is_used_when_reads_are_allowed(self, tmp_path):
+        (tmp_path / "a.py").write_text("verified content\n")
+        diff, plan, manifest, checklist, strategy = _single_file_setup(FileReadMode.FULL_FILE)
+
+        package = build_review_context_package(
+            plan, diff, manifest, checklist,
+            comment_context=[], strategy=strategy,
+            cwd=str(tmp_path), allow_file_reads=True,
+        )
+
+        entry = package.batches[0].files_context["a.py"]
+        assert entry.read_mode == FileReadMode.FULL_FILE
+        assert entry.full_content == "verified content\n"
+
+    def test_never_falls_back_to_worktree_reference(self):
+        """worktree_reference has the CLI read the file itself — the same
+        wrong-revision read, just delegated."""
+        path = "big.py"
+        diff, plan, manifest, checklist, strategy = _single_file_setup(
+            FileReadMode.FULL_FILE, path=path
+        )
+        # Oversized hunk: normally this ends up as a worktree_reference entry.
+        diff = make_diff(path, "x" * 40_000)
+
+        package = build_review_context_package(
+            plan, diff, manifest, checklist,
+            comment_context=[], strategy=strategy,
+            allow_file_reads=False,
+        )
+
+        entry = package.batches[0].files_context[path]
+        assert entry.worktree_reference is False
+        assert entry.read_mode == FileReadMode.HUNKS_ONLY
+
+    def test_file_absent_from_diff_gets_headers_only_with_a_hint(self):
+        diff, plan, manifest, checklist, strategy = _single_file_setup(
+            FileReadMode.FULL_FILE, path="in_plan.py"
+        )
+        diff = make_diff("something_else.py", "y = 2")
+
+        package = build_review_context_package(
+            plan, diff, manifest, checklist,
+            comment_context=[], strategy=strategy,
+            allow_file_reads=False,
+        )
+
+        entry = package.batches[0].files_context["in_plan.py"]
+        assert entry.worktree_reference is False
+        assert entry.hunks == []
+        assert "not at this PR's head commit" in entry.review_hint
+
+    def test_related_context_requests_are_skipped(self, tmp_path):
+        (tmp_path / "test_a.py").write_text("def test_something(): pass\n")
+        diff, plan, manifest, checklist, strategy = _single_file_setup(FileReadMode.HUNKS_ONLY)
+        plan = ReviewPlan(
+            focus_files=plan.focus_files,
+            review_axes=plan.review_axes,
+            extra_context_requests=[
+                ContextRequest(type=ContextRequestType.RELATED_TESTS, for_path="a.py")
+            ],
+        )
+
+        package = build_review_context_package(
+            plan, diff, manifest, checklist,
+            comment_context=[], strategy=strategy,
+            cwd=str(tmp_path), allow_file_reads=False,
+        )
+
+        assert package.batches[0].related_files == {}

@@ -1,8 +1,11 @@
 """
 AI Configuration Screen
 
-Screen for managing AI connections (list, add, set default, test, delete).
+The single place AI is configured: the connections to remote providers, which CLI to run,
+and which kind of AI serves each task.
 """
+
+from typing import Dict, Optional
 
 from textual.app import ComposeResult
 from textual.widgets import Static, LoadingIndicator, OptionList
@@ -14,7 +17,12 @@ from titan_cli.ai.constants import (
     get_connection_type_display_name,
     get_source_display_name,
 )
+from titan_cli.ai.router.availability import AIAvailabilityChecker
+from titan_cli.ai.router.enums import AIProviderType
+from titan_cli.ai.router.resolver import AIRouteResolver
 from titan_cli.core.models import AIConnectionType
+from titan_cli.core.workflows.ai_usage_discovery import AIUsageDiscoveryService
+from titan_cli.engine.workflow_executor import WorkflowExecutor
 from titan_cli.ui.tui.icons import Icons
 from titan_cli.ui.tui.widgets import (
     DimText,
@@ -23,6 +31,19 @@ from titan_cli.ui.tui.widgets import (
     ErrorText,
     StyledOptionList,
     StyledOption,
+    SegmentedSwitch,
+    TabbedPanel,
+    TabPanel,
+)
+from .ai_routing import (
+    CliDefaultPicker,
+    SelectProviderTypeModal,
+    TaskRouting,
+    TaskRoutingRow,
+    build_task_routings,
+    installed_clis,
+    provider_type_label,
+    task_label,
 )
 from .base import BaseScreen
 
@@ -124,7 +145,6 @@ class TestConnectionModal(ModalScreen):
         """Run the test asynchronously."""
         import asyncio
         import importlib
-        from titan_cli.core.secrets import SecretManager
         from titan_cli.ai.client import AIClient
         from titan_cli.ai.models import AIMessage
         from titan_cli.ai.dependencies import (
@@ -133,9 +153,9 @@ class TestConnectionModal(ModalScreen):
             get_install_command,
             install_missing_dependencies,
         )
+        from titan_cli.core.security import create_ai_provider
 
         content = self.query_one("#test-modal-content", Container)
-        secrets = SecretManager()
 
         try:
             source_name = str(
@@ -185,7 +205,7 @@ class TestConnectionModal(ModalScreen):
 
             ai_client = AIClient(
                 self.config.config.ai,
-                secrets,
+                create_ai_provider,
                 connection_id=self.connection_id,
             )
 
@@ -324,15 +344,21 @@ class SelectGatewayModelModal(ModalScreen[str | None]):
     def __init__(
         self,
         connection_name: str,
-        base_url: str,
-        api_key: str | None,
+        gateway_client,
         current_model: str,
         **kwargs,
     ):
+        """
+        Args:
+            connection_name: Display name of the gateway connection.
+            gateway_client: An already-authenticated LiteLLMClient; built by
+                the caller through the secret broker so the key never reaches
+                this screen.
+            current_model: The connection's current default model.
+        """
         super().__init__(**kwargs)
         self.connection_name = connection_name
-        self.base_url = base_url
-        self.api_key = api_key
+        self.gateway_client = gateway_client
         self.current_model = current_model
 
     def compose(self) -> ComposeResult:
@@ -355,16 +381,10 @@ class SelectGatewayModelModal(ModalScreen[str | None]):
     async def _load_models(self) -> None:
         import asyncio
 
-        from titan_cli.ai.litellm_client import LiteLLMClient
-
         content = self.query_one("#select-model-content", Container)
 
         try:
-            client = LiteLLMClient(
-                base_url=self.base_url,
-                api_key=self.api_key,
-            )
-            models = await asyncio.to_thread(client.list_models)
+            models = await asyncio.to_thread(self.gateway_client.list_models)
 
             content.remove_children()
 
@@ -528,18 +548,27 @@ class AIConfigScreen(BaseScreen):
         margin: 1 0 1 0;
     }
 
-    #connections-scroll {
+    #connections-scroll, #cli-scroll, #tasks-scroll {
         height: 1fr;
-        padding: 1 0;
+        padding: 1 2;
         align: center top;
         overflow-y: auto;
+    }
+
+    .section-note {
+        margin-bottom: 1;
     }
 
     #connections-grid {
         grid-size: 2;
         grid-gutter: 2;
-        width: 70%;
+        width: 100%;
         height: auto;
+    }
+
+    #cli-list, #task-routing-list {
+        height: auto;
+        width: 100%;
     }
 
     #no-connections {
@@ -562,30 +591,62 @@ class AIConfigScreen(BaseScreen):
             title=f"{Icons.AI_CONFIG} AI Configuration",
             show_back=True
         )
+        self._routings: Dict[str, TaskRouting] = {}
 
     def compose_content(self) -> ComposeResult:
-        """Compose the AI configuration screen."""
-        with Container(id="config-container"):
-            # Scrollable area with grid for connections
-            with VerticalScroll(id="connections-scroll"):
-                yield Grid(id="connections-grid")
+        """
+        Compose the AI configuration screen.
 
-            # Add connection button at the bottom
-            with Container(id="add-connection-container"):
-                yield Button(
-                    f"{Icons.SETTINGS} New Connection",
-                    variant="primary",
-                    id="add-connection-button",
-                )
+        Three independent things are configured here, so they get three tabs rather than one
+        long scroll: each has the whole screen to itself, and every action stays one
+        keystroke away instead of behind navigation.
+        """
+        with Container(id="config-container"):
+            with TabbedPanel(initial="tab-connections"):
+                with TabPanel("Connections", id="tab-connections"):
+                    with VerticalScroll(id="connections-scroll"):
+                        yield Static(
+                            "No AI connections configured yet.\n\n"
+                            "Click 'New Connection' to configure your first connection.",
+                            id="no-connections",
+                        )
+                        yield Grid(id="connections-grid")
+                    with Container(id="add-connection-container"):
+                        yield Button(
+                            f"{Icons.SETTINGS} New Connection",
+                            variant="primary",
+                            id="add-connection-button",
+                        )
+
+                with TabPanel("CLI", id="tab-cli"):
+                    with VerticalScroll(id="cli-scroll"):
+                        yield Container(id="cli-list")
+
+                with TabPanel("AI per task", id="tab-tasks"):
+                    with VerticalScroll(id="tasks-scroll"):
+                        yield Container(id="task-routing-list")
 
     def on_mount(self) -> None:
-        """Load connections when mounted."""
-        self.load_connections()
+        """Load everything when mounted."""
+        self.load_sections()
 
     def on_screen_resume(self) -> None:
-        """Reload connections when returning from wizard."""
-        self.load_connections()
+        """Reload when returning from a wizard or modal."""
+        self.load_sections()
         self._refresh_status_bar()
+
+    def load_sections(self) -> None:
+        """
+        Reload config once, then repaint every section from it.
+
+        Reading config is expensive enough that each section doing its own reload was
+        noticeable; the routing section additionally re-resolves here rather than caching
+        what it resolved at mount time, so a preference changed elsewhere is reflected.
+        """
+        self.config.load()
+        self.load_connections()
+        self.load_cli_defaults()
+        self.load_task_routing()
 
     def _refresh_status_bar(self) -> None:
         """Refresh the status bar with current AI info."""
@@ -597,41 +658,27 @@ class AIConfigScreen(BaseScreen):
             pass  # Status bar might not be available
 
     def load_connections(self) -> None:
-        """Load and display all configured AI connections."""
-        # Reload config to get latest
-        self.config.load()
-
+        """Display all configured AI connections."""
         # Get the grid
         try:
             grid = self.query_one("#connections-grid", Grid)
         except Exception:
-            # Grid was removed, recreate it
-            scroll = self.query_one("#connections-scroll", VerticalScroll)
-            # Remove no-providers message if it exists
-            try:
-                no_prov = self.query_one("#no-connections", Static)
-                no_prov.remove()
-            except Exception:
-                pass
+            # Grid was removed, recreate it inside its own tab.
+            section = self.query_one("#connections-scroll", VerticalScroll)
             grid = Grid(id="connections-grid")
-            scroll.mount(grid)
+            section.mount(grid)
 
         grid.remove_children()
 
-        if not self.config.config.ai or not self.config.config.ai.connections:
-            # Remove any existing no-providers message first
-            try:
-                existing = self.query_one("#no-connections", Static)
-                existing.remove()
-            except Exception:
-                pass
+        # The empty-state message is always in the tree and only toggled. Removing and
+        # re-mounting it by id raced with itself: `remove()` completes on a later frame, so
+        # two repaints in the same tick tried to insert a second widget with the same id.
+        has_connections = bool(
+            self.config.config.ai and self.config.config.ai.connections
+        )
+        self.query_one("#no-connections", Static).display = not has_connections
 
-            # Show no providers message
-            grid.mount(Static(
-                "No AI connections configured yet.\n\n"
-                "Click 'New Connection' to configure your first connection.",
-                id="no-connections"
-            ))
+        if not has_connections:
             return
 
         default_id = self.config.config.ai.default_connection
@@ -647,12 +694,95 @@ class AIConfigScreen(BaseScreen):
                 card.add_class("default")
             grid.mount(card)
 
+    def _availability(self) -> AIAvailabilityChecker:
+        """
+        A checker for this repaint.
+
+        Deliberately rebuilt per repaint rather than kept on the screen: it caches its
+        probes, so a long-lived one would keep reporting a CLI you just installed as absent.
+        """
+        from titan_cli.core.security import create_broker_factory
+
+        ai_config = self.config.config.ai if self.config.config else None
+        broker = create_broker_factory(self.config.project_root).for_plugin("core")
+        return AIAvailabilityChecker(ai_config, broker)
+
+    def load_cli_defaults(self) -> None:
+        """Display the installed CLIs and which one Titan will run."""
+        container = self.query_one("#cli-list", Container)
+        container.remove_children()
+
+        checker = self._availability()
+        installed = installed_clis(
+            checker.available_headless_clis(), checker.available_interactive_clis()
+        )
+        ai_config = self.config.config.ai if self.config.config else None
+        container.mount(
+            CliDefaultPicker(installed, current=ai_config.default_cli if ai_config else None)
+        )
+
+    def load_task_routing(self) -> None:
+        """Display one row per discovered AI task, with its live resolution."""
+        container = self.query_one("#task-routing-list", Container)
+        container.remove_children()
+
+        ai_config = self.config.config.ai if self.config.config else None
+        resolver = AIRouteResolver(ai_config, self._availability())
+        discovery = AIUsageDiscoveryService(
+            workflow_registry=self.config.workflows,
+            plugin_registry=self.config.registry,
+            core_steps=WorkflowExecutor.CORE_STEPS,
+        )
+
+        preferences = ai_config.preferences if ai_config else None
+        try:
+            self._routings = {
+                routing.task: routing
+                for routing in build_task_routings(
+                    discovery.discover_all(),
+                    resolver,
+                    persisted_tasks=list(preferences.tasks) if preferences else [],
+                )
+            }
+        except Exception as e:
+            # A single broken plugin or malformed workflow must not take down the
+            # whole AI Configuration screen; degrade this tab and keep the rest.
+            from titan_cli.core.logging import get_logger
+            get_logger(__name__).exception("ai_config_task_routing_load_failed")
+            self._routings = {}
+            container.mount(
+                DimText(
+                    "Could not discover AI task usage. Check the logs for details.",
+                    classes="section-note",
+                )
+            )
+            self.app.notify(f"Failed to load task routing: {e}", severity="error")
+            return
+
+        if not self._routings:
+            container.mount(
+                DimText(
+                    "No workflow step declares AI usage yet.", classes="section-note"
+                )
+            )
+            return
+
+        for routing in self._routings.values():
+            row = TaskRoutingRow(routing)
+            if routing.needs_setup:
+                row.add_class("needs-setup")
+            container.mount(row)
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
-        button_id = event.button.id
+        button_id = event.button.id or ""
 
         if button_id == "add-connection-button":
             self.handle_add_connection()
+        elif button_id.startswith("task-change-"):
+            self.handle_change_task_provider(self._task_of(event.button))
+        elif button_id.startswith("task-clear-"):
+            self.handle_clear_task_provider(self._task_of(event.button))
         elif (
             button_id.startswith("set-default-")
             or button_id.startswith("change-model-")
@@ -672,6 +802,75 @@ class AIConfigScreen(BaseScreen):
                 elif button_id.startswith("delete-"):
                     self.handle_delete(connection_id)
 
+    @staticmethod
+    def _task_of(button) -> Optional[str]:
+        """
+        The task a row's button belongs to, read from the row itself.
+
+        Widget ids are sanitized, so a community task key containing punctuation cannot be
+        recovered from the id - the owning row is the only reliable source.
+        """
+        node = button.parent
+        while node is not None and not isinstance(node, TaskRoutingRow):
+            node = node.parent
+        return node.routing.task if node else None
+
+    def handle_change_task_provider(self, task: Optional[str]) -> None:
+        """Pick which kind of AI serves a task."""
+        routing = self._routings.get(task) if task else None
+        if not routing:
+            return
+
+        def on_selected(provider: Optional[str]) -> None:
+            if provider is None:
+                return
+            try:
+                self.config.upsert_task_ai_preference(task, {"provider": provider})
+                self.load_sections()
+                self.app.notify(
+                    f"{routing.label}: {provider_type_label(AIProviderType(provider))}",
+                    severity="information",
+                )
+            except Exception as e:
+                self.app.notify(f"Failed to save preference: {e}", severity="error")
+
+        self.app.push_screen(
+            SelectProviderTypeModal(f"AI for {routing.label}", routing.executes),
+            on_selected,
+        )
+
+    def handle_clear_task_provider(self, task: Optional[str]) -> None:
+        """Drop a task preference so the step's own default applies again."""
+        if not task:
+            return
+        try:
+            self.config.delete_task_ai_preference(task)
+            self.load_sections()
+            self.app.notify(f"Cleared: {task_label(task)}", severity="information")
+        except Exception as e:
+            self.app.notify(f"Failed to clear preference: {e}", severity="error")
+
+    def on_segmented_switch_changed(self, event: SegmentedSwitch.Changed) -> None:
+        """Picking a segment in the CLI tab is the act of setting the default."""
+        if event.sender.id != "cli-default-switch":
+            return
+        self.handle_set_default_cli(event.value)
+
+    def handle_set_default_cli(self, cli_name: str) -> None:
+        """
+        Set the CLI every CLI-routed task will run.
+
+        Moving across the switch is how it is chosen, so this runs on each keypress: it
+        updates the status line in place and repaints only the task rows, rather than
+        reloading and rebuilding the whole screen under the user's fingers.
+        """
+        try:
+            self.config.set_default_ai_cli(cli_name)
+            self.query_one(CliDefaultPicker).set_current(cli_name)
+            self.load_task_routing()
+        except Exception as e:
+            self.app.notify(f"Failed to set default CLI: {e}", severity="error")
+
     def handle_add_connection(self) -> None:
         """Open the configuration wizard to add a new connection."""
         from .ai_config_wizard import AIConfigWizardScreen
@@ -684,8 +883,7 @@ class AIConfigScreen(BaseScreen):
         try:
             self.config.set_default_ai_connection(connection_id)
 
-            self.config.load()
-            self.load_connections()
+            self.load_sections()
             self._refresh_status_bar()
 
             connection_name = self.config.config.ai.connections[connection_id].name
@@ -712,7 +910,8 @@ class AIConfigScreen(BaseScreen):
 
     def handle_change_model(self, connection_id: str) -> None:
         """Change the default model for an AI connection."""
-        from titan_cli.core.secrets import SecretManager
+        from titan_cli.ai.litellm_client import LiteLLMClient
+        from titan_cli.core.security import create_broker_factory
 
         self.config.load()
 
@@ -733,8 +932,18 @@ class AIConfigScreen(BaseScreen):
             return
 
         current_model = connection_cfg.default_model or ""
-        secrets = SecretManager()
-        api_key = secrets.get(f"{connection_id}_api_key")
+        # The gateway key crosses into the client constructor inside the
+        # broker call; the modal receives the authenticated client. A gateway
+        # may legitimately have no key (e.g. a local proxy).
+        broker = create_broker_factory(self.config.project_root).for_plugin("core")
+        gateway_client = broker.create_client(
+            f"{connection_id}_api_key",
+            lambda api_key: LiteLLMClient(
+                base_url=connection_cfg.base_url,
+                api_key=api_key,
+            ),
+            required=False,
+        )
 
         def on_change_model(result: str | None) -> None:
             if not result:
@@ -745,8 +954,7 @@ class AIConfigScreen(BaseScreen):
                     connection_id,
                     {"default_model": result},
                 )
-                self.config.load()
-                self.load_connections()
+                self.load_sections()
                 self._refresh_status_bar()
                 self.app.notify(
                     f"Default model for '{connection_cfg.name}' updated",
@@ -758,8 +966,7 @@ class AIConfigScreen(BaseScreen):
         self.app.push_screen(
             SelectGatewayModelModal(
                 connection_cfg.name,
-                connection_cfg.base_url,
-                api_key,
+                gateway_client,
                 current_model,
             ),
             on_change_model,
@@ -767,7 +974,7 @@ class AIConfigScreen(BaseScreen):
 
     def handle_delete(self, connection_id: str) -> None:
         """Delete an AI connection."""
-        from titan_cli.core.secrets import SecretManager
+        from titan_cli.core.security import create_broker_factory
 
         try:
             self.config.load()
@@ -779,14 +986,13 @@ class AIConfigScreen(BaseScreen):
             connection_name = self.config.config.ai.connections[connection_id].name
             self.config.delete_ai_connection(connection_id)
 
-            secrets = SecretManager()
+            broker = create_broker_factory(self.config.project_root).for_plugin("core")
             try:
-                secrets.delete(f"{connection_id}_api_key", scope="user")
+                broker.delete(f"{connection_id}_api_key")
             except Exception:
                 pass
 
-            self.config.load()
-            self.load_connections()
+            self.load_sections()
             self._refresh_status_bar()
 
             self.app.notify(

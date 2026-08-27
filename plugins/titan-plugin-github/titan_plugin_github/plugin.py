@@ -4,7 +4,7 @@ from typing import Optional
 
 from titan_cli.core.plugins.plugin_base import TitanPlugin
 from titan_cli.core.config import TitanConfig
-from titan_cli.core.secrets import SecretManager
+from titan_cli.core.security import SecretBroker
 from titan_cli.core.plugins.models import GitHubPluginConfig
 from .clients.github_client import GitHubClient
 from .exceptions import GitHubError
@@ -28,7 +28,7 @@ class GitHubPlugin(TitanPlugin):
     def dependencies(self) -> list[str]:
         return ["git"]
 
-    def initialize(self, config: TitanConfig, secrets: SecretManager) -> None:
+    def initialize(self, config: TitanConfig, broker: SecretBroker) -> None:
         """
         Initializes the GitHubClient.
         """
@@ -71,7 +71,6 @@ class GitHubPlugin(TitanPlugin):
         # Initialize client with validated configuration and git_client
         self._client = GitHubClient(
             config=validated_config,
-            secrets=secrets,
             git_client=git_client,
             repo_owner=repo_owner, # Pass detected/configured owner
             repo_name=repo_name, # Pass detected/configured name
@@ -172,6 +171,7 @@ class GitHubPlugin(TitanPlugin):
             ai_review_findings,
             normalize_findings,
             dedupe_findings,
+            verify_findings,
             build_new_comment_actions,
             validate_review_actions,
             submit_review_actions,
@@ -228,6 +228,7 @@ class GitHubPlugin(TitanPlugin):
             "ai_review_findings": ai_review_findings,
             "normalize_findings": normalize_findings,
             "dedupe_findings": dedupe_findings,
+            "verify_findings": verify_findings,
             # Phase 5: UI + submit
             "build_new_comment_actions": build_new_comment_actions,
             "validate_review_actions": validate_review_actions,

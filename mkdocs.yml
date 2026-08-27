@@ -81,6 +81,11 @@ nav:
       - Client API: plugins/slack/client-api.md
       - Workflow Steps: plugins/slack/workflow-steps.md
       - Built-in Workflows: plugins/slack/built-in-workflows.md
+    - Docker:
+      - Overview: plugins/docker/overview.md
+      - Client API: plugins/docker/client-api.md
+      - Workflow Steps: plugins/docker/workflow-steps.md
+      - Built-in Workflows: plugins/docker/built-in-workflows.md
   - Contributing:
     - Development Setup: contributing/development-setup.md
     - Architecture: contributing/architecture.md

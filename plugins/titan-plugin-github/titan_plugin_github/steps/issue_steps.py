@@ -1,4 +1,7 @@
 import ast
+from titan_cli.ai.router.declaration import declare_ai_usage
+from titan_cli.ai.router.enums import AIProviderType, AITask
+from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import WorkflowResult, Success, Error, Skip
 from titan_cli.core.result import ClientSuccess, ClientError
@@ -6,6 +9,14 @@ from ..agents.issue_generator import IssueGeneratorAgent
 from ..operations import filter_valid_labels
 from pathlib import Path
 
+@declare_ai_usage(
+    task=AITask.ISSUE_GENERATION,
+    # The agent drives whatever generator it is handed, so either transport
+    # works. Remote leads because a CLI costs a subprocess per agent call.
+    executes=[AIProviderType.REMOTE, AIProviderType.CLI_HEADLESS],
+    preferred=[AIProviderType.REMOTE],
+    enforces=True,
+)
 def ai_suggest_issue_title_and_body_step(ctx: WorkflowContext) -> WorkflowResult:
     """
     Use AI to suggest a title and description for a GitHub issue.
@@ -31,7 +42,26 @@ def ai_suggest_issue_title_and_body_step(ctx: WorkflowContext) -> WorkflowResult
     # Begin step container
     ctx.textual.begin_step("Categorize and Generate Issue")
 
-    if not ctx.ai:
+    # Use whatever the user chose for this task; the agent drives it either way.
+    generator = ctx.ai
+    if ctx.ai_router:
+        match ctx.ai_router.resolve_generator(
+            policy=ai_suggest_issue_title_and_body_step,
+            cwd=ctx.git.repo_path if ctx.git else None,
+            announce=ctx.textual.ai_chip,
+        ):
+            case AIExecutionSuccess(data=resolved):
+                generator = resolved
+            case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
+                ctx.textual.dim_text(disabled_message)
+                ctx.textual.end_step("skip")
+                return Skip(disabled_message)
+            case AIExecutionError(error_message=err):
+                ctx.textual.error_text(err)
+                ctx.textual.end_step("error")
+                return Error(err)
+
+    if not generator or not generator.is_available():
         ctx.textual.dim_text("AI client not available")
         ctx.textual.end_step("skip")
         return Skip("AI client not available")
@@ -60,7 +90,7 @@ def ai_suggest_issue_title_and_body_step(ctx: WorkflowContext) -> WorkflowResult
         if ctx.git:
             template_dir = Path(ctx.git.repo_path) / ".github" / "ISSUE_TEMPLATE"
 
-        issue_generator = IssueGeneratorAgent(ctx.ai, template_dir=template_dir)
+        issue_generator = IssueGeneratorAgent(generator, template_dir=template_dir)
 
         with ctx.textual.loading("Generating issue with AI..."):
             result = issue_generator.generate_issue(issue_body_prompt, available_labels=available_labels)

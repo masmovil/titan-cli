@@ -23,7 +23,6 @@ def make_strategy(*, size_class: PRSizeClass, max_prompt_chars: int) -> ReviewSt
         max_focus_files=10,
         max_prompt_chars=max_prompt_chars,
         max_comment_entries=5,
-        batching_enabled=True,
     )
 
 
@@ -175,6 +174,26 @@ def test_fit_batch_degrades_single_file_to_worktree_reference():
     assert entry.full_content is None
     assert entry.approximate_chars <= 800
     assert fitted[0].degraded_context is True
+
+
+def test_fit_batch_never_degrades_to_worktree_reference_when_reads_not_allowed():
+    """allow_file_reads=False means the checkout is not provably the PR's revision —
+    the wrong-revision guard already refused worktree_reference at context resolution,
+    so the budget-fitting pass must not reintroduce it through the back door."""
+    manager = PromptBudgetManager()
+    batch = make_batch({"a.py": make_entry("a.py", chars=100)})
+    prompt_parts = {"prompt": "x" * 5000}
+
+    fitted, changed = manager.fit_batch_to_budget(
+        batch, prompt_parts, budget_chars=1000, allow_file_reads=False
+    )
+
+    assert len(fitted) == 1
+    entry = fitted[0].files_context["a.py"]
+    assert entry.worktree_reference is False
+    assert entry.read_mode != FileReadMode.WORKTREE_REFERENCE
+    # With nothing else to trim, the batch reports oversized instead.
+    assert fitted[0].prompt_still_too_large is True
 
 
 def test_fit_batch_drops_related_files_when_only_worktree_reference_left():

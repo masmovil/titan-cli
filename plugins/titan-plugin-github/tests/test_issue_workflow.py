@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.core.secrets import SecretManager
 from titan_plugin_github.steps.github_prompt_steps import (
     prompt_for_issue_body_step,
     prompt_for_labels_step,
@@ -16,11 +15,11 @@ from titan_plugin_github.models.view import UIIssue
 
 @pytest.fixture
 def mock_secret_manager():
-    return MagicMock(spec=SecretManager)
+    return MagicMock()
 
 def test_prompt_for_issue_body_step(mock_secret_manager):
     # Arrange
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={})
+    ctx = WorkflowContext(data={})
     ctx.textual = MagicMock()
     ctx.textual.ask_multiline.return_value = "Test issue body"
 
@@ -47,7 +46,7 @@ def test_ai_suggest_issue_title_and_body(MockIssueGeneratorAgent, mock_secret_ma
         "tokens_used": 450,
         "complexity": "moderate"
     }
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={"issue_body": "Test issue body"})
+    ctx = WorkflowContext(data={"issue_body": "Test issue body"})
     ctx.ai = MagicMock()
     ctx.textual = MagicMock()
     # Mock ai_content_review_flow to return (choice, title, body)
@@ -77,7 +76,7 @@ def test_ai_suggest_issue_title_and_body_bug_category(mock_secret_manager):
             "tokens_used": 380,
             "complexity": "simple"
         }
-        ctx = WorkflowContext(secrets=mock_secret_manager, data={"issue_body": "Something is broken"})
+        ctx = WorkflowContext(data={"issue_body": "Something is broken"})
         ctx.ai = MagicMock()
         ctx.textual = MagicMock()
         # Mock ai_content_review_flow to return (choice, title, body)
@@ -104,7 +103,7 @@ def test_ai_suggest_issue_title_and_body_without_template(mock_secret_manager):
             "tokens_used": 320,
             "complexity": "simple"
         }
-        ctx = WorkflowContext(secrets=mock_secret_manager, data={"issue_body": "Update deps"})
+        ctx = WorkflowContext(data={"issue_body": "Update deps"})
         ctx.ai = MagicMock()
         ctx.textual = MagicMock()
         # Mock ai_content_review_flow to return (choice, title, body)
@@ -120,7 +119,7 @@ def test_ai_suggest_issue_title_and_body_without_template(mock_secret_manager):
 
 def test_preview_and_confirm_issue_step(mock_secret_manager):
     # Arrange
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={"issue_title": "Test Title", "issue_body": "Test Body"})
+    ctx = WorkflowContext(data={"issue_title": "Test Title", "issue_body": "Test Body"})
     ctx.textual = MagicMock()
     ctx.textual.ask_confirm.return_value = True
 
@@ -132,7 +131,7 @@ def test_preview_and_confirm_issue_step(mock_secret_manager):
 
 def test_prompt_for_self_assign_step(mock_secret_manager):
     # Arrange
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={})
+    ctx = WorkflowContext(data={})
     ctx.github = MagicMock()
     ctx.textual = MagicMock()
     ctx.github.get_current_user.return_value = ClientSuccess(data="testuser", message="User retrieved")
@@ -150,7 +149,7 @@ def test_prompt_for_self_assign_step(mock_secret_manager):
 
 def test_prompt_for_pr_draft_step_uses_true_without_prompt(mock_secret_manager):
     # Arrange
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={"draft": True})
+    ctx = WorkflowContext(data={"draft": True})
     ctx.textual = MagicMock()
 
     # Act
@@ -166,7 +165,7 @@ def test_prompt_for_pr_draft_step_uses_true_without_prompt(mock_secret_manager):
 
 def test_prompt_for_pr_draft_step_uses_false_without_prompt(mock_secret_manager):
     # Arrange
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={"draft": False})
+    ctx = WorkflowContext(data={"draft": False})
     ctx.textual = MagicMock()
 
     # Act
@@ -182,7 +181,7 @@ def test_prompt_for_pr_draft_step_uses_false_without_prompt(mock_secret_manager)
 
 def test_prompt_for_pr_draft_step_asks_when_unset(mock_secret_manager):
     # Arrange
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={"draft": None})
+    ctx = WorkflowContext(data={"draft": None})
     ctx.textual = MagicMock()
     ctx.textual.ask_confirm.return_value = True
 
@@ -202,7 +201,6 @@ def test_prompt_for_pr_draft_step_asks_when_unset(mock_secret_manager):
 
 def test_prompt_for_labels_step_uses_multiselect_and_output_key(mock_secret_manager):
     ctx = WorkflowContext(
-        secrets=mock_secret_manager,
         data={
             "output_key": "pr_labels",
             "prompt": "Select labels for this pull request:",
@@ -229,7 +227,7 @@ def test_prompt_for_labels_step_uses_multiselect_and_output_key(mock_secret_mana
 def test_prompt_for_labels_step_skips_when_repo_has_no_labels(mock_secret_manager):
     from titan_cli.engine.results import Skip
 
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={})
+    ctx = WorkflowContext(data={})
     ctx.github = MagicMock()
     ctx.textual = MagicMock()
     ctx.github.list_labels.return_value = ClientSuccess(data=[], message="No labels")
@@ -256,7 +254,7 @@ def test_create_issue_step(MockGitHubClient, mock_secret_manager):
     mock_github_client.create_issue.return_value = ClientSuccess(data=mock_ui_issue, message="Issue created")
     mock_github_client.list_labels.return_value = ClientSuccess(data=["bug", "feature", "improvement"], message="Labels retrieved")
 
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={"issue_title": "Test Title", "issue_body": "Test Body", "assignees": ["testuser"], "labels": ["bug"]})
+    ctx = WorkflowContext(data={"issue_title": "Test Title", "issue_body": "Test Body", "assignees": ["testuser"], "labels": ["bug"]})
     ctx.github = mock_github_client
     ctx.textual = MagicMock()
 
@@ -296,7 +294,6 @@ def test_create_issue_with_auto_assigned_labels(mock_secret_manager):
 
         # Labels auto-assigned by AI categorization
         ctx = WorkflowContext(
-            secrets=mock_secret_manager,
             data={
                 "issue_title": "feat: New Feature",
                 "issue_body": "Feature description",
@@ -325,71 +322,57 @@ def test_create_issue_with_auto_assigned_labels(mock_secret_manager):
 # JSON Parsing Tests
 # ============================================================================
 
-def test_parse_ai_response_with_json_format():
-    """Test that JSON parsing works correctly"""
-    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
+def test_issue_contract_maps_the_legacy_description_label_to_body():
+    """The pre-JSON format called it DESCRIPTION; this agent calls it body."""
+    from titan_plugin_github.agents.issue_generator import ISSUE_CONTRACT
+
+    result = ISSUE_CONTRACT.parse(
+        "CATEGORY: feature\n"
+        "TITLE: feat(api): add new endpoint\n"
+        "DESCRIPTION:\n## Summary\nNew API endpoint for user management"
+    )
+
+    assert result.ok
+    assert result.data["category"] == "feature"
+    assert result.data["title"] == "feat(api): add new endpoint"
+    assert "Summary" in result.data["body"]
+
+
+def test_an_unknown_category_falls_back_to_feature():
+    """Only categories this agent has a template for are usable."""
     from unittest.mock import MagicMock
+
+    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
 
     agent = IssueGeneratorAgent(MagicMock())
 
-    # Test JSON format
-    json_response = '''
-    {
-      "category": "bug",
-      "title": "fix(auth): resolve login timeout issue",
-      "body": "## Description\\nUsers experiencing timeout errors during login"
-    }
-    '''
+    normalized = agent._normalize({"category": "epic", "title": "t", "body": "b"})
 
-    category, title, body = agent._parse_ai_response(json_response)
+    assert normalized["category"] == "feature"
 
-    assert category == "bug"
-    assert title == "fix(auth): resolve login timeout issue"
-    assert "Users experiencing timeout" in body
 
-def test_parse_ai_response_with_fallback_regex():
-    """Test that regex fallback works when JSON parsing fails"""
-    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
+def test_a_known_category_is_kept_and_lowercased():
     from unittest.mock import MagicMock
+
+    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
 
     agent = IssueGeneratorAgent(MagicMock())
 
-    # Test old format (should use regex fallback)
-    old_format_response = '''
-    CATEGORY: feature
-    TITLE: feat(api): add new endpoint
-    DESCRIPTION:
-    ## Summary
-    New API endpoint for user management
-    '''
+    normalized = agent._normalize({"category": "BUG", "title": "t", "body": "b"})
 
-    category, title, body = agent._parse_ai_response(old_format_response)
+    assert normalized["category"] == "bug"
 
-    assert category == "feature"
-    assert title == "feat(api): add new endpoint"
-    assert "Summary" in body
 
-def test_parse_ai_response_with_user_category_text():
-    """Test that JSON parsing avoids conflicts with user text containing 'CATEGORY:'"""
-    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
+def test_an_empty_answer_gets_usable_placeholders():
     from unittest.mock import MagicMock
+
+    from titan_plugin_github.agents.issue_generator import IssueGeneratorAgent
 
     agent = IssueGeneratorAgent(MagicMock())
 
-    # User description contains "CATEGORY:" but JSON should parse correctly
-    response_with_conflict = '''
-    {
-      "category": "bug",
-      "title": "fix(docs): update CATEGORY: field documentation",
-      "body": "The CATEGORY: field in the config is confusing users"
-    }
-    '''
+    normalized = agent._normalize({"category": None, "title": None, "body": None})
 
-    category, title, body = agent._parse_ai_response(response_with_conflict)
-
-    assert category == "bug"
-    assert "CATEGORY: field" in title
-    assert "CATEGORY: field in the config" in body
+    assert normalized == {"category": "feature", "title": "New issue", "body": ""}
 
 # ============================================================================
 # Error Scenario Tests
@@ -402,7 +385,7 @@ def test_ai_suggest_issue_when_ai_client_fails(MockIssueGeneratorAgent, mock_sec
     mock_issue_generator = MockIssueGeneratorAgent.return_value
     mock_issue_generator.generate_issue.side_effect = Exception("API Error")
 
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={"issue_body": "Test issue body"})
+    ctx = WorkflowContext(data={"issue_body": "Test issue body"})
     ctx.ai = MagicMock()
     ctx.textual = MagicMock()
 
@@ -425,7 +408,7 @@ def test_ai_suggest_issue_with_malformed_response(MockIssueGeneratorAgent, mock_
         # Missing: title, body, labels
     }
 
-    ctx = WorkflowContext(secrets=mock_secret_manager, data={"issue_body": "Test issue body"})
+    ctx = WorkflowContext(data={"issue_body": "Test issue body"})
     ctx.ai = MagicMock()
     ctx.textual = MagicMock()
 
@@ -456,7 +439,6 @@ def test_create_issue_with_invalid_labels(MockGitHubClient, mock_secret_manager)
     mock_github_client.create_issue.return_value = ClientSuccess(data=mock_ui_issue, message="Issue created")
 
     ctx = WorkflowContext(
-        secrets=mock_secret_manager,
         data={
             "issue_title": "Test Title",
             "issue_body": "Test Body",
@@ -493,7 +475,6 @@ def test_create_issue_when_github_api_fails(MockGitHubClient, mock_secret_manage
     )
 
     ctx = WorkflowContext(
-        secrets=mock_secret_manager,
         data={
             "issue_title": "Test Title",
             "issue_body": "Test Body",

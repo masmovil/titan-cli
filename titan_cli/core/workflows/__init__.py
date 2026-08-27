@@ -11,6 +11,7 @@ from .workflow_registry import WorkflowRegistry, ParsedWorkflow
 from .workflow_sources import WorkflowInfo
 from .workflow_exceptions import WorkflowNotFoundError, WorkflowExecutionError
 from .project_step_source import ProjectStepSource, UserStepSource
+from .ai_usage_discovery import AIUsageDiscoveryService, DiscoveredAIStep, DiscoveredWorkflowAIUsage
 
 __all__ = [
     "WorkflowRegistry",
@@ -20,4 +21,7 @@ __all__ = [
     "WorkflowExecutionError",
     "ProjectStepSource",
     "UserStepSource",
+    "AIUsageDiscoveryService",
+    "DiscoveredAIStep",
+    "DiscoveredWorkflowAIUsage",
 ]

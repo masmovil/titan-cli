@@ -39,6 +39,10 @@ class GeminiHeadlessAdapter:
     def supports_effort_control(self) -> bool:
         return False
 
+    @property
+    def supports_model_selection(self) -> bool:
+        return True
+
     def is_available(self) -> bool:
         return shutil.which("gemini") is not None
 
@@ -50,8 +54,11 @@ class GeminiHeadlessAdapter:
         json_schema: Optional[dict[str, Any]] = None,
         disallowed_tools: Optional[list[str]] = None,
         effort: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> HeadlessResponse:
         cmd = ["gemini", "--prompt", prompt]
+        if model is not None:
+            cmd += ["-m", model]
         try:
             result = subprocess.run(
                 cmd,
