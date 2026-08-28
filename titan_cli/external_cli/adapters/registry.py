@@ -15,11 +15,15 @@ from .base import HeadlessCliAdapter, SupportedCLI
 from .claude import ClaudeHeadlessAdapter
 from .gemini import GeminiHeadlessAdapter
 from .codex import CodexHeadlessAdapter
+from .opencode import OpenCodeHeadlessAdapter
+from .antigravity import AntigravityHeadlessAdapter
 
 HEADLESS_ADAPTER_REGISTRY: Dict[SupportedCLI, Type] = {
     SupportedCLI.CLAUDE: ClaudeHeadlessAdapter,
     SupportedCLI.GEMINI: GeminiHeadlessAdapter,
     SupportedCLI.CODEX: CodexHeadlessAdapter,
+    SupportedCLI.OPENCODE: OpenCodeHeadlessAdapter,
+    SupportedCLI.ANTIGRAVITY: AntigravityHeadlessAdapter,
 }
 
 

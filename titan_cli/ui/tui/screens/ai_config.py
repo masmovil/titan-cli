@@ -31,7 +31,6 @@ from titan_cli.ui.tui.widgets import (
     ErrorText,
     StyledOptionList,
     StyledOption,
-    SegmentedSwitch,
     TabbedPanel,
     TabPanel,
 )
@@ -850,17 +849,15 @@ class AIConfigScreen(BaseScreen):
         except Exception as e:
             self.app.notify(f"Failed to clear preference: {e}", severity="error")
 
-    def on_segmented_switch_changed(self, event: SegmentedSwitch.Changed) -> None:
-        """Picking a segment in the CLI tab is the act of setting the default."""
-        if event.sender.id != "cli-default-switch":
-            return
+    def on_cli_default_picker_changed(self, event: CliDefaultPicker.Changed) -> None:
+        """Picking a CLI from the list is the act of setting the default."""
         self.handle_set_default_cli(event.value)
 
     def handle_set_default_cli(self, cli_name: str) -> None:
         """
         Set the CLI every CLI-routed task will run.
 
-        Moving across the switch is how it is chosen, so this runs on each keypress: it
+        Picking from the list is how it is chosen, so this runs on each selection: it
         updates the status line in place and repaints only the task rows, rather than
         reloading and rebuilding the whole screen under the user's fingers.
         """
