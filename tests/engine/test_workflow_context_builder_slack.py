@@ -8,7 +8,7 @@ def test_with_slack_loads_client_from_plugin_registry() -> None:
     slack_plugin = MagicMock()
     slack_client = MagicMock()
 
-    plugin_registry.get_plugin.return_value = slack_plugin
+    plugin_registry.ensure_initialized.return_value = slack_plugin
     slack_plugin.is_available.return_value = True
     slack_plugin.get_client.return_value = slack_client
 

@@ -116,11 +116,14 @@ class TitanConfig:
         """
         Rebuild the plugin registry, but only when it would come out different.
 
-        Every screen reloads config on resume, and rebuilding means importing and
-        initializing every installed plugin - about a second, against ten
-        milliseconds for rereading the files. Skipping the rebuild when nothing
-        plugin-related changed is what keeps that from being paid on every
-        screen transition.
+        Every screen reloads config on resume, and rebuilding means re-importing
+        every installed plugin. Skipping the rebuild when nothing plugin-related
+        changed keeps that off every screen transition. Plugins are NOT
+        initialized here: initialization does real I/O (subprocesses, keyring
+        reads) and happens lazily, on a plugin's first use, via
+        registry.ensure_initialized(). A forced rebuild also clears recorded
+        initialization failures, so a credential stored since the last attempt
+        gets a fresh try.
         """
         fingerprint = self._compute_plugin_fingerprint(merged)
 
@@ -129,7 +132,7 @@ class TitanConfig:
             return
 
         self.registry.reset()
-        self.registry.initialize_plugins(config=self, broker_factory=self.broker_factory)
+        self.registry.prepare(config=self, broker_factory=self.broker_factory)
         self._plugin_warnings = self.registry.list_failed()
         self._plugin_sync_events = self.registry.list_sync_events()
         self._plugin_fingerprint = fingerprint

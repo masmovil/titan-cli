@@ -196,13 +196,16 @@ class WorkflowExecutionScreen(BaseScreen):
                     continue
 
                 if hasattr(ctx_builder, f"with_{plugin_name}"):
-                    try:
-                        client = plugin.get_client()
-                        getattr(ctx_builder, f"with_{plugin_name}")(client)
-                    except Exception:
-                        # Plugin client initialization failed - workflow steps
-                        # using this plugin will fail gracefully
-                        pass
+                    # First use of the plugin: initialize it now if needed.
+                    initialized = self.config.registry.ensure_initialized(plugin_name)
+                    if initialized is not None:
+                        try:
+                            client = initialized.get_client()
+                            getattr(ctx_builder, f"with_{plugin_name}")(client)
+                        except Exception:
+                            # Plugin client initialization failed - workflow steps
+                            # using this plugin will fail gracefully
+                            pass
 
                 try:
                     managers = plugin.get_workflow_managers(project_root=project_root)

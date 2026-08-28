@@ -68,7 +68,8 @@ def test_plugin_registry_discovery_success(mocker):
 
     registry = PluginRegistry(discover_on_init=False)
     registry.discover()
-    
+    registry.load_all()
+
     installed_plugins = registry.list_installed()
     assert len(installed_plugins) == 2
     assert "plugin_one" in installed_plugins
@@ -106,6 +107,7 @@ def test_plugin_registry_handles_load_failure(mocker, capsys):
 
     registry = PluginRegistry(discover_on_init=False)
     registry.discover()
+    registry.load_all()
 
     installed_plugins = registry.list_installed()
     assert len(installed_plugins) == 1
@@ -148,7 +150,8 @@ def test_plugin_registry_dependency_resolution(mocker):
     mock_config = MagicMock(spec=TitanConfig)
     mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_broker_factory)
+    registry.prepare(mock_config, mock_broker_factory)
+    registry.ensure_all_initialized()
 
     plugin_one = registry.get_plugin("plugin_one")
     plugin_two = registry.get_plugin("plugin_two")
@@ -177,11 +180,12 @@ def test_plugin_registry_unresolved_dependency(mocker):
     mock_config = MagicMock(spec=TitanConfig)
     mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_broker_factory)
+    registry.prepare(mock_config, mock_broker_factory)
+    registry.ensure_all_initialized()
 
     failed_plugins = registry.list_failed()
     assert "plugin_dependent" in failed_plugins
-    assert "Circular or unresolvable dependency" in str(failed_plugins["plugin_dependent"])
+    assert "Dependency 'non-existent' failed to load/initialize" in str(failed_plugins["plugin_dependent"])
 
 
 def test_plugin_registry_plugin_initialization_context(mocker):
@@ -204,7 +208,8 @@ def test_plugin_registry_plugin_initialization_context(mocker):
     mock_config = MagicMock(spec=TitanConfig)
     mock_broker_factory = MagicMock(spec=SecretBrokerFactory)
 
-    registry.initialize_plugins(mock_config, mock_broker_factory)
+    registry.prepare(mock_config, mock_broker_factory)
+    registry.ensure_all_initialized()
 
     plugin_instance = registry.get_plugin("test_plugin")
     assert plugin_instance.received_config is mock_config
@@ -477,3 +482,388 @@ class SamplePlugin(TitanPlugin):
 
     with pytest.raises(ModuleNotFoundError):
         _load_local_plugin(plugin_dir, "sample")
+
+
+# ---------------------------------------------------------------------------
+# Lazy initialization contract
+# ---------------------------------------------------------------------------
+
+def _registry_with(mocker, *plugin_classes):
+    eps = []
+    for cls in plugin_classes:
+        ep = MagicMock()
+        ep.name = cls._name
+        ep.load.return_value = cls
+        eps.append(ep)
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=eps,
+    )
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    return registry
+
+
+def test_prepare_does_not_initialize_anything(mocker):
+    Lazy = type("Lazy", (MockPlugin,), {"_name": "lazy_one"})
+    registry = _registry_with(mocker, Lazy)
+
+    registry.prepare(MagicMock(spec=TitanConfig), MagicMock(spec=SecretBrokerFactory))
+
+    assert not registry.get_plugin("lazy_one")._initialized
+    assert not registry.is_initialized("lazy_one")
+
+
+def test_ensure_initialized_initializes_once_on_first_use(mocker):
+    calls = []
+
+    class Counting(MockPlugin):
+        _name = "counting"
+
+        def initialize(self, config, broker):
+            calls.append(1)
+            super().initialize(config, broker)
+
+    registry = _registry_with(mocker, Counting)
+    registry.prepare(MagicMock(spec=TitanConfig), MagicMock(spec=SecretBrokerFactory))
+
+    first = registry.ensure_initialized("counting")
+    second = registry.ensure_initialized("counting")
+
+    assert first is second is registry.get_plugin("counting")
+    assert calls == [1]
+    assert registry.is_initialized("counting")
+
+
+def test_ensure_initialized_initializes_dependencies_first(mocker):
+    order = []
+
+    class Base(MockPlugin):
+        _name = "base_plugin"
+
+        def initialize(self, config, broker):
+            order.append(self._name)
+            super().initialize(config, broker)
+
+    class Dependent(Base):
+        _name = "dependent_lazy"
+        _dependencies = ["base_plugin"]
+
+    registry = _registry_with(mocker, Dependent, Base)
+    registry.prepare(MagicMock(spec=TitanConfig), MagicMock(spec=SecretBrokerFactory))
+
+    assert registry.ensure_initialized("dependent_lazy") is not None
+    assert order == ["base_plugin", "dependent_lazy"]
+
+
+def test_ensure_initialized_returns_none_for_disabled_plugin(mocker):
+    Lazy = type("Lazy", (MockPlugin,), {"_name": "disabled_one"})
+    registry = _registry_with(mocker, Lazy)
+
+    config = MagicMock(spec=TitanConfig)
+    config.is_plugin_enabled.return_value = False
+    registry.prepare(config, MagicMock(spec=SecretBrokerFactory))
+
+    assert registry.ensure_initialized("disabled_one") is None
+    # Never even loaded: disabled plugins stay as entry-point metadata.
+    assert registry.get_plugin("disabled_one") is None
+    assert "disabled_one" not in registry.list_failed()
+
+
+def test_ensure_initialized_returns_none_before_prepare(mocker):
+    Lazy = type("Lazy", (MockPlugin,), {"_name": "unprepared"})
+    registry = _registry_with(mocker, Lazy)
+
+    assert registry.ensure_initialized("unprepared") is None
+    assert registry.get_plugin("unprepared") is None
+
+
+def test_init_failure_is_sticky_until_next_prepare(mocker):
+    attempts = []
+
+    class Flaky(MockPlugin):
+        _name = "flaky"
+
+        def initialize(self, config, broker):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise RuntimeError("credential missing")
+            super().initialize(config, broker)
+
+    registry = _registry_with(mocker, Flaky)
+    config = MagicMock(spec=TitanConfig)
+    factory = MagicMock(spec=SecretBrokerFactory)
+    registry.prepare(config, factory)
+
+    assert registry.ensure_initialized("flaky") is None
+    assert "flaky" in registry.list_failed()
+    # Sticky: no retry within the same build
+    assert registry.ensure_initialized("flaky") is None
+    assert attempts == [1]
+
+    # A new prepare (what force_plugin_init produces) clears it and retries
+    registry.prepare(config, factory)
+    assert "flaky" not in registry.list_failed()
+    assert registry.ensure_initialized("flaky") is not None
+    assert attempts == [1, 1]
+
+
+def test_prepare_keeps_load_failures(mocker):
+    bad_ep = MagicMock()
+    bad_ep.name = "broken_import"
+    bad_ep.load.side_effect = ImportError("boom")
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[bad_ep],
+    )
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    registry.load_all()
+    assert "broken_import" in registry.list_failed()
+
+    registry.prepare(MagicMock(spec=TitanConfig), MagicMock(spec=SecretBrokerFactory))
+
+    # prepare clears initialization failures, never load failures
+    assert "broken_import" in registry.list_failed()
+
+
+def test_ensure_initialized_is_thread_safe(mocker):
+    import threading as _threading
+
+    started = _threading.Event()
+    calls = []
+
+    class Slow(MockPlugin):
+        _name = "slow_plugin"
+
+        def initialize(self, config, broker):
+            started.set()
+            calls.append(1)
+            super().initialize(config, broker)
+
+    registry = _registry_with(mocker, Slow)
+    registry.prepare(MagicMock(spec=TitanConfig), MagicMock(spec=SecretBrokerFactory))
+
+    results = []
+    threads = [
+        _threading.Thread(target=lambda: results.append(registry.ensure_initialized("slow_plugin")))
+        for _ in range(8)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert calls == [1]
+    assert all(r is registry.get_plugin("slow_plugin") for r in results)
+
+
+def test_import_failure_traceback_logged_once_per_session(mocker):
+    bad_ep = MagicMock()
+    bad_ep.name = "always_broken"
+    bad_ep.load.side_effect = ImportError("no such module")
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[bad_ep],
+    )
+    mock_logger = mocker.patch("titan_cli.core.plugins.plugin_registry.logger")
+
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    registry.load_all()
+    registry.reset()  # re-discovers: same broken import fails again on load
+    registry.load_all()
+    registry.reset()  # and a third time
+    registry.load_all()
+
+    # Full traceback exactly once; later cycles get a one-line warning.
+    exception_calls = [
+        c for c in mock_logger.exception.call_args_list
+        if c.args and c.args[0] == "plugin_load_failed"
+    ]
+    warning_calls = [
+        c for c in mock_logger.warning.call_args_list
+        if c.args and c.args[0] == "plugin_load_failed"
+    ]
+    assert len(exception_calls) == 1
+    assert len(warning_calls) == 2
+    # The failure itself is still recorded every cycle.
+    assert "always_broken" in registry.list_failed()
+
+
+# ---------------------------------------------------------------------------
+# Plugin version contract at discovery
+# ---------------------------------------------------------------------------
+
+def test_discover_prefers_plugin_declared_version_over_distribution(mocker):
+    class Versioned(MockPlugin):
+        _name = "versioned"
+
+        @property
+        def version(self):
+            return "2.3.4"
+
+    ep = MagicMock()
+    ep.name = "versioned"
+    ep.load.return_value = Versioned
+    ep.dist.version = "0.8.0"  # the bundling distribution (titan-cli itself)
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[ep],
+    )
+
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    registry.load_all()
+
+    assert registry.get_plugin_version("versioned") == "2.3.4"
+
+
+def test_discover_falls_back_to_distribution_version(mocker):
+    # MockPlugin's package (this test module's root) declares no __version__,
+    # so plugin.version is None and the owning distribution's version is used
+    # - the correct answer for a third-party plugin installed as its own dist.
+    Plain = type("Plain", (MockPlugin,), {"_name": "plain"})
+    ep = MagicMock()
+    ep.name = "plain"
+    ep.load.return_value = Plain
+    ep.dist.version = "3.1.4"
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[ep],
+    )
+
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    registry.load_all()
+
+    assert registry.get_plugin_version("plain") == "3.1.4"
+
+
+def test_incompatible_plugin_is_recorded_failed_with_legible_message(mocker):
+    class TooNew(MockPlugin):
+        _name = "too_new"
+
+        @property
+        def titan_requires(self):
+            return ">=999.0"
+
+    ep = MagicMock()
+    ep.name = "too_new"
+    ep.load.return_value = TooNew
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[ep],
+    )
+
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    registry.load_all()
+
+    assert registry.get_plugin("too_new") is None
+    failure = registry.list_failed()["too_new"]
+    assert "requires titan-cli >=999.0" in str(failure)
+
+
+def test_compatible_requirement_loads_normally(mocker):
+    class Compatible(MockPlugin):
+        _name = "compatible"
+
+        @property
+        def titan_requires(self):
+            return ">=0.1"
+
+    ep = MagicMock()
+    ep.name = "compatible"
+    ep.load.return_value = Compatible
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[ep],
+    )
+
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    registry.load_all()
+
+    assert registry.get_plugin("compatible") is not None
+    assert "compatible" not in registry.list_failed()
+
+
+# ---------------------------------------------------------------------------
+# Disabled plugins are never imported (installed vs loaded split)
+# ---------------------------------------------------------------------------
+
+def test_discover_imports_nothing(mocker):
+    ep = MagicMock()
+    ep.name = "untouched"
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[ep],
+    )
+
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+
+    ep.load.assert_not_called()
+    # The plugin is still visible as installed metadata.
+    assert "untouched" in registry.list_discovered()
+
+
+def test_prepare_loads_only_enabled_plugins(mocker):
+    Enabled = type("Enabled", (MockPlugin,), {"_name": "enabled_one"})
+    Disabled = type("Disabled", (MockPlugin,), {"_name": "disabled_two"})
+
+    ep_on = MagicMock()
+    ep_on.name = "enabled_one"
+    ep_on.load.return_value = Enabled
+    ep_off = MagicMock()
+    ep_off.name = "disabled_two"
+    ep_off.load.return_value = Disabled
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[ep_on, ep_off],
+    )
+
+    config = MagicMock(spec=TitanConfig)
+    config.is_plugin_enabled.side_effect = lambda n: n == "enabled_one"
+    config.get_enabled_plugins.return_value = ["enabled_one"]
+
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    registry.prepare(config, MagicMock(spec=SecretBrokerFactory))
+
+    ep_on.load.assert_called_once()
+    ep_off.load.assert_not_called()
+    # Loaded vs merely installed:
+    assert registry.get_plugin("enabled_one") is not None
+    assert registry.get_plugin("disabled_two") is None
+    assert "disabled_two" in registry.list_discovered()
+    # And the workflow-source pattern (get_plugin -> None -> skip) holds.
+    assert "disabled_two" not in registry.list_installed()
+
+
+def test_load_plugin_imports_a_disabled_plugin_on_demand(mocker):
+    Disabled = type("Disabled", (MockPlugin,), {"_name": "disabled_demand"})
+    ep = MagicMock()
+    ep.name = "disabled_demand"
+    ep.load.return_value = Disabled
+    ep.dist.version = "9.9.9"
+    mocker.patch(
+        "titan_cli.core.plugins.plugin_registry.entry_points",
+        return_value=[ep],
+    )
+
+    config = MagicMock(spec=TitanConfig)
+    config.is_plugin_enabled.return_value = False
+    config.get_enabled_plugins.return_value = []
+
+    registry = PluginRegistry(discover_on_init=False)
+    registry.discover()
+    registry.prepare(config, MagicMock(spec=SecretBrokerFactory))
+    ep.load.assert_not_called()
+
+    # The management screen's path: load for display, without initializing.
+    plugin = registry.load_plugin("disabled_demand")
+    assert plugin is not None
+    assert not plugin._initialized
+    assert registry.get_plugin_version("disabled_demand") == "9.9.9"

@@ -47,13 +47,18 @@ class GHNetwork:
 
     def check_auth(self) -> None:
         """
-        Check if gh CLI is authenticated.
+        Check that gh CLI has a credential, without touching the network.
+
+        `gh auth token` only reads local state; `gh auth status` would validate
+        the token against api.github.com, a ~0.4s round-trip this constructor
+        used to pay on every client build. Token *validity* is asserted by the
+        first real API call, which fails with the same information.
 
         Raises:
-            GitHubAuthenticationError: If not authenticated
+            GitHubAuthenticationError: If no credential is configured
         """
         try:
-            subprocess.run(["gh", "auth", "status"], capture_output=True, check=True)
+            subprocess.run(["gh", "auth", "token"], capture_output=True, check=True)
         except subprocess.CalledProcessError:
             raise GitHubAuthenticationError(msg.GitHub.NOT_AUTHENTICATED)
 

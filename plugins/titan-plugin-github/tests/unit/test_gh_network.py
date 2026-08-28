@@ -37,13 +37,14 @@ def test_network_initialization_checks_auth(mock_subprocess):
     # Reset mock to verify auth check call
     mock_subprocess.reset_mock()
 
-    # Create network - should call gh auth status
+    # Create network - should check for a local credential only
     GHNetwork(repo_owner="test-owner", repo_name="test-repo")
 
-    # Verify gh auth status was called
+    # Verify the local-only token check was used (never `gh auth status`,
+    # which validates against the API over the network)
     assert mock_subprocess.call_count == 1
     call_args = mock_subprocess.call_args[0][0]
-    assert call_args == ["gh", "auth", "status"]
+    assert call_args == ["gh", "auth", "token"]
 
 
 def test_network_initialization_raises_when_not_authenticated():
@@ -52,7 +53,7 @@ def test_network_initialization_raises_when_not_authenticated():
         # Simulate auth failure
         mock_run.side_effect = subprocess.CalledProcessError(
             returncode=1,
-            cmd=["gh", "auth", "status"],
+            cmd=["gh", "auth", "token"],
             stderr="Not authenticated"
         )
 

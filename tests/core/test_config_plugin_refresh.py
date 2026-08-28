@@ -55,7 +55,7 @@ def config(config_paths, monkeypatch):
 
 
 def _rebuilds(config) -> int:
-    return config.registry.initialize_plugins.call_count
+    return config.registry.prepare.call_count
 
 
 def test_the_first_load_builds_the_registry(config):
