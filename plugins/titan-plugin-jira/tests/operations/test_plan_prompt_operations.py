@@ -6,6 +6,7 @@ Tests for pure business logic that builds the AI prompt used to plan JIRA issue 
 
 from titan_plugin_jira.models.view import UIJiraComment, UIJiraIssue
 from titan_plugin_jira.operations.plan_prompt_operations import (
+    build_jira_implementation_prompt,
     format_jira_issue_context,
     build_jira_plan_prompt,
 )
@@ -146,4 +147,29 @@ class TestBuildJiraPlanPrompt:
 
         prompt = build_jira_plan_prompt(issue, [])
 
-        assert "Do not start implementing until the user has confirmed the plan" in prompt
+        assert "Do not start implementing in this planning session" in prompt
+        assert "launch the implementation step" in prompt
+        assert "create the pull request" in prompt
+
+
+class TestBuildJiraImplementationPrompt:
+    """Tests for build_jira_implementation_prompt function."""
+
+    def test_requests_implementation_and_unit_test_use_cases(self):
+        issue = _make_issue()
+        comments = [_make_comment()]
+
+        prompt = build_jira_implementation_prompt(issue, comments)
+
+        assert "Implement the issue now" in prompt
+        assert "main use cases" in prompt
+        assert "edge cases" in prompt
+        assert "failure paths" in prompt
+        assert "TEST-123: Sample test issue" in prompt
+        assert "This needs a closer look." in prompt
+
+    def test_leaves_repository_delivery_to_existing_workflow(self):
+        prompt = build_jira_implementation_prompt(_make_issue(), [])
+
+        assert "Do not commit, push, or create a pull request" in prompt
+        assert "existing workflows" in prompt

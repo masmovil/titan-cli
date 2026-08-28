@@ -503,10 +503,17 @@ class GitClient:
     # ===== Worktree Methods =====
 
     def create_worktree(
-        self, path: str, branch: str, create_branch: bool = False, detached: bool = False
+        self,
+        path: str,
+        branch: str,
+        create_branch: bool = False,
+        detached: bool = False,
+        start_point: Optional[str] = None,
     ) -> ClientResult[None]:
         """Create a new worktree."""
-        return self.worktree_service.create_worktree(path, branch, create_branch, detached)
+        return self.worktree_service.create_worktree(
+            path, branch, create_branch, detached, start_point
+        )
 
     def remove_worktree(self, path: str, force: bool = False) -> ClientResult[None]:
         """Remove a worktree."""

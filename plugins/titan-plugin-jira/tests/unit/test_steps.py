@@ -377,6 +377,10 @@ def test_build_jira_task_context_step_success(mock_workflow_context, sample_ui_i
     assert sample_ui_issue.key in context
     assert "Please double check the edge cases" in context
     assert "PLANNING ONLY" in context
+    implementation_context = result.metadata["jira_implementation_context"]
+    assert sample_ui_issue.key in implementation_context
+    assert "Implement the issue now" in implementation_context
+    assert "unit tests" in implementation_context
 
 
 def test_build_jira_task_context_step_no_comments(mock_workflow_context, sample_ui_issue):

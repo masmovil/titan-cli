@@ -47,6 +47,8 @@
       "name": "Worktrees",
       "steps": [
         {"name": "create_worktree", "summary": "Create a worktree for isolated branch work."},
+        {"name": "activate_worktree_context", "summary": "Route nested workflows, commands, tests, and AI tools through a worktree."},
+        {"name": "cleanup_worktree_context", "summary": "Restore the original workflow context and remove its active worktree."},
         {"name": "remove_worktree", "summary": "Remove a previously created worktree."},
         {"name": "worktree_commit", "summary": "Create a commit inside a specific worktree."},
         {"name": "worktree_push", "summary": "Push a branch from a specific worktree."}

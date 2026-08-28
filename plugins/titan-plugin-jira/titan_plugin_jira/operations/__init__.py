@@ -38,6 +38,7 @@ from .issue_management_operations import (
 
 from .plan_prompt_operations import (
     format_jira_issue_context,
+    build_jira_implementation_prompt,
     build_jira_plan_prompt,
 )
 
@@ -63,5 +64,6 @@ __all__ = [
     "issue_has_fix_version",
     # Plan prompt operations
     "format_jira_issue_context",
+    "build_jira_implementation_prompt",
     "build_jira_plan_prompt",
 ]

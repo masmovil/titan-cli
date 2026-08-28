@@ -3,16 +3,15 @@ Build JIRA task context step
 """
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
-from ..operations import build_jira_plan_prompt
+from ..operations import build_jira_implementation_prompt, build_jira_plan_prompt
 
 
 def build_jira_task_context_step(ctx: WorkflowContext) -> WorkflowResult:
     """
-    Build the full AI prompt for planning work on a JIRA issue.
+    Build the AI prompts for planning and implementing work on a JIRA issue.
 
-    Combines the issue and its comments into a single instructional prompt (issue context
-    plus planning/confirmation instructions), ready to be handed to an external AI CLI via
-    the `ai_code_assistant` (core) step with `prompt_template: "{context}"`.
+    Combines the issue and its comments into phase-specific prompts ready to be handed to
+    external AI CLIs via the `ai_code_assistant` core step.
 
     Inputs (from ctx.data):
         jira_issue (UIJiraIssue): Issue details, from get_issue
@@ -20,6 +19,7 @@ def build_jira_task_context_step(ctx: WorkflowContext) -> WorkflowResult:
 
     Outputs (saved to ctx.data):
         jira_task_context (str): Full prompt text (instructions + issue + comments)
+        jira_implementation_context (str): Implementation and unit-test prompt
 
     Returns:
         Success: Prompt built
@@ -40,12 +40,18 @@ def build_jira_task_context_step(ctx: WorkflowContext) -> WorkflowResult:
     comments = ctx.get("jira_comments") or []
 
     task_context = build_jira_plan_prompt(issue, comments)
+    implementation_context = build_jira_implementation_prompt(issue, comments)
 
-    ctx.textual.success_text(f"Task context ready for {issue.key} ({len(task_context)} characters)")
+    ctx.textual.success_text(
+        f"Task context ready for {issue.key} ({len(task_context)} characters)"
+    )
     ctx.textual.end_step("success")
     return Success(
         f"Task context ready for {issue.key}",
-        metadata={"jira_task_context": task_context}
+        metadata={
+            "jira_task_context": task_context,
+            "jira_implementation_context": implementation_context,
+        },
     )
 
 

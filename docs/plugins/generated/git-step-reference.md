@@ -678,7 +678,7 @@ Show summary of branch changes (git diff base...head --stat).
 
 ### `create_worktree`
 
-Create a temporary git worktree in detached HEAD mode from a remote base branch.
+Create a temporary git worktree from a remote base branch.
 
 **How to read this contract**
 
@@ -693,13 +693,21 @@ Create a temporary git worktree in detached HEAD mode from a remote base branch.
   step: create_worktree
 ```
 
-**Available to later steps:** `worktree_path`, `base_branch`
+**Available to later steps:** `worktree_path`, `base_branch`, `branch`, `new_branch`, `pr_head_branch`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.git` | - | An initialized Git client. |
 
 **Inputs (from ctx.data)**
 
 | Name | Type | Description |
 |------|------|-------------|
 | `base_branch` | str, optional | Base branch to create the worktree from. Defaults to the git plugin's configured main branch. |
+| `remote` | str, optional | Remote to fetch the base branch from. Defaults to the git plugin's configured remote. |
+| `new_branch` | str, optional | Branch to create from the remote base ref. If omitted, uses detached HEAD. |
 | `path` | str, optional | Custom path for the worktree. Defaults to a temporary directory. |
 
 **Outputs (saved to ctx.data)**
@@ -708,13 +716,102 @@ Create a temporary git worktree in detached HEAD mode from a remote base branch.
 |------|------|-------------|
 | `worktree_path` | str | Path to the created worktree. |
 | `base_branch` | str | Base branch name (e.g., "develop", "main" or "rc/26.18.2"). |
+| `branch` | str, optional | Created branch when ``new_branch`` is provided. |
+| `new_branch` | str, optional | Created branch when ``new_branch`` is provided. |
+| `pr_head_branch` | str, optional | Pull request head branch when ``new_branch`` is provided. |
 
 **Returns**
 
 | Result | Saved for later steps | Description |
 |--------|-----------------------|-------------|
-| `Success` | `worktree_path`, `base_branch` | If the worktree is created successfully. |
+| `Success` | `worktree_path`, `base_branch`, `branch`, `new_branch`, `pr_head_branch` | If the worktree is created successfully. |
 | `Error` | - | If the Git client is unavailable, no base branch can be resolved, or worktree creation fails. |
+
+### `activate_worktree_context`
+
+Route subsequent workflow operations through a created worktree.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: git
+  step: activate_worktree_context
+```
+
+**Available to later steps:** `project_root`, `worktree_context_active`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.git` | - | The GitClient for the main working tree. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `worktree_path` | str | Existing worktree directory. |
+| `base_branch` | str, optional | Main branch for comparisons in nested workflows. |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `project_root` | str | Worktree path used by commands, tests, and AI CLIs. |
+| `worktree_context_active` | bool | Whether routing to the worktree is active. |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `project_root`, `worktree_context_active` | If the workflow context now targets the worktree. |
+| `Error` | - | If the Git client or worktree path is unavailable. |
+
+### `cleanup_worktree_context`
+
+Restore the main workflow context and remove the active worktree.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: git
+  step: cleanup_worktree_context
+```
+
+**Available to later steps:** `worktree_context_active`, `worktree_removed`
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `worktree_path` | str | Worktree directory to remove. |
+| `worktree_context_active` | bool | Whether the context was activated. |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `worktree_context_active` | bool | Always False after successful cleanup. |
+| `worktree_removed` | bool | Whether the worktree was removed. |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `worktree_context_active`, `worktree_removed` | If the original context is restored and the worktree is removed. |
+| `Error` | - | If no original context exists or worktree removal fails. |
 
 ### `remove_worktree`
 

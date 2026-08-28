@@ -361,7 +361,7 @@ How to read these contracts:
 ### AI Planning Handoff
 
 ??? info "`build_jira_task_context`"
-    Build the full AI prompt for planning work on a JIRA issue.
+    Build the AI prompts for planning and implementing work on a JIRA issue.
 
     **Workflow usage**
 
@@ -372,7 +372,7 @@ How to read these contracts:
 
     **Used by built-in workflows:** `plan-jira-issue`
 
-    **Available to later steps:** `jira_task_context`
+    **Available to later steps:** `jira_task_context`, `jira_implementation_context`
 
     **Inputs (from ctx.data)**
 
@@ -386,12 +386,13 @@ How to read these contracts:
     | Name | Type | Description |
     |------|------|-------------|
     | `jira_task_context` | str | Full prompt text (instructions + issue + comments) |
+    | `jira_implementation_context` | str | Implementation and unit-test prompt |
 
     **Returns**
 
     | Result | Saved for later steps | Description |
     |--------|-----------------------|-------------|
-    | `Success` | `jira_task_context` | Prompt built |
+    | `Success` | `jira_task_context`, `jira_implementation_context` | Prompt built |
     | `Error` | - | jira_issue is missing |
 
 

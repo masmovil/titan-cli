@@ -1,5 +1,11 @@
-name: "Plan JIRA Issue with AI CLI"
-description: "Fetch a JIRA issue and its comments, hand it off to an AI coding CLI to study it and confirm a plan, then offer to assign the issue to yourself"
+name: "Plan and Execute JIRA Issue with AI CLI"
+description: "Plan a JIRA issue, assign it to yourself, implement it with unit tests, and create a pull request using existing workflows"
+
+params:
+  base_branch: "develop"
+  branch_prefix: "feature"
+  remote: "origin"
+  pr_base_branch: "develop"
 
 steps:
   - id: select_issue
@@ -37,3 +43,36 @@ steps:
     name: "Assign Issue to Yourself"
     plugin: jira
     step: confirm_and_assign_issue
+
+  - id: create_issue_worktree
+    name: "Create Isolated Issue Worktree"
+    plugin: git
+    step: create_worktree
+    params:
+      base_branch: "${base_branch}"
+      new_branch: "${branch_prefix}/${jira_issue_key}"
+
+  - id: activate_issue_worktree
+    name: "Activate Issue Worktree"
+    plugin: git
+    step: activate_worktree_context
+
+  - id: implement_with_cli
+    name: "Implement Issue with Unit Tests"
+    plugin: core
+    step: ai_code_assistant
+    params:
+      context_key: "jira_implementation_context"
+      cli_preference: "auto"
+      ask_confirmation: true
+      fail_on_decline: true
+    on_error: fail
+
+  - id: create_pull_request
+    name: "Create Pull Request"
+    workflow: "create-pr-ai"
+
+  - id: cleanup_issue_worktree
+    name: "Cleanup Issue Worktree"
+    plugin: git
+    step: cleanup_worktree_context

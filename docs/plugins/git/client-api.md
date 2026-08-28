@@ -902,8 +902,9 @@ Creates a new Git worktree.
 client.create_worktree(
     path="../repo-search-worktree",
     branch="feature/search",
-    create_branch=False,
+    create_branch=True,
     detached=False,
+    start_point="origin/develop",
 )
 ```
 
@@ -913,6 +914,7 @@ client.create_worktree(
 - `branch`: Required. Branch to attach to the worktree.
 - `create_branch`: Optional. Create the branch if needed.
 - `detached`: Optional. Create the worktree in detached mode.
+- `start_point`: Optional. Starting ref for a newly created branch, such as `origin/develop`.
 
 ### Remove a worktree
 

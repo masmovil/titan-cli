@@ -16,6 +16,36 @@ def mock_git_network():
 
 
 @pytest.mark.unit
+class TestWorktreeServiceCreate:
+    """Test WorktreeService.create_worktree()."""
+
+    def test_create_branch_from_explicit_start_point(self, mock_git_network):
+        """Create an attached branch from the requested remote base ref."""
+        mock_git_network.run_command.return_value = ""
+        service = WorktreeService(mock_git_network)
+
+        result = service.create_worktree(
+            "/tmp/worktree",
+            "feature/PROJ-123",
+            create_branch=True,
+            start_point="origin/develop",
+        )
+
+        assert isinstance(result, ClientSuccess)
+        mock_git_network.run_command.assert_called_once_with(
+            [
+                "git",
+                "worktree",
+                "add",
+                "-b",
+                "feature/PROJ-123",
+                "/tmp/worktree",
+                "origin/develop",
+            ]
+        )
+
+
+@pytest.mark.unit
 class TestWorktreeServiceCheckoutBranch:
     """Test WorktreeService.checkout_branch_in_worktree()"""
 

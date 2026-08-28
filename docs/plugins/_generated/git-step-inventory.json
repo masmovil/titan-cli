@@ -102,6 +102,14 @@
           "summary": "Create a worktree for isolated branch work."
         },
         {
+          "name": "activate_worktree_context",
+          "summary": "Route nested workflows, commands, tests, and AI tools through a worktree."
+        },
+        {
+          "name": "cleanup_worktree_context",
+          "summary": "Restore the original workflow context and remove its active worktree."
+        },
+        {
           "name": "remove_worktree",
           "summary": "Remove a previously created worktree."
         },
@@ -117,6 +125,31 @@
     }
   ],
   "steps": [
+    {
+      "name": "activate_worktree_context",
+      "group": "Worktrees",
+      "module": "titan_plugin_git.steps.worktree_context_steps",
+      "function": "activate_worktree_context",
+      "summary": "Route subsequent workflow operations through a created worktree.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.git: The GitClient for the main working tree."
+        ],
+        "Inputs (from ctx.data)": [
+          "    worktree_path (str): Existing worktree directory.",
+          "    base_branch (str, optional): Main branch for comparisons in nested workflows."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    project_root (str): Worktree path used by commands, tests, and AI CLIs.",
+          "    worktree_context_active (bool): Whether routing to the worktree is active."
+        ],
+        "Returns": [
+          "    Success: If the workflow context now targets the worktree.",
+          "    Error: If the Git client or worktree path is unavailable."
+        ]
+      },
+      "used_by_workflows": []
+    },
     {
       "name": "ai_generate_commit_message",
       "group": "Commits",
@@ -193,6 +226,29 @@
       ]
     },
     {
+      "name": "cleanup_worktree_context",
+      "group": "Worktrees",
+      "module": "titan_plugin_git.steps.worktree_context_steps",
+      "function": "cleanup_worktree_context",
+      "summary": "Restore the main workflow context and remove the active worktree.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [
+          "    worktree_path (str): Worktree directory to remove.",
+          "    worktree_context_active (bool): Whether the context was activated."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    worktree_context_active (bool): Always False after successful cleanup.",
+          "    worktree_removed (bool): Whether the worktree was removed."
+        ],
+        "Returns": [
+          "    Success: If the original context is restored and the worktree is removed.",
+          "    Error: If no original context exists or worktree removal fails."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
       "name": "create_branch",
       "group": "Branching",
       "module": "titan_plugin_git.steps.create_branch_step",
@@ -249,16 +305,23 @@
       "group": "Worktrees",
       "module": "titan_plugin_git.steps.create_worktree_step",
       "function": "create_worktree",
-      "summary": "Create a temporary git worktree in detached HEAD mode from a remote base branch.",
+      "summary": "Create a temporary git worktree from a remote base branch.",
       "docstring_sections": {
-        "Requires": [],
+        "Requires": [
+          "    ctx.git: An initialized Git client."
+        ],
         "Inputs (from ctx.data)": [
           "    base_branch (str, optional): Base branch to create the worktree from. Defaults to the git plugin's configured main branch.",
+          "    remote (str, optional): Remote to fetch the base branch from. Defaults to the git plugin's configured remote.",
+          "    new_branch (str, optional): Branch to create from the remote base ref. If omitted, uses detached HEAD.",
           "    path (str, optional): Custom path for the worktree. Defaults to a temporary directory."
         ],
         "Outputs (saved to ctx.data)": [
           "    worktree_path (str): Path to the created worktree.",
-          "    base_branch (str): Base branch name (e.g., \"develop\", \"main\" or \"rc/26.18.2\")."
+          "    base_branch (str): Base branch name (e.g., \"develop\", \"main\" or \"rc/26.18.2\").",
+          "    branch (str, optional): Created branch when ``new_branch`` is provided.",
+          "    new_branch (str, optional): Created branch when ``new_branch`` is provided.",
+          "    pr_head_branch (str, optional): Pull request head branch when ``new_branch`` is provided."
         ],
         "Returns": [
           "    Success: If the worktree is created successfully.",

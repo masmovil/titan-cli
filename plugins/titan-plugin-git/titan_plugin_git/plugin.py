@@ -116,6 +116,7 @@ class GitPlugin(TitanPlugin):
             merge_source_branch,
             complete_merge,
         )
+        from .steps.worktree_context_steps import activate_worktree_context, cleanup_worktree_context
 
         return {
             "get_status": get_git_status_step,
@@ -141,6 +142,8 @@ class GitPlugin(TitanPlugin):
             "remove_worktree": remove_worktree,
             "worktree_commit": worktree_commit,
             "worktree_push": worktree_push,
+            "activate_worktree_context": activate_worktree_context,
+            "cleanup_worktree_context": cleanup_worktree_context,
         }
 
     @property

@@ -4,7 +4,7 @@ Operations for building the AI prompt used to plan work for a JIRA issue.
 
 from typing import List
 
-from ..constants import JIRA_PLAN_PROMPT_TEMPLATE
+from ..constants import JIRA_IMPLEMENTATION_PROMPT_TEMPLATE, JIRA_PLAN_PROMPT_TEMPLATE
 from ..models.view import UIJiraComment, UIJiraIssue
 
 
@@ -71,4 +71,17 @@ def build_jira_plan_prompt(issue: UIJiraIssue, comments: List[UIJiraComment]) ->
     return JIRA_PLAN_PROMPT_TEMPLATE.format(context=issue_context)
 
 
-__all__ = ["format_jira_issue_context", "build_jira_plan_prompt"]
+def build_jira_implementation_prompt(
+    issue: UIJiraIssue,
+    comments: List[UIJiraComment],
+) -> str:
+    """Build the prompt for implementing a planned JIRA issue with unit tests."""
+    issue_context = format_jira_issue_context(issue, comments)
+    return JIRA_IMPLEMENTATION_PROMPT_TEMPLATE.format(context=issue_context)
+
+
+__all__ = [
+    "format_jira_issue_context",
+    "build_jira_plan_prompt",
+    "build_jira_implementation_prompt",
+]

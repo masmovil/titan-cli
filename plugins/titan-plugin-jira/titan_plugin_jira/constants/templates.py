@@ -75,8 +75,34 @@ Your task right now is PLANNING ONLY:
 4. Present that plan to the user and explicitly ask them to confirm or adjust it before
    doing any further work.
 
-Do not start implementing until the user has confirmed the plan. When you exit this
-session, control returns to Titan CLI and this workflow ends.
+Do not start implementing in this planning session. Once the user has confirmed the plan,
+summarize it clearly and exit. Control then returns to Titan CLI so the workflow can assign
+the issue, launch the implementation step, and create the pull request.
+"""
+
+JIRA_IMPLEMENTATION_PROMPT_TEMPLATE = """You are being launched from Titan CLI to implement a JIRA issue after its planning step.
+
+Start as you normally would: load and follow this project's own documentation and any
+skills/onboarding material it points to (e.g. CLAUDE.md, README, harness docs) before
+changing code.
+
+Here is the full context of the JIRA issue, including all comments:
+
+{context}
+
+The user has already reviewed the implementation approach in the preceding planning
+step. Implement the issue now, keeping the change narrowly scoped to the agreed work:
+1. Inspect the current repository state and reconcile it with the issue and confirmed
+   approach. Ask the user only when a missing decision would materially change the result.
+2. Implement the production code needed to satisfy the acceptance criteria.
+3. Add or update unit tests covering the main use cases, relevant edge cases, and expected
+   failure paths.
+4. Run the focused unit tests and any directly relevant validation, fixing failures caused
+   by the change.
+5. Summarize the implementation and verification when finished.
+
+Do not commit, push, or create a pull request. The next Titan workflow step handles those
+actions using the project's existing workflows.
 """
 
 FALLBACK_ISSUE_TEMPLATE = """## Description

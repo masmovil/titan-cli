@@ -39,7 +39,12 @@ class WorktreeService:
 
     @log_client_operation()
     def create_worktree(
-        self, path: str, branch: str, create_branch: bool = False, detached: bool = False
+        self,
+        path: str,
+        branch: str,
+        create_branch: bool = False,
+        detached: bool = False,
+        start_point: str | None = None,
     ) -> ClientResult[None]:
         """
         Create a new worktree at the specified path.
@@ -49,6 +54,7 @@ class WorktreeService:
             branch: Branch or ref to checkout in the worktree
             create_branch: If True, create the branch
             detached: If True, create in detached HEAD mode (allows using same branch as current repo)
+            start_point: Optional ref used as the starting point for a newly created branch
 
         Returns:
             ClientResult[None]
@@ -64,7 +70,9 @@ class WorktreeService:
 
             args.append(path)
 
-            if not create_branch:
+            if create_branch and start_point:
+                args.append(start_point)
+            elif not create_branch:
                 args.append(branch)
 
             self.git.run_command(args)

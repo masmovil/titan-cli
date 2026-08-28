@@ -11,26 +11,26 @@ import tempfile
 
 def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
     """
-    Create a temporary git worktree in detached HEAD mode from a remote base branch.
+    Create a temporary git worktree from a remote base branch.
 
-    This step creates a worktree in a temporary directory in detached HEAD state,
-    pointing to the latest commit from the remote base branch. The base branch is
-    resolved from the `base_branch` context variable when present, falling back to
-    the git plugin's configured main branch. This allows creating a clean workspace
-    even if you're currently on the base branch or have uncommitted changes.
+    By default the worktree uses detached HEAD. When ``new_branch`` is provided,
+    the step creates and checks out that branch from the latest remote base ref.
 
-    The worktree is created in detached HEAD mode, which means:
-    - It doesn't conflict with your current branch
-    - It works even if you're on the base branch with uncommitted changes
-    - It always uses the latest code from the remote
+    Requires:
+        ctx.git: An initialized Git client.
 
     Inputs (from ctx.data):
         base_branch (str, optional): Base branch to create the worktree from. Defaults to the git plugin's configured main branch.
+        remote (str, optional): Remote to fetch the base branch from. Defaults to the git plugin's configured remote.
+        new_branch (str, optional): Branch to create from the remote base ref. If omitted, uses detached HEAD.
         path (str, optional): Custom path for the worktree. Defaults to a temporary directory.
 
     Outputs (saved to ctx.data):
         worktree_path (str): Path to the created worktree.
         base_branch (str): Base branch name (e.g., "develop", "main" or "rc/26.18.2").
+        branch (str, optional): Created branch when ``new_branch`` is provided.
+        new_branch (str, optional): Created branch when ``new_branch`` is provided.
+        pr_head_branch (str, optional): Pull request head branch when ``new_branch`` is provided.
 
     Returns:
         Success: If the worktree is created successfully.
@@ -56,7 +56,7 @@ def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
 
         # Get configuration: explicit base branch from context, fallback to main branch
         base_branch = ctx.get("base_branch") or ctx.git.main_branch
-        remote = ctx.git.default_remote
+        remote = ctx.get("remote") or ctx.git.default_remote
 
         if not base_branch:
             error_msg = (
@@ -68,6 +68,7 @@ def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
             return Error(error_msg)
 
         custom_path = ctx.get("path")
+        new_branch = ctx.get("new_branch")
 
         # Determine worktree path
         if custom_path:
@@ -80,7 +81,8 @@ def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
         # Display info
         ctx.textual.text("")
         ctx.textual.primary_text(f"Creating worktree at: {worktree_path}")
-        ctx.textual.dim_text(f"Base: {remote}/{base_branch} (detached HEAD)")
+        mode = f"branch {new_branch}" if new_branch else "detached HEAD"
+        ctx.textual.dim_text(f"Base: {remote}/{base_branch} ({mode})")
 
         # Fetch to ensure we have latest remote refs
         ctx.textual.text("")
@@ -91,6 +93,14 @@ def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
             case ClientSuccess():
                 ctx.textual.dim_text(f"✓ Fetched {remote}/{base_branch}")
             case ResultClientError(error_message=err):
+                if new_branch:
+                    error_msg = (
+                        f"Could not fetch {remote}/{base_branch}; refusing to create "
+                        f"{new_branch} from a potentially stale ref: {err}"
+                    )
+                    ctx.textual.error_text(error_msg)
+                    ctx.textual.end_step("error")
+                    return Error(error_msg)
                 ctx.textual.warning_text(f"Fetch failed: {err}")
                 ctx.textual.dim_text("Proceeding with local refs...")
 
@@ -123,17 +133,25 @@ def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
             case ResultClientError(error_message=err):
                 ctx.textual.dim_text(f"Warning: Could not list worktrees: {err}")
 
-        # Create worktree in detached HEAD mode from remote branch
-        # This allows creating the worktree even if we're currently on the same branch
+        # Create either an attached feature branch or the legacy detached worktree.
         ctx.textual.text("")
         remote_ref = f"{remote}/{base_branch}"
 
-        create_wt_result = ctx.git.create_worktree(
-            path=worktree_path,
-            branch=remote_ref,
-            create_branch=False,
-            detached=True  # Detached HEAD - doesn't conflict with current branch
-        )
+        if new_branch:
+            create_wt_result = ctx.git.create_worktree(
+                path=worktree_path,
+                branch=new_branch,
+                create_branch=True,
+                detached=False,
+                start_point=remote_ref,
+            )
+        else:
+            create_wt_result = ctx.git.create_worktree(
+                path=worktree_path,
+                branch=remote_ref,
+                create_branch=False,
+                detached=True,
+            )
 
         match create_wt_result:
             case ClientSuccess():
@@ -150,12 +168,22 @@ def create_worktree(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("success")
 
         # Store in workflow variables
+        metadata = {
+            "worktree_path": worktree_path,
+            "base_branch": base_branch,
+        }
+        if new_branch:
+            metadata.update(
+                {
+                    "branch": new_branch,
+                    "new_branch": new_branch,
+                    "pr_head_branch": new_branch,
+                }
+            )
+
         return Success(
             f"Worktree created at {worktree_path}",
-            metadata={
-                "worktree_path": worktree_path,
-                "base_branch": base_branch  # Save base branch for PR creation
-            }
+            metadata=metadata,
         )
 
     except Exception as e:

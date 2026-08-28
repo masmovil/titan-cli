@@ -313,7 +313,7 @@ Analyze JIRA issue requirements using AI.
 
 ### `build_jira_task_context`
 
-Build the full AI prompt for planning work on a JIRA issue.
+Build the AI prompts for planning and implementing work on a JIRA issue.
 
 **How to read this contract**
 
@@ -330,7 +330,7 @@ Build the full AI prompt for planning work on a JIRA issue.
 
 **Used by built-in workflows:** `plan-jira-issue`
 
-**Available to later steps:** `jira_task_context`
+**Available to later steps:** `jira_task_context`, `jira_implementation_context`
 
 **Inputs (from ctx.data)**
 
@@ -344,12 +344,13 @@ Build the full AI prompt for planning work on a JIRA issue.
 | Name | Type | Description |
 |------|------|-------------|
 | `jira_task_context` | str | Full prompt text (instructions + issue + comments) |
+| `jira_implementation_context` | str | Implementation and unit-test prompt |
 
 **Returns**
 
 | Result | Saved for later steps | Description |
 |--------|-----------------------|-------------|
-| `Success` | `jira_task_context` | Prompt built |
+| `Success` | `jira_task_context`, `jira_implementation_context` | Prompt built |
 | `Error` | - | jira_issue is missing |
 
 ### `confirm_and_assign_issue`

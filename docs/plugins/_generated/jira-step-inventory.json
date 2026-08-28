@@ -196,7 +196,7 @@
       "group": "AI Planning Handoff",
       "module": "titan_plugin_jira.steps.build_jira_task_context_step",
       "function": "build_jira_task_context_step",
-      "summary": "Build the full AI prompt for planning work on a JIRA issue.",
+      "summary": "Build the AI prompts for planning and implementing work on a JIRA issue.",
       "docstring_sections": {
         "Requires": [],
         "Inputs (from ctx.data)": [
@@ -204,7 +204,8 @@
           "    jira_comments (list[UIJiraComment], optional): Issue comments, from get_comments"
         ],
         "Outputs (saved to ctx.data)": [
-          "    jira_task_context (str): Full prompt text (instructions + issue + comments)"
+          "    jira_task_context (str): Full prompt text (instructions + issue + comments)",
+          "    jira_implementation_context (str): Implementation and unit-test prompt"
         ],
         "Returns": [
           "    Success: Prompt built",
