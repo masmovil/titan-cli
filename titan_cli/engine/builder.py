@@ -132,7 +132,7 @@ class WorkflowContextBuilder:
             self._git = git_client
         else:
             # Auto-create from plugin registry
-            git_plugin = self._plugin_registry.get_plugin("git")
+            git_plugin = self._plugin_registry.ensure_initialized("git")
             if git_plugin and git_plugin.is_available():
                 try:
                     self._git = git_plugin.get_client()
@@ -153,7 +153,7 @@ class WorkflowContextBuilder:
             self._github = github_client
         else:
             # Auto-create from plugin registry
-            github_plugin = self._plugin_registry.get_plugin("github")
+            github_plugin = self._plugin_registry.ensure_initialized("github")
             if github_plugin and github_plugin.is_available():
                 try:
                     self._github = github_plugin.get_client()
@@ -197,7 +197,7 @@ class WorkflowContextBuilder:
             self._jira = jira_client
         else:
             # Auto-create from plugin registry
-            jira_plugin = self._plugin_registry.get_plugin("jira")
+            jira_plugin = self._plugin_registry.ensure_initialized("jira")
             if jira_plugin and jira_plugin.is_available():
                 try:
                     self._jira = jira_plugin.get_client()
@@ -224,7 +224,7 @@ class WorkflowContextBuilder:
         if slack_client:
             self._slack = slack_client
         else:
-            slack_plugin = self._plugin_registry.get_plugin("slack")
+            slack_plugin = self._plugin_registry.ensure_initialized("slack")
             if slack_plugin and slack_plugin.is_available():
                 try:
                     self._slack = slack_plugin.get_client()
@@ -251,7 +251,7 @@ class WorkflowContextBuilder:
         if docker_client:
             self._docker = docker_client
         else:
-            docker_plugin = self._plugin_registry.get_plugin("docker")
+            docker_plugin = self._plugin_registry.ensure_initialized("docker")
             if docker_plugin and docker_plugin.is_available():
                 try:
                     self._docker = docker_plugin.get_client()

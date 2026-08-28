@@ -125,8 +125,8 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                     # Rebuild the broker factory against the project root
                     self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
-                    # Initialize only the configured plugins (without reset)
-                    self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
+                    # Prepare the registry with the new config (plugins initialize on first use)
+                    self.config.registry.prepare(config=self.config, broker_factory=self.config.broker_factory)
 
                     # Reload workflow registry to reflect enabled/disabled plugins
                     self.config.workflows.reload()
@@ -175,8 +175,8 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                         # Rebuild the broker factory against the project root
                         self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
-                        # Initialize plugins with new config
-                        self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
+                        # Prepare the registry with the new config (plugins initialize on first use)
+                        self.config.registry.prepare(config=self.config, broker_factory=self.config.broker_factory)
 
                         # Reload workflow registry to reflect enabled/disabled plugins
                         self.config.workflows.reload()
@@ -235,8 +235,8 @@ def launch_tui(debug: bool = False, devtools: bool = False):
                     # Rebuild the broker factory against the project root
                     self.config.broker_factory = create_broker_factory(project_path=_project_root)
 
-                    # Initialize only the configured plugins (without reset)
-                    self.config.registry.initialize_plugins(config=self.config, broker_factory=self.config.broker_factory)
+                    # Prepare the registry with the new config (plugins initialize on first use)
+                    self.config.registry.prepare(config=self.config, broker_factory=self.config.broker_factory)
 
                     # Reload workflow registry to reflect enabled/disabled plugins
                     self.config.workflows.reload()

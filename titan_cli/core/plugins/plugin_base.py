@@ -2,6 +2,7 @@
 Base interface for Titan plugins.
 """
 
+import sys
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, Callable
 from pathlib import Path
@@ -37,9 +38,36 @@ class TitanPlugin(ABC):
         pass
 
     @property
-    def version(self) -> str:
-        """Plugin version (default: "0.0.0")"""
-        return "0.0.0"
+    def version(self) -> Optional[str]:
+        """
+        The plugin's own version, or None when it does not declare one.
+
+        By default this reads ``__version__`` from the plugin's top-level
+        package (the standard Python convention), so a plugin declares its
+        version once, in its ``__init__.py``. Returns None when the package
+        does not define it — the registry then falls back to the owning
+        distribution's version, which is correct for third-party plugins
+        installed as their own package and wrong only for plugins bundled
+        inside another distribution's wheel (they must declare
+        ``__version__``).
+        """
+        package_root = type(self).__module__.split(".", 1)[0]
+        module = sys.modules.get(package_root)
+        return getattr(module, "__version__", None)
+
+    @property
+    def titan_requires(self) -> Optional[str]:
+        """
+        PEP 440 specifier the running titan-cli must satisfy (e.g. ">=0.8.0"),
+        or None to accept any version.
+
+        Checked at plugin discovery: an incompatible plugin is recorded as
+        failed with a message naming both versions, instead of loading against
+        an API it was not built for. Keep it in sync with the titan-cli
+        dependency in the plugin's pyproject.toml (a repo test enforces this
+        for the official plugins).
+        """
+        return None
 
     @property
     def description(self) -> str:

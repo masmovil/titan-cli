@@ -94,7 +94,7 @@ class BaseScreen(Screen):
         # Get git status
         git_branch = "N/A"
         try:
-            git_plugin = self.config.registry.get_plugin("git")
+            git_plugin = self.config.registry.ensure_initialized("git")
             if git_plugin and git_plugin.is_available():
                 git_client = git_plugin.get_client()
                 result = git_client.get_status()

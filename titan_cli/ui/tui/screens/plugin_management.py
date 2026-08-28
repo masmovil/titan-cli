@@ -227,6 +227,13 @@ class PluginManagementScreen(BaseScreen):
 
     def _load_plugins(self) -> None:
         """Load and display installed plugins."""
+        # Plugins load and initialize lazily on first use, so this screen may
+        # open before anything has used them — and disabled plugins are never
+        # loaded at all elsewhere. Load everything (so disabled plugins appear
+        # with their real version and description) and initialize the enabled
+        # ones, so the statuses shown here are real, not "never tried".
+        self.config.registry.load_all()
+        self.config.registry.ensure_all_initialized()
         self.installed_plugins = self.config.registry.list_installed()
 
         # Repopulate the one list that is already in the tree. Replacing the widget looked
