@@ -27,6 +27,7 @@ class StartWorkflowRequest:
     workflow_name: str
     params: dict[str, Any] = field(default_factory=dict)
     prompt_responses: list[Any] = field(default_factory=list)
+    interaction_responses: list[dict[str, Any]] = field(default_factory=list)
     project_path: Optional[str] = None
     interaction_mode: str = "headless"
 

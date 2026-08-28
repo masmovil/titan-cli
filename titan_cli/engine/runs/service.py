@@ -116,6 +116,7 @@ class WorkflowRunService:
             metadata={
                 "params": request.params,
                 "prompt_responses": list(request.prompt_responses),
+                "interaction_responses": list(request.interaction_responses),
                 "project_path": request.project_path,
                 "interaction_mode": request.interaction_mode,
             },
@@ -223,6 +224,8 @@ class WorkflowRunService:
             return self.get_run(request.run_id)
 
         session.record_interaction_answer(session.pending_interaction, response)
+        session.metadata.setdefault("interaction_responses", [])
+        session.metadata["interaction_responses"].append(response)
         session.pending_prompt = None
         session.status = RunSessionStatus.RESUMING
         self._run_store.save(session)
@@ -353,7 +356,7 @@ class WorkflowRunService:
             queued_interaction_responses=(
                 list(queued_interaction_responses)
                 if queued_interaction_responses is not None
-                else []
+                else list(request.interaction_responses)
             ),
             resume_step_id=resume_step_id,
         )
@@ -371,6 +374,9 @@ class WorkflowRunService:
             workflow_name=session.workflow_name,
             params=dict(session.metadata.get("params", {})),
             prompt_responses=list(session.metadata.get("prompt_responses", [])),
+            interaction_responses=list(
+                session.metadata.get("interaction_responses", [])
+            ),
             project_path=session.metadata.get("project_path"),
             interaction_mode=session.metadata.get("interaction_mode", "headless"),
         )

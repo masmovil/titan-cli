@@ -123,6 +123,11 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
             "--prompt-responses-json",
             help="JSON array of pre-seeded prompt responses for headless execution.",
         ),
+        interaction_responses_json: Optional[str] = typer.Option(
+            None,
+            "--interaction-responses-json",
+            help="JSON array of pre-seeded interaction responses for headless execution.",
+        ),
         output_json: bool = typer.Option(
             False,
             "--json",
@@ -146,6 +151,10 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
                     prompt_responses_json,
                     "--prompt-responses-json",
                 ),
+                interaction_responses=parse_json_array(
+                    interaction_responses_json,
+                    "--interaction-responses-json",
+                ),
                 project_path=project_path,
                 interaction_mode="headless",
             )
@@ -156,6 +165,7 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
                 output_json=output_json,
                 project_path=project_path,
                 preseeded_prompt_responses=len(request.prompt_responses),
+                preseeded_interaction_responses=len(request.interaction_responses),
             )
 
             if mode != "event_stream":

@@ -464,8 +464,11 @@ class RunInteractionPort(HeadlessInteractionPort):
             selected_id = response.get("value")
             options = interaction.state.get("options") or []
             for option in options:
-                if isinstance(option, InteractionOption) and option.id == selected_id:
-                    return option.value if option.value is not None else option.id
+                if not isinstance(option, InteractionOption):
+                    continue
+                option_value = option.value if option.value is not None else option.id
+                if option.id == selected_id or str(option_value) == str(selected_id):
+                    return option_value
             return selected_id
         if interaction.interaction_type == InteractionType.ITEM_REVIEW:
             response_type = str(response.get("response_type") or "")

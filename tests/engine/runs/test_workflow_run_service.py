@@ -571,6 +571,72 @@ def test_submit_interaction_response_supports_two_consecutive_option_lists(
 
 @patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
+def test_start_workflow_uses_preseeded_interaction_responses(
+    mock_executor_cls,
+    mock_secret_manager_cls,
+):
+    from titan_cli.ports.protocol import InteractionOption
+
+    config = MagicMock()
+    workflow = MagicMock(name="workflow")
+    config.workflows.discover.return_value = []
+    config.workflows.get_workflow.return_value = workflow
+    config.project_root = MagicMock()
+    config.registry.list_installed.return_value = []
+    config.config.ai = None
+    mock_secret_manager_cls.return_value = MagicMock()
+
+    def _execute(_workflow, ctx, params_override=None, start_step_index=0):
+        ctx.current_step = 1
+        ctx.current_step_id = "select_pr"
+        ctx.current_step_name = "Select PR for Review"
+        selected = ctx.interaction.option_list(
+            interaction_id="select-option",
+            message="Select a PR to review comments",
+            options=[
+                InteractionOption(
+                    id="1",
+                    label="#4479: refactor unused keys",
+                    value=4479,
+                )
+            ],
+        )
+        assert selected == 4479
+        return Success("workflow ok")
+
+    mock_executor = mock_executor_cls.return_value
+    mock_executor.execute.side_effect = _execute
+
+    service = WorkflowRunService(config=config)
+    response = service.start_workflow(
+        StartWorkflowRequest(
+            workflow_name="demo",
+            interaction_responses=[
+                {
+                    "interaction_id": "select_pr:select-option",
+                    "response_type": "select",
+                    "value": "4479",
+                }
+            ],
+        )
+    )
+    run = service.get_run(response.run_id)
+
+    assert run is not None
+    assert response.status == RunSessionStatus.COMPLETED
+    assert run.status == RunSessionStatus.COMPLETED
+    assert run.pending_interaction is None
+    assert run.metadata["interaction_responses"] == [
+        {
+            "interaction_id": "select_pr:select-option",
+            "response_type": "select",
+            "value": "4479",
+        }
+    ]
+
+
+@patch("titan_cli.engine.runs.service.create_broker_factory")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_exposes_item_review_interaction_events(
     mock_executor_cls,
     mock_secret_manager_cls,

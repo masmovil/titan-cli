@@ -219,6 +219,8 @@ def test_headless_runs_start_passes_headless_request_and_outputs_event_stream(mo
             '{"issue": "ABC-1"}',
             "--prompt-responses-json",
             '["yes"]',
+            "--interaction-responses-json",
+            '[{"interaction_id":"select_pr:select-pr","response_type":"select","value":"4479"}]',
         ],
     )
 
@@ -228,6 +230,13 @@ def test_headless_runs_start_passes_headless_request_and_outputs_event_stream(mo
     assert captured_request.project_path == "/tmp/demo"
     assert captured_request.params == {"issue": "ABC-1"}
     assert captured_request.prompt_responses == ["yes"]
+    assert captured_request.interaction_responses == [
+        {
+            "interaction_id": "select_pr:select-pr",
+            "response_type": "select",
+            "value": "4479",
+        }
+    ]
     assert captured_request.interaction_mode == "headless"
     lines = [json.loads(line) for line in result.stdout.strip().splitlines()]
     assert [line["type"] for line in lines] == [
