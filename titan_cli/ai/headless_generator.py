@@ -166,7 +166,13 @@ class HeadlessGenerator:
             return f"'{cli}' did not answer in time"
         if response.exit_code == _EXIT_NOT_INSTALLED:
             return f"'{cli}' is not installed"
-        return (response.stderr or "").strip() or f"'{cli}' exited with code {response.exit_code}"
+        detail = (response.stderr or "").strip() or f"'{cli}' exited with code {response.exit_code}"
+        if response.quota_exhausted:
+            return (
+                f"'{cli}' has run out of usage quota. Wait for it to reset or "
+                f"route this task to another provider. Detail: {detail}"
+            )
+        return detail
 
 
 __all__ = [

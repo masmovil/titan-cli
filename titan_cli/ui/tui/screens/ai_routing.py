@@ -15,6 +15,8 @@ from typing import Dict, List, Optional, Sequence
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
+from textual.css.query import NoMatches
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import OptionList, Static
 
@@ -35,8 +37,6 @@ from titan_cli.ui.tui.widgets import (
     Button,
     DimText,
     ErrorText,
-    SegmentedSwitch,
-    SegmentedSwitchOption,
     StyledOption,
     StyledOptionList,
     SuccessText,
@@ -279,6 +279,91 @@ class SelectProviderTypeModal(ModalScreen[Optional[str]]):
         self.dismiss(None)
 
 
+class QuickCliModal(ModalScreen[Optional[str]]):
+    """
+    Quick picker for the global default CLI, reachable from any screen via a keybinding.
+
+    The same single choice the AI Configuration screen's CLI section offers, without the
+    navigation: pick a CLI, Enter saves, Escape leaves everything untouched. Dismisses
+    with the chosen CLI command name, or `None` if cancelled.
+    """
+
+    DEFAULT_CSS = """
+    QuickCliModal {
+        align: center middle;
+    }
+
+    #quick-cli-container {
+        width: 74;
+        height: auto;
+        max-height: 26;
+        background: $surface-lighten-1;
+        border: solid $primary;
+        padding: 2;
+    }
+
+    #quick-cli-list {
+        height: auto;
+        max-height: 16;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [("escape", "dismiss_modal", "Cancel")]
+
+    def __init__(self, installed: Sequence[str], *, current: Optional[str], **kwargs):
+        super().__init__(**kwargs)
+        self.installed = list(installed)
+        self.current = current if current in self.installed else None
+
+    def compose(self) -> ComposeResult:
+        from titan_cli.external_cli.configs import CLI_REGISTRY
+
+        with Container(id="quick-cli-container"):
+            yield Static(f"{Icons.AI_CONFIG} Which CLI should Titan run?")
+            if not self.installed:
+                yield WarningText(
+                    f"{Icons.WARNING} No supported CLI is installed. "
+                    "Install one and reopen this picker."
+                )
+                yield DimText("Esc to close.")
+                return
+            options = []
+            for name in self.installed:
+                display_name = CLI_REGISTRY.get(name, {}).get("display_name", name)
+                marker = f" {Icons.CHECK}" if name == self.current else ""
+                options.append(
+                    StyledOption(
+                        id=name,
+                        title=f"{display_name}{marker}",
+                        description=f"command: {name}",
+                    )
+                )
+            yield StyledOptionList(*options, id="quick-cli-list")
+            yield DimText("Enter to set it · Esc to cancel.")
+
+    def on_mount(self) -> None:
+        if self.current is None or not self.installed:
+            return
+        index = self.installed.index(self.current)
+        self.call_after_refresh(self._highlight, index)
+
+    def _highlight(self, index: int) -> None:
+        try:
+            option_list = self.query_one(StyledOptionList)
+        except NoMatches:
+            return
+        option_list.highlighted = index
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "quick-cli-list":
+            return
+        self.dismiss(event.option.id)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+
 class TaskRoutingRow(Container):
     """One task, what currently serves it, and how to change that."""
 
@@ -402,10 +487,19 @@ class CliDefaultPicker(Container):
     """
     The one CLI Titan runs, as a single control.
 
-    A segmented switch rather than a row of buttons: picking the default is one choice among
-    a handful of mutually exclusive options, and rendering it as one control per row left the
-    current one with no button at all, so the rows did not even line up.
+    A vertical option list rather than a segmented switch: segments only fit the raw
+    command name and grow the control horizontally with every CLI added, while a list
+    scales down the screen, has room for the human-readable name next to the command,
+    and matches how every other screen in the app presents a choice.
     """
+
+    class Changed(Message):
+        """Sent when the user picks a CLI from the list."""
+
+        def __init__(self, sender: "CliDefaultPicker", value: str):
+            super().__init__()
+            self.sender = sender
+            self.value = value
 
     DEFAULT_CSS = """
     CliDefaultPicker {
@@ -413,10 +507,17 @@ class CliDefaultPicker(Container):
         width: 100%;
     }
 
-    CliDefaultPicker SegmentedSwitch {
-        width: auto;
-        min-width: 30;
+    CliDefaultPicker StyledOptionList {
+        height: auto;
+        max-height: 30;
+        width: 80;
         margin: 1 0;
+        border: round $primary;
+        background: transparent;
+    }
+
+    CliDefaultPicker StyledOptionList:focus {
+        border: round $accent;
     }
 
     CliDefaultPicker .cli-note {
@@ -427,8 +528,8 @@ class CliDefaultPicker(Container):
     def __init__(self, installed: Sequence[str], *, current: Optional[str], **kwargs):
         super().__init__(**kwargs)
         self.installed = list(installed)
-        # A saved default that is no longer installed must not read as active: the switch
-        # would highlight whatever it falls back to while the status names a CLI that
+        # A saved default that is no longer installed must not read as active: the list
+        # would mark whatever it falls back to while the status names a CLI that
         # cannot run. Keep the stale name only to explain the warning.
         self.stale_current = current if current and current not in self.installed else None
         self.current = current if current in self.installed else None
@@ -444,17 +545,10 @@ class CliDefaultPicker(Container):
 
         yield Static("Which CLI should Titan run?")
         yield DimText(
-            "One choice for both uses below - it is the same tool, invoked differently."
+            "One choice for both uses below - it is the same tool, invoked differently. "
+            "Press Enter to set it."
         )
-        yield SegmentedSwitch(
-            options=[SegmentedSwitchOption(value=name, label=name) for name in self.installed],
-            value=self.current or self.suggestion or self.installed[0],
-            autofocus=False,
-            # Until saved, the highlighted segment is only a suggestion: picking it must
-            # still emit Changed, or confirming it could never persist a default.
-            emit_on_reselect=True,
-            id="cli-default-switch",
-        )
+        yield StyledOptionList(*self._styled_options(), id="cli-default-list")
         yield Static(self._status_text(), id="cli-status")
 
         yield DimText(
@@ -466,6 +560,52 @@ class CliDefaultPicker(Container):
             f"  · {provider_type_label(AIProviderType.CLI_INTERACTIVE)} — "
             f"{provider_description(AIProviderType.CLI_INTERACTIVE)}"
         )
+
+    def _styled_options(self) -> List[StyledOption]:
+        from titan_cli.external_cli.configs import CLI_REGISTRY
+
+        options = []
+        for name in self.installed:
+            display_name = CLI_REGISTRY.get(name, {}).get("display_name", name)
+            marker = f" {Icons.CHECK}" if name == self.current else ""
+            options.append(
+                StyledOption(
+                    id=name,
+                    title=f"{display_name}{marker}",
+                    description=f"command: {name}",
+                )
+            )
+        return options
+
+    def on_mount(self) -> None:
+        """Start the highlight on the saved default (or the lone suggestion).
+
+        Deferred a refresh: when the container mounts, the children it composed are
+        not queryable yet.
+        """
+        start = self.current or self.suggestion
+        if start is None:
+            return
+        index = self.installed.index(start)
+        self.call_after_refresh(self._highlight, index)
+
+    def _highlight(self, index: int) -> None:
+        # The screen repaints its sections by replacing this widget wholesale, so the
+        # deferred callback can fire on a picker that was already removed - with no
+        # children left to highlight.
+        try:
+            option_list = self.query_one(StyledOptionList)
+        except NoMatches:
+            return
+        option_list.highlighted = index
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Translate the inner list's selection into this control's own event."""
+        if getattr(event.option_list, "id", None) != "cli-default-list":
+            return
+        event.stop()
+        if event.option.id is not None:
+            self.post_message(self.Changed(self, event.option.id))
 
     def _status_text(self) -> str:
         if self.stale_current:
@@ -487,21 +627,28 @@ class CliDefaultPicker(Container):
 
     def set_current(self, cli_name: str) -> None:
         """
-        Update the status line in place after a selection.
+        Update the status line and the check marker in place after a selection.
 
-        Deliberately not a remount: the switch is what the user is currently operating, and
-        rebuilding it under them would drop focus mid-keystroke.
+        The list itself is not remounted: it is what the user is currently operating, and
+        rebuilding it under them would drop focus mid-keystroke. Only each option's prompt
+        is swapped, which moves the check marker without touching highlight or focus.
         """
         self.current = cli_name
         self.stale_current = None
         self.suggestion = None
         self.query_one("#cli-status", Static).update(self._status_text())
 
+        option_list = self.query_one(StyledOptionList)
+        for index, option in enumerate(self._styled_options()):
+            prompt = f"[bold]{option.title}[/bold]\n[dim]{option.description}[/dim]"
+            option_list.replace_option_prompt_at_index(index, prompt)
+
 
 __all__ = [
     "TaskRouting",
     "TaskRoutingRow",
     "CliDefaultPicker",
+    "QuickCliModal",
     "SelectProviderTypeModal",
     "build_task_routings",
     "executable_types",

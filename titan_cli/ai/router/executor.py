@@ -176,6 +176,8 @@ class AIExecutor:
         - `NO_PROVIDER_AVAILABLE`: nothing is configured or installed at all.
         - `PROVIDER_NOT_CAPABLE`: the configured provider cannot serve a
           one-shot text call (an interactive CLI needs a real session).
+        - `QUOTA_EXHAUSTED`: the provider ran but its usage quota is spent;
+          retrying the same provider is pointless until the quota resets.
         - `EXECUTION_FAILED`: the provider ran and failed.
 
         Args:
@@ -598,8 +600,20 @@ class AIExecutor:
             )
 
         if not response.succeeded:
+            detail = (response.stderr or "").strip() or f"'{cli}' exited with code {response.exit_code}"
+            if response.quota_exhausted:
+                logger.error("ai_executor_quota_exhausted", cli=cli)
+                return AIExecutionError(
+                    error_message=(
+                        f"'{cli}' has run out of usage quota. Wait for it to reset or "
+                        f"route this task to another provider. Detail: {detail}"
+                    ),
+                    error_code="QUOTA_EXHAUSTED",
+                    decision=decision,
+                    details={"cli": cli, "exit_code": response.exit_code},
+                )
             return AIExecutionError(
-                error_message=(response.stderr or "").strip() or f"'{cli}' exited with code {response.exit_code}",
+                error_message=detail,
                 error_code="EXECUTION_FAILED",
                 decision=decision,
                 details={"cli": cli, "exit_code": response.exit_code},

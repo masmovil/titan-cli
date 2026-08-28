@@ -21,5 +21,17 @@ CLI_REGISTRY = {
         "install_instructions": "Install: pip install openai[cli]",
         "prompt_flag": None,
         "model_flag": "-m"
+    },
+    "opencode": {
+        "display_name": "OpenCode",
+        "install_instructions": "Install: npm install -g opencode-ai",
+        "prompt_flag": "--prompt",
+        "model_flag": "-m"
+    },
+    "agy": {
+        "display_name": "Antigravity CLI",
+        "install_instructions": None,
+        "prompt_flag": "-i",
+        "model_flag": "--model"
     }
 }

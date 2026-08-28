@@ -189,9 +189,18 @@ def test_a_missing_binary_says_so_by_name():
 
 
 def test_any_other_failure_surfaces_stderr():
-    adapter = FakeAdapter(exit_code=1, stdout="", stderr="quota exhausted")
+    adapter = FakeAdapter(exit_code=1, stdout="", stderr="model overloaded")
 
-    with pytest.raises(AIProviderError, match="quota exhausted"):
+    with pytest.raises(AIProviderError, match="model overloaded"):
+        HeadlessGenerator(adapter).generate(_messages())
+
+
+def test_a_quota_exhaustion_failure_says_the_quota_is_spent():
+    adapter = FakeAdapter(
+        exit_code=1, stdout="", stderr="RESOURCE_EXHAUSTED (code 429): Individual quota reached"
+    )
+
+    with pytest.raises(AIProviderError, match="run out of usage quota"):
         HeadlessGenerator(adapter).generate(_messages())
 
 
