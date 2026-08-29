@@ -3300,6 +3300,15 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
 
     ctx.textual.begin_step("Submit Review")
 
+    if ctx.get("ai_findings_failed", False):
+        message = (
+            "AI review did not complete successfully. No review decision can be submitted "
+            "because the code was not fully reviewed."
+        )
+        ctx.textual.error_text(message)
+        ctx.textual.end_step("error")
+        return Error(message)
+
     approved: List[ReviewActionProposal] = ctx.get("approved_action_proposals", [])
     pr_number = ctx.get("review_pr_number")
     commit_sha = ctx.get("review_commit_sha", "")
