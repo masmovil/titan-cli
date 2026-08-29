@@ -2152,10 +2152,14 @@ def _execute_findings_batch(
 
     if not response.succeeded:
         logger.debug("findings_batch_failed", batch_id=batch.batch_id, exit_code=response.exit_code)
+        stderr_detail = " ".join(response.stderr.split())[:600]
+        failure_detail = f"CLI exit {response.exit_code}"
+        if stderr_detail:
+            failure_detail += f": {stderr_detail}"
         return {
             "status": "failed",
             "raw": None,
-            "detail": f"CLI exit {response.exit_code}",
+            "detail": failure_detail,
             "timed_out": response.exit_code == 124,
         }
 
