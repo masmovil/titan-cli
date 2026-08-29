@@ -86,10 +86,15 @@ class ClaudeHeadlessAdapter:
                 stderr=f"Claude CLI timed out after {timeout}s",
                 exit_code=124,
             )
-        except FileNotFoundError:
+        except FileNotFoundError as error:
+            missing_target = getattr(error, "filename", None)
+            if missing_target == cwd:
+                detail = f"working directory not found: {cwd}"
+            else:
+                detail = f"executable not found: {executable}"
             return HeadlessResponse(
                 stdout="",
-                stderr="claude command not found",
+                stderr=f"claude unavailable ({detail})",
                 exit_code=127,
             )
 

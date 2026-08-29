@@ -38,6 +38,7 @@ from titan_cli.engine.runs.projection import (
     count_workflow_steps,
     result_for_session,
 )
+from titan_cli.engine.runs.diagnostics import build_runtime_diagnostics
 from titan_cli.engine.runs.session import RunSession
 from titan_cli.engine.runs.status import RunSessionStatus, TERMINAL_SESSION_STATUSES
 from titan_cli.engine.runs.store import RunStore
@@ -418,6 +419,7 @@ class WorkflowRunService:
                     "workflow_title": workflow.description if workflow else request.workflow_name,
                     "project_path": request.project_path or str(config.project_root),
                     "total_steps": count_workflow_steps(workflow),
+                    "runtime_diagnostics": build_runtime_diagnostics(),
                 },
             )
 

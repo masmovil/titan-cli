@@ -54,6 +54,12 @@ def resolve_cli_executable(cli_name: str) -> str | None:
     resolving the command differently between availability checks and the
     subprocess invocation.
     """
+    configured_path = os.environ.get(f"TITAN_{cli_name.upper()}_PATH")
+    if configured_path:
+        configured = Path(configured_path).expanduser()
+        if configured.is_file() and os.access(configured, os.X_OK):
+            return str(configured)
+
     resolved = shutil.which(cli_name)
     if resolved:
         return resolved

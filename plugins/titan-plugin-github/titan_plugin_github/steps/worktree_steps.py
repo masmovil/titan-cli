@@ -5,6 +5,7 @@ Steps for creating and cleaning up git worktrees.
 Available for use in any workflow that needs isolated branch checkouts.
 """
 import os
+from pathlib import Path
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
 from ..operations import setup_worktree, cleanup_worktree
 
@@ -44,10 +45,18 @@ def create_worktree_step(ctx: WorkflowContext) -> WorkflowResult:
 
     with ctx.textual.loading(f"Creating worktree for PR #{pr_number}..."):
         remote = getattr(ctx.git, 'default_remote', 'origin')
+        # The headless app may launch Titan with a different process cwd (for
+        # example, Xcode's derived-data directory). Git resolves relative
+        # worktree paths from the repository, so derive the returned filesystem
+        # path from the Git client's repository root as well. Otherwise the
+        # worktree is created in the repo but the AI subprocess receives a
+        # non-existent cwd and reports the misleading "claude command not found".
+        repository_root = Path(ctx.git.repo_path).resolve()
         worktree_path, worktree_created = setup_worktree(
             ctx.git,
             pr_number,
             head_branch,
+            base_path=str(repository_root / ".titan" / "worktrees"),
             remote=remote
         )
 

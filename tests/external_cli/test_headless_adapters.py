@@ -3,6 +3,7 @@ Tests for external_cli.adapters — HeadlessCliAdapter implementations and regis
 """
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -13,7 +14,11 @@ from titan_cli.external_cli.adapters.antigravity import (
     _HEADLESS_PREAMBLE,
     AntigravityHeadlessAdapter,
 )
-from titan_cli.external_cli.adapters.base import HeadlessResponse, SupportedCLI
+from titan_cli.external_cli.adapters.base import (
+    HeadlessResponse,
+    SupportedCLI,
+    resolve_cli_executable,
+)
 from titan_cli.external_cli.adapters.claude import ClaudeHeadlessAdapter
 from titan_cli.external_cli.adapters.codex import CodexHeadlessAdapter
 from titan_cli.external_cli.adapters.gemini import GeminiHeadlessAdapter
@@ -92,6 +97,12 @@ class TestClaudeHeadlessAdapter(unittest.TestCase):
         resolver.start()
         self.addCleanup(resolver.stop)
 
+    @patch.dict(os.environ, {"TITAN_CLAUDE_PATH": "/usr/local/bin/claude"})
+    @patch("titan_cli.external_cli.adapters.base.Path.is_file", return_value=True)
+    @patch("titan_cli.external_cli.adapters.base.os.access", return_value=True)
+    def test_configured_cli_path_is_preferred(self, _access, _is_file):
+        self.assertEqual(resolve_cli_executable("claude"), "/usr/local/bin/claude")
+
     def test_cli_name(self):
         self.assertEqual(self.adapter.cli_name, SupportedCLI.CLAUDE)
 
@@ -136,11 +147,17 @@ class TestClaudeHeadlessAdapter(unittest.TestCase):
         self.assertEqual(response.exit_code, 124)
         self.assertIn("timed out", response.stderr)
 
-    @patch("subprocess.run", side_effect=FileNotFoundError)
+    @patch("subprocess.run", side_effect=FileNotFoundError(2, "No such file", "/usr/bin/claude"))
     def test_execute_cli_not_found(self, _):
         response = self.adapter.execute("prompt")
         self.assertEqual(response.exit_code, 127)
-        self.assertIn("not found", response.stderr)
+        self.assertIn("executable not found: claude", response.stderr)
+
+    @patch("subprocess.run", side_effect=FileNotFoundError(2, "No such file", "/missing/worktree"))
+    def test_execute_reports_missing_working_directory(self, _):
+        response = self.adapter.execute("prompt", cwd="/missing/worktree")
+        self.assertEqual(response.exit_code, 127)
+        self.assertIn("working directory not found: /missing/worktree", response.stderr)
 
     @patch("subprocess.run")
     def test_execute_strips_ansi_codes(self, mock_run):
