@@ -565,6 +565,19 @@ class TestOpenCodeHeadlessAdapter(unittest.TestCase):
 
         self.assertEqual(response.stdout, "Checking the commit log")
 
+    @patch("subprocess.run")
+    def test_execute_surfaces_json_error_when_stderr_is_empty(self, mock_run):
+        jsonl = json.dumps({
+            "type": "error",
+            "error": {"name": "ProviderAuthError", "data": {"message": "No API key configured"}},
+        })
+        mock_run.return_value = MagicMock(stdout=jsonl, stderr="", returncode=1)
+
+        response = self.adapter.execute("prompt")
+
+        self.assertEqual(response.exit_code, 1)
+        self.assertEqual(response.stderr, "No API key configured")
+
     @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="opencode", timeout=60))
     def test_execute_timeout(self, _):
         response = self.adapter.execute("prompt", timeout=60)

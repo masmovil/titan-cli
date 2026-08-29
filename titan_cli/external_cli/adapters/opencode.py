@@ -123,7 +123,7 @@ class OpenCodeHeadlessAdapter:
             )
             return HeadlessResponse(
                 stdout=self._parse_json_output(result.stdout),
-                stderr=result.stderr.strip(),
+                stderr=(result.stderr.strip() or self._parse_error_output(result.stdout)),
                 exit_code=result.returncode,
             )
         except subprocess.TimeoutExpired:
@@ -193,3 +193,31 @@ class OpenCodeHeadlessAdapter:
         # check gets real content to reject and the user sees what the model was
         # doing when the run stopped.
         return "\n".join(final_texts or post_tool_texts or all_texts[-1:]).strip()
+
+    def _parse_error_output(self, jsonl_output: str) -> str:
+        """Extract a useful error from OpenCode's JSONL stdout when stderr is empty."""
+        messages = []
+        for line in (jsonl_output or "").splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") not in {"error", "session.error", "message.error"} and "error" not in event:
+                continue
+            error = event.get("error", event)
+            message = self._error_message(error)
+            if message and message not in messages:
+                messages.append(message)
+        return "; ".join(messages)
+
+    def _error_message(self, value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        if not isinstance(value, dict):
+            return ""
+        for key in ("message", "detail", "reason"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        nested = value.get("data") or value.get("error")
+        return self._error_message(nested)
