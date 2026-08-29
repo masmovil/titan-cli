@@ -11,11 +11,33 @@ from titan_cli.commands.headless.common import (
 )
 from titan_cli.runtime.container import TitanRuntimeContainer
 from titan_cli.runtime.output import output_presenter
+from titan_cli.external_cli.interactive_session import run_interactive_session
 
 
 def build_app(container: TitanRuntimeContainer) -> typer.Typer:
     """Build AI headless commands."""
     app = typer.Typer(name="ai", help="Inspect and configure Titan AI connections.")
+
+    @app.command("session")
+    def interactive_session(
+        ai_cli_id: str = typer.Option(
+            ...,
+            "--ai-cli-id",
+            help="Registered AI CLI command to launch in an interactive PTY session.",
+        ),
+        project_path: str | None = typer.Option(
+            None,
+            "--project-path",
+            help="Working directory for the interactive CLI.",
+        ),
+    ):
+        """Bridge an interactive AI CLI using JSON Lines over stdin/stdout."""
+        try:
+            result = run_interactive_session(ai_cli_id, cwd=project_path)
+            if result.exit_code != 0:
+                raise RuntimeError(f"Interactive CLI exited with code {result.exit_code}")
+        except Exception as exc:
+            fail_headless_command(exc, as_json=False)
 
     @app.command("list")
     def list_ai_connections(

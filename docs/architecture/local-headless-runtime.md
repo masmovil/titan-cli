@@ -82,7 +82,28 @@ titan headless runs start <workflow-name> --project-path /path/to/project --para
 titan headless runs get <run-id> --json
 titan headless runs events <run-id> --json
 titan headless prompts respond <run-id> <prompt-id> --value-json '{}' --json
+titan headless ai session --ai-cli-id claude --project-path /path/to/project
 ```
+
+### Interactive AI sessions
+
+Workflow runs and interactive AI sessions are separate contracts. A workflow
+uses one-shot headless calls for reproducible prompts and structured results.
+An interactive session is a long-lived PTY bridge for a native client that
+needs to send text and receive terminal output incrementally:
+
+```text
+stdin  -> {"type":"input","value":"Review this file"}
+stdout <- {"type":"session_started","cli_id":"claude"}
+stdout <- {"type":"output","content":"..."}
+stdin  -> {"type":"close"}
+stdout <- {"type":"session_exited","exit_code":0}
+```
+
+The initial prototype is available as `titan headless ai session`. PTY details,
+ANSI handling, CLI-specific startup flags, and cancellation remain adapter
+responsibilities. SwiftUI should consume typed session events and must not
+parse terminal output or launch provider commands directly.
 
 The command group name should make the contract explicit. `headless` is preferred
 over adding machine-only behavior to interactive commands.
