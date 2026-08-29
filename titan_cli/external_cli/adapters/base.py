@@ -7,8 +7,11 @@ Titan interacts only with this generic interface.
 """
 
 import re
+import os
+import shutil
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Optional
 from typing import Protocol, runtime_checkable
 
@@ -40,6 +43,37 @@ _QUOTA_PATTERNS = re.compile(
     r"|out of (free )?credits",
     re.IGNORECASE,
 )
+
+
+def resolve_cli_executable(cli_name: str) -> str | None:
+    """Resolve an external CLI in both shell and macOS app environments.
+
+    GUI-launched processes do not always inherit the user's shell PATH. Check
+    PATH first, then common user-level installation locations without embedding
+    a machine-specific home directory. Returning an absolute path also avoids
+    resolving the command differently between availability checks and the
+    subprocess invocation.
+    """
+    resolved = shutil.which(cli_name)
+    if resolved:
+        return resolved
+
+    candidates = [
+        Path.home() / ".local" / "bin" / cli_name,
+        Path.home() / ".npm-global" / "bin" / cli_name,
+    ]
+    if os.name == "posix":
+        candidates.extend(
+            [
+                Path("/opt/homebrew/bin") / cli_name,
+                Path("/usr/local/bin") / cli_name,
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
 
 
 @dataclass

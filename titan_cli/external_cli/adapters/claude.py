@@ -6,11 +6,10 @@ Uses `claude --print <prompt>` for non-interactive execution.
 
 import json
 import re
-import shutil
 import subprocess
 from typing import Any, Optional
 
-from .base import HeadlessResponse, SupportedCLI
+from .base import HeadlessResponse, SupportedCLI, resolve_cli_executable
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -44,7 +43,7 @@ class ClaudeHeadlessAdapter:
         return True
 
     def is_available(self) -> bool:
-        return shutil.which("claude") is not None
+        return resolve_cli_executable("claude") is not None
 
     def execute(
         self,
@@ -56,7 +55,10 @@ class ClaudeHeadlessAdapter:
         effort: Optional[str] = None,
         model: Optional[str] = None,
     ) -> HeadlessResponse:
-        cmd = ["claude", "--print"]
+        executable = resolve_cli_executable("claude")
+        if executable is None:
+            return HeadlessResponse(stdout="", stderr="claude command not found", exit_code=127)
+        cmd = [executable, "--print"]
         if json_schema is not None:
             cmd += ["--output-format", "json", "--json-schema", json.dumps(json_schema)]
         if disallowed_tools:

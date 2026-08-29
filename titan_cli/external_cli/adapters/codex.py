@@ -7,11 +7,10 @@ Parses JSONL output to extract the agent's response.
 
 import json
 import re
-import shutil
 import subprocess
 from typing import Any, Optional
 
-from .base import HeadlessResponse, SupportedCLI
+from .base import HeadlessResponse, SupportedCLI, resolve_cli_executable
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -46,7 +45,7 @@ class CodexHeadlessAdapter:
         return True
 
     def is_available(self) -> bool:
-        return shutil.which("codex") is not None
+        return resolve_cli_executable("codex") is not None
 
     def execute(
         self,
@@ -61,7 +60,10 @@ class CodexHeadlessAdapter:
         # Use flags for non-interactive headless execution:
         # - --json: machine-readable JSONL output
         # - --ephemeral: don't save session to disk
-        cmd = ["codex", "exec", "--json", "--ephemeral"]
+        executable = resolve_cli_executable("codex")
+        if executable is None:
+            return HeadlessResponse(stdout="", stderr="codex command not found", exit_code=127)
+        cmd = [executable, "exec", "--json", "--ephemeral"]
         if model is not None:
             cmd += ["-m", model]
         cmd.append(prompt)

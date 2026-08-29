@@ -88,15 +88,18 @@ class TestClaudeHeadlessAdapter(unittest.TestCase):
 
     def setUp(self):
         self.adapter = ClaudeHeadlessAdapter()
+        resolver = patch("titan_cli.external_cli.adapters.claude.resolve_cli_executable", return_value="claude")
+        resolver.start()
+        self.addCleanup(resolver.stop)
 
     def test_cli_name(self):
         self.assertEqual(self.adapter.cli_name, SupportedCLI.CLAUDE)
 
-    @patch("shutil.which", return_value="/usr/bin/claude")
+    @patch("titan_cli.external_cli.adapters.claude.resolve_cli_executable", return_value="/usr/bin/claude")
     def test_is_available_true(self, _):
         self.assertTrue(self.adapter.is_available())
 
-    @patch("shutil.which", return_value=None)
+    @patch("titan_cli.external_cli.adapters.claude.resolve_cli_executable", return_value=None)
     def test_is_available_false(self, _):
         self.assertFalse(self.adapter.is_available())
 
@@ -272,6 +275,9 @@ class TestCodexHeadlessAdapterStructuredOutput(unittest.TestCase):
 
     def setUp(self):
         self.adapter = CodexHeadlessAdapter()
+        resolver = patch("titan_cli.external_cli.adapters.codex.resolve_cli_executable", return_value="codex")
+        resolver.start()
+        self.addCleanup(resolver.stop)
 
     def test_supports_structured_output_is_false(self):
         self.assertFalse(self.adapter.supports_structured_output)
@@ -313,15 +319,18 @@ class TestGeminiHeadlessAdapter(unittest.TestCase):
 
     def setUp(self):
         self.adapter = GeminiHeadlessAdapter()
+        resolver = patch("titan_cli.external_cli.adapters.gemini.resolve_cli_executable", return_value="gemini")
+        resolver.start()
+        self.addCleanup(resolver.stop)
 
     def test_cli_name(self):
         self.assertEqual(self.adapter.cli_name, SupportedCLI.GEMINI)
 
-    @patch("shutil.which", return_value="/usr/bin/gemini")
+    @patch("titan_cli.external_cli.adapters.gemini.resolve_cli_executable", return_value="/usr/bin/gemini")
     def test_is_available_true(self, _):
         self.assertTrue(self.adapter.is_available())
 
-    @patch("shutil.which", return_value=None)
+    @patch("titan_cli.external_cli.adapters.gemini.resolve_cli_executable", return_value=None)
     def test_is_available_false(self, _):
         self.assertFalse(self.adapter.is_available())
 
@@ -403,15 +412,18 @@ class TestOpenCodeHeadlessAdapter(unittest.TestCase):
 
     def setUp(self):
         self.adapter = OpenCodeHeadlessAdapter()
+        resolver = patch("titan_cli.external_cli.adapters.opencode.resolve_cli_executable", return_value="opencode")
+        resolver.start()
+        self.addCleanup(resolver.stop)
 
     def test_cli_name(self):
         self.assertEqual(self.adapter.cli_name, SupportedCLI.OPENCODE)
 
-    @patch("shutil.which", return_value="/usr/bin/opencode")
+    @patch("titan_cli.external_cli.adapters.opencode.resolve_cli_executable", return_value="/usr/bin/opencode")
     def test_is_available_true(self, _):
         self.assertTrue(self.adapter.is_available())
 
-    @patch("shutil.which", return_value=None)
+    @patch("titan_cli.external_cli.adapters.opencode.resolve_cli_executable", return_value=None)
     def test_is_available_false(self, _):
         self.assertFalse(self.adapter.is_available())
 
@@ -589,6 +601,9 @@ class TestAntigravityHeadlessAdapter(unittest.TestCase):
 
     def setUp(self):
         self.adapter = AntigravityHeadlessAdapter()
+        resolver = patch("titan_cli.external_cli.adapters.antigravity.resolve_cli_executable", return_value="agy")
+        resolver.start()
+        self.addCleanup(resolver.stop)
         # execute() provisions agy's settings file; point it at a temp dir so no
         # test ever touches the real one in the user's home.
         self._settings_dir = tempfile.TemporaryDirectory()
@@ -603,11 +618,11 @@ class TestAntigravityHeadlessAdapter(unittest.TestCase):
     def test_cli_name(self):
         self.assertEqual(self.adapter.cli_name, SupportedCLI.ANTIGRAVITY)
 
-    @patch("shutil.which", return_value="/usr/bin/agy")
+    @patch("titan_cli.external_cli.adapters.antigravity.resolve_cli_executable", return_value="/usr/bin/agy")
     def test_is_available_true(self, _):
         self.assertTrue(self.adapter.is_available())
 
-    @patch("shutil.which", return_value=None)
+    @patch("titan_cli.external_cli.adapters.antigravity.resolve_cli_executable", return_value=None)
     def test_is_available_false(self, _):
         self.assertFalse(self.adapter.is_available())
 

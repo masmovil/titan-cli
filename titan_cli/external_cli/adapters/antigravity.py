@@ -7,12 +7,11 @@ Uses `agy --print <prompt>` for non-interactive execution, with
 
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
-from .base import HeadlessResponse, SupportedCLI
+from .base import HeadlessResponse, SupportedCLI, resolve_cli_executable
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -80,7 +79,7 @@ class AntigravityHeadlessAdapter:
         return True
 
     def is_available(self) -> bool:
-        return shutil.which("agy") is not None
+        return resolve_cli_executable("agy") is not None
 
     def execute(
         self,
@@ -93,7 +92,10 @@ class AntigravityHeadlessAdapter:
         model: Optional[str] = None,
     ) -> HeadlessResponse:
         self._ensure_read_permissions()
-        cmd = ["agy"]
+        executable = resolve_cli_executable("agy")
+        if executable is None:
+            return HeadlessResponse(stdout="", stderr="agy command not found", exit_code=127)
+        cmd = [executable]
         if json_schema is not None:
             cmd += ["--output-format", "json", "--json-schema", json.dumps(json_schema)]
         if effort is not None:

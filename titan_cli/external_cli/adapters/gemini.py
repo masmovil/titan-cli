@@ -6,11 +6,10 @@ Gemini without opening an interactive session.
 """
 
 import re
-import shutil
 import subprocess
 from typing import Any, Optional
 
-from .base import HeadlessResponse, SupportedCLI
+from .base import HeadlessResponse, SupportedCLI, resolve_cli_executable
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -44,7 +43,7 @@ class GeminiHeadlessAdapter:
         return True
 
     def is_available(self) -> bool:
-        return shutil.which("gemini") is not None
+        return resolve_cli_executable("gemini") is not None
 
     def execute(
         self,
@@ -56,7 +55,10 @@ class GeminiHeadlessAdapter:
         effort: Optional[str] = None,
         model: Optional[str] = None,
     ) -> HeadlessResponse:
-        cmd = ["gemini", "--prompt", prompt]
+        executable = resolve_cli_executable("gemini")
+        if executable is None:
+            return HeadlessResponse(stdout="", stderr="gemini command not found", exit_code=127)
+        cmd = [executable, "--prompt", prompt]
         if model is not None:
             cmd += ["-m", model]
         try:

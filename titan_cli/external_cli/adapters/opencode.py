@@ -8,11 +8,10 @@ Parses JSONL event output to extract the agent's response.
 import json
 import os
 import re
-import shutil
 import subprocess
 from typing import Any, Optional
 
-from .base import HeadlessResponse, SupportedCLI
+from .base import HeadlessResponse, SupportedCLI, resolve_cli_executable
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -87,7 +86,7 @@ class OpenCodeHeadlessAdapter:
         return True
 
     def is_available(self) -> bool:
-        return shutil.which("opencode") is not None
+        return resolve_cli_executable("opencode") is not None
 
     def execute(
         self,
@@ -99,7 +98,10 @@ class OpenCodeHeadlessAdapter:
         effort: Optional[str] = None,
         model: Optional[str] = None,
     ) -> HeadlessResponse:
-        cmd = ["opencode", "run", "--format", "json"]
+        executable = resolve_cli_executable("opencode")
+        if executable is None:
+            return HeadlessResponse(stdout="", stderr="opencode command not found", exit_code=127)
+        cmd = [executable, "run", "--format", "json"]
         if model is not None:
             # OpenCode expects "provider/model" (e.g. "anthropic/claude-sonnet-4-5").
             cmd += ["-m", model]
