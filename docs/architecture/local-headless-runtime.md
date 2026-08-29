@@ -78,7 +78,7 @@ default:
 ```bash
 titan headless workflows list --project-path /path/to/project --json
 titan headless workflows describe <workflow-name> --project-path /path/to/project --json
-titan headless runs start <workflow-name> --project-path /path/to/project --params-json '{}' --json
+titan headless runs start <workflow-name> --project-path /path/to/project --params-json '{}' --ai-cli-id claude --json
 titan headless runs get <run-id> --json
 titan headless runs events <run-id> --json
 titan headless prompts respond <run-id> <prompt-id> --value-json '{}' --json
@@ -205,4 +205,3 @@ The app should not know which adapter is live.
 5. Add file-backed run storage for CLI headless mode, or explicitly document that one-shot CLI mode can only return synchronous run results.
 6. Update the macOS app to use `LocalHeadlessCLIWorkflowAdapter`.
 7. Keep HTTP API as a second adapter for remote/server workflows.
-

@@ -128,6 +128,11 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
             "--interaction-responses-json",
             help="JSON array of pre-seeded interaction responses for headless execution.",
         ),
+        ai_cli: Optional[str] = typer.Option(
+            None,
+            "--ai-cli-id",
+            help="CLI identifier to use for AI-backed steps in this run.",
+        ),
         output_json: bool = typer.Option(
             False,
             "--json",
@@ -156,6 +161,7 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
                     "--interaction-responses-json",
                 ),
                 project_path=project_path,
+                ai_cli=ai_cli,
                 interaction_mode="headless",
             )
             _log_protocol_state(
@@ -164,6 +170,7 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
                 mode=mode,
                 output_json=output_json,
                 project_path=project_path,
+                ai_cli=ai_cli,
                 preseeded_prompt_responses=len(request.prompt_responses),
                 preseeded_interaction_responses=len(request.interaction_responses),
             )

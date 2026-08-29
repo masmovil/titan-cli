@@ -118,6 +118,7 @@ class WorkflowRunService:
                 "prompt_responses": list(request.prompt_responses),
                 "interaction_responses": list(request.interaction_responses),
                 "project_path": request.project_path,
+                "ai_cli": request.ai_cli,
                 "interaction_mode": request.interaction_mode,
             },
         )
@@ -317,9 +318,12 @@ class WorkflowRunService:
     ) -> WorkflowContext:
         """Build execution context mirroring the current TUI flow."""
         workspace_path = Path(request.project_path) if request.project_path else config.project_root
+        ai_config = config.config.ai
+        if request.ai_cli and ai_config is not None:
+            ai_config = ai_config.model_copy(update={"default_cli": request.ai_cli})
         ctx_builder = WorkflowContextBuilder(
             plugin_registry=config.registry,
-            ai_config=config.config.ai,
+            ai_config=ai_config,
         )
         ctx_builder.with_ai()
         ctx_builder.with_ai_router()
@@ -378,6 +382,7 @@ class WorkflowRunService:
                 session.metadata.get("interaction_responses", [])
             ),
             project_path=session.metadata.get("project_path"),
+            ai_cli=session.metadata.get("ai_cli"),
             interaction_mode=session.metadata.get("interaction_mode", "headless"),
         )
 

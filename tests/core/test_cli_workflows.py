@@ -221,6 +221,8 @@ def test_headless_runs_start_passes_headless_request_and_outputs_event_stream(mo
             '["yes"]',
             "--interaction-responses-json",
             '[{"interaction_id":"select_pr:select-pr","response_type":"select","value":"4479"}]',
+            "--ai-cli-id",
+            "codex",
         ],
     )
 
@@ -238,6 +240,7 @@ def test_headless_runs_start_passes_headless_request_and_outputs_event_stream(mo
         }
     ]
     assert captured_request.interaction_mode == "headless"
+    assert captured_request.ai_cli == "codex"
     lines = [json.loads(line) for line in result.stdout.strip().splitlines()]
     assert [line["type"] for line in lines] == [
         "run_started",

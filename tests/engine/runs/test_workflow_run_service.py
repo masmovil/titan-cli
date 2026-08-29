@@ -56,6 +56,17 @@ def test_start_workflow_creates_run_state():
     assert run.events[-1].type == "run_result_emitted"
 
 
+def test_create_run_persists_explicit_ai_cli_selection():
+    config = MagicMock()
+    service = WorkflowRunService(config=config)
+
+    session = service.create_run(
+        StartWorkflowRequest(workflow_name="demo", ai_cli="codex")
+    )
+
+    assert session.metadata["ai_cli"] == "codex"
+
+
 @patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_start_workflow_executes_successfully(mock_executor_cls, mock_secret_manager_cls):
