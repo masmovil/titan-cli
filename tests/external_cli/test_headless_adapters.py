@@ -315,12 +315,26 @@ class TestCodexHeadlessAdapterStructuredOutput(unittest.TestCase):
 
     def _process(self, stdout="", stderr="", returncode=0):
         process = MagicMock()
+        process.stdin = io.StringIO()
         process.stdout = io.StringIO(stdout)
         process.stderr = io.StringIO(stderr)
         process.returncode = returncode
         process.poll.return_value = returncode
         process.wait.return_value = returncode
         return process
+
+    @patch("titan_cli.external_cli.adapters.codex.subprocess.Popen")
+    def test_execute_sends_prompt_through_closed_dedicated_stdin(self, mock_popen):
+        process = self._process()
+        process.stdin = MagicMock()
+        mock_popen.return_value = process
+
+        self.adapter.execute("large review prompt", cwd="/repo")
+
+        self.assertEqual(mock_popen.call_args.args[0][-1], "-")
+        self.assertEqual(mock_popen.call_args.kwargs["stdin"], subprocess.PIPE)
+        process.stdin.write.assert_called_once_with("large review prompt")
+        process.stdin.close.assert_called_once_with()
 
     @patch("titan_cli.external_cli.adapters.codex.subprocess.Popen")
     def test_execute_ignores_json_schema(self, mock_popen):

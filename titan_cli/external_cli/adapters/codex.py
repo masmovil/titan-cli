@@ -83,7 +83,13 @@ class CodexHeadlessAdapter:
         cmd = [executable, "exec", "--json", "--ephemeral"]
         if model is not None:
             cmd += ["-m", model]
-        cmd.append(prompt)
+        # Codex reads additional input from stdin even when a positional prompt
+        # is present. Headless Titan deliberately keeps its own stdin open for
+        # interactions and cancellation, so inheriting that descriptor leaves
+        # Codex waiting forever. Send the prompt through a dedicated pipe and
+        # close it before collecting events. This also avoids argv size limits
+        # for review prompts containing large diffs.
+        cmd.append("-")
         started_at = time.monotonic()
         last_activity_at = started_at
 
@@ -121,12 +127,17 @@ class CodexHeadlessAdapter:
         try:
             process = subprocess.Popen(
                 cmd,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=cwd,
                 bufsize=1,
             )
+            if process.stdin is None:
+                raise RuntimeError("Codex stdin pipe was not created")
+            process.stdin.write(prompt)
+            process.stdin.close()
             stdout_text, stderr_text = self._collect_stream(
                 process,
                 timeout=timeout,
