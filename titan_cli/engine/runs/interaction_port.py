@@ -69,6 +69,23 @@ class RunInteractionPort(HeadlessInteractionPort):
         )
         self._progress_counter = 0
 
+    @property
+    def app(self):
+        """Compatibility facade for plugins that marshal UI callbacks."""
+        return self
+
+    def call_from_thread(self, callback, *args, **kwargs) -> None:
+        """Run callback synchronously; headless execution has no UI thread."""
+        callback(*args, **kwargs)
+
+    def stream_output(self, text: str) -> None:
+        """Emit output produced by a streaming toolkit widget."""
+        self._emit_text_output(
+            text,
+            variant=ContentBlockVariant.MUTED,
+            metadata={"presentation": "stream"},
+        )
+
     def step_output(self, text: str) -> None:
         super().step_output(text)
         self._emit_text_output(text, variant=ContentBlockVariant.DEFAULT)

@@ -28,6 +28,9 @@ def _make_on_output(app, console: Log):
         console.write_line(line or " ")
 
     def on_output(line: str) -> None:
+        if hasattr(app, "stream_output"):
+            app.stream_output(line)
+            return
         try:
             app.call_from_thread(_append_line, line)
         except Exception:
