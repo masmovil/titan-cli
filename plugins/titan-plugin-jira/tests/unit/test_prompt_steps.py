@@ -19,7 +19,7 @@ def test_prompt_select_issue_step_uses_interaction_port():
     issue = SimpleNamespace(key="ECAPP-123", summary="Improve login flow")
     interaction = InteractionStub(answer="1")
     ctx = WorkflowContext(
-        secrets=MagicMock(),
+        secret_broker=MagicMock(),
         data={"jira_issues": [issue]},
         textual=None,
         interaction=interaction,
@@ -38,7 +38,7 @@ def test_prompt_select_issue_step_rejects_invalid_interaction_input():
     issue = SimpleNamespace(key="ECAPP-123", summary="Improve login flow")
     interaction = InteractionStub(answer="abc")
     ctx = WorkflowContext(
-        secrets=MagicMock(),
+        secret_broker=MagicMock(),
         data={"jira_issues": [issue]},
         textual=None,
         interaction=interaction,

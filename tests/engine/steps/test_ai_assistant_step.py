@@ -71,7 +71,8 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         self.mock_step = MagicMock()
         self.mock_step.params = {'context_key': 'test_failures'}
         self.mock_ctx.textual = MagicMock()
-        self.mock_ctx.textual.launch_external_cli = MagicMock(return_value=0)
+        self.mock_ctx.interaction = self.mock_ctx.textual
+        self.mock_ctx.interaction.external_cli_session = MagicMock(return_value=0)
         self.mock_ctx.textual.ask_confirm = MagicMock(return_value=True)
         self.mock_ctx.ai_router = self._router()
 
@@ -100,13 +101,13 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         self.assertIsInstance(result, Skip)
         self.mock_ctx.textual.begin_step.assert_called_once()
         self.mock_ctx.textual.end_step.assert_called_once_with("skip")
-        self.mock_ctx.textual.launch_external_cli.assert_not_called()
+        self.mock_ctx.interaction.external_cli_session.assert_not_called()
 
     def test_launches_the_resolved_cli(self):
         result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
 
         self.assertIsInstance(result, Success)
-        call_kwargs = self.mock_ctx.textual.launch_external_cli.call_args.kwargs
+        call_kwargs = self.mock_ctx.interaction.external_cli_session.call_args.kwargs
         self.assertEqual(call_kwargs['cli_name'], 'claude')
         self.assertIn('some error', call_kwargs['prompt'])
 
@@ -124,7 +125,7 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         self.assertIsInstance(result, Success)
         self.mock_ctx.textual.ask_option.assert_not_called()
         self.assertEqual(
-            self.mock_ctx.textual.launch_external_cli.call_args.kwargs['cli_name'], 'gemini'
+            self.mock_ctx.interaction.external_cli_session.call_args.kwargs['cli_name'], 'gemini'
         )
 
     def test_unresolvable_route_errors_and_points_at_the_config_screen(self):
@@ -139,7 +140,7 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         self.assertIsInstance(result, Error)
         self.assertIn("no default CLI is configured", result.message)
         self.assertIn("AI Configuration", result.message)
-        self.mock_ctx.textual.launch_external_cli.assert_not_called()
+        self.mock_ctx.interaction.external_cli_session.assert_not_called()
 
     def test_a_non_interactive_provider_errors_instead_of_launching(self):
         """A remote connection cannot drive a terminal session - say so, don't improvise."""
@@ -152,7 +153,7 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
 
         self.assertIsInstance(result, Error)
-        self.mock_ctx.textual.launch_external_cli.assert_not_called()
+        self.mock_ctx.interaction.external_cli_session.assert_not_called()
 
     def test_ai_turned_off_skips_instead_of_launching(self):
         self.mock_ctx.ai_router = self._router(
@@ -162,7 +163,7 @@ class TestExecuteAIAssistantStep(unittest.TestCase):
         result = execute_ai_assistant_step(self.mock_step, self.mock_ctx)
 
         self.assertIsInstance(result, Skip)
-        self.mock_ctx.textual.launch_external_cli.assert_not_called()
+        self.mock_ctx.interaction.external_cli_session.assert_not_called()
 
     def test_step_never_persists_a_preference(self):
         """Persisting is the AI Configuration screen's job, not a step's."""

@@ -424,10 +424,6 @@ def _read_engine_command(run_id: str) -> EngineCommand:
     """Read a single inbound V1 command from stdin as JSON."""
     line = sys.stdin.readline()
     if not line:
-        _log_protocol_error(
-            "headless_protocol_stdin_closed",
-            run_id=run_id,
-        )
         raise ValueError("stdin closed while waiting for an inbound EngineCommand")
 
     try:

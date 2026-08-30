@@ -418,6 +418,12 @@ class RunInteractionPort(HeadlessInteractionPort):
             message=message,
             default=default,
         )
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "yes", "y", "1"}:
+                return True
+            if normalized in {"false", "no", "n", "0", ""}:
+                return False
         return bool(value)
 
     def input_text(
