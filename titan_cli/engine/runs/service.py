@@ -198,6 +198,11 @@ class WorkflowRunService:
             emit_run_started=False,
             resuming=True,
             queued_prompt_responses=list(step_responses.get(resume_step_id or "", [])),
+            queued_interaction_responses=list(
+                session.metadata.get("step_interaction_responses", {}).get(
+                    resume_step_id or "", []
+                )
+            ),
             resume_step_id=resume_step_id,
         )
         self._run_store.save(session)
@@ -264,6 +269,11 @@ class WorkflowRunService:
             start_step_index=max(resume_step_index - 1, 0),
             emit_run_started=False,
             resuming=True,
+            queued_prompt_responses=list(
+                session.metadata.get("step_prompt_responses", {}).get(
+                    resume_step_id or "", []
+                )
+            ),
             queued_interaction_responses=list(
                 step_responses.get(resume_step_id or "", [])
             ),

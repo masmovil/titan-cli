@@ -405,6 +405,101 @@ def test_submit_prompt_response_resumes_run(
 
 @patch("titan_cli.engine.runs.service.create_broker_factory")
 @patch("titan_cli.engine.runs.service.WorkflowExecutor")
+def test_prompt_resume_replays_only_interactions_from_the_same_step(
+    mock_executor_cls,
+    mock_secret_manager_cls,
+):
+    """A prompt after an interaction must not consume an older step's answer."""
+    from titan_cli.ports.protocol import InteractionOption
+
+    config = MagicMock()
+    workflow = MagicMock(name="workflow")
+    config.workflows.discover.return_value = []
+    config.workflows.get_workflow.return_value = workflow
+    config.project_root = MagicMock()
+    config.registry.list_installed.return_value = []
+    config.config.ai = None
+    mock_secret_manager_cls.return_value = MagicMock()
+
+    def _execute(_workflow, ctx, params_override=None, start_step_index=0):
+        if start_step_index == 0:
+            ctx.current_step = 1
+            ctx.current_step_id = "select_pr"
+            ctx.current_step_name = "Select PR"
+            selected_pr = ctx.interaction.option_list(
+                interaction_id="select-option",
+                message="Select PR",
+                options=[InteractionOption(id="1", label="PR #4477", value=4477)],
+            )
+            assert selected_pr == 4477
+
+        ctx.current_step = 2
+        ctx.current_step_id = "submit_actions"
+        ctx.current_step_name = "Submit Review"
+        review_type = ctx.interaction.option_list(
+            interaction_id="select-option",
+            message="Select review type",
+            options=[
+                InteractionOption(
+                    id="REQUEST_CHANGES",
+                    label="Request Changes",
+                    value="REQUEST_CHANGES",
+                )
+            ],
+        )
+        add_comment = ctx.interaction.ask_confirm(
+            "Add a general review comment?",
+            default=False,
+        )
+
+        assert review_type == "REQUEST_CHANGES"
+        assert add_comment is False
+        return Success("workflow ok")
+
+    mock_executor_cls.return_value.execute.side_effect = _execute
+    service = WorkflowRunService(config=config)
+
+    started = service.start_workflow(StartWorkflowRequest(workflow_name="demo"))
+    select_pr = service.get_run(started.run_id)
+    assert select_pr is not None
+    assert select_pr.pending_interaction is not None
+
+    review_type = service.submit_interaction_response(
+        SubmitInteractionResponseRequest(
+            run_id=started.run_id,
+            interaction_id=select_pr.pending_interaction.interaction_id,
+            response_type="select",
+            value=4477,
+        )
+    )
+    assert review_type is not None
+    assert review_type.pending_interaction is not None
+
+    general_comment = service.submit_interaction_response(
+        SubmitInteractionResponseRequest(
+            run_id=started.run_id,
+            interaction_id=review_type.pending_interaction.interaction_id,
+            response_type="select",
+            value="REQUEST_CHANGES",
+        )
+    )
+    assert general_comment is not None
+    assert general_comment.pending_prompt is not None
+
+    completed = service.submit_prompt_response(
+        SubmitPromptResponseRequest(
+            run_id=started.run_id,
+            prompt_id=general_comment.pending_prompt.prompt_id,
+            value=False,
+        )
+    )
+
+    assert completed is not None
+    assert completed.status == RunSessionStatus.COMPLETED
+
+
+@patch("titan_cli.engine.runs.service.create_broker_factory")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
 def test_submit_interaction_response_resumes_run(
     mock_executor_cls,
     mock_secret_manager_cls,
