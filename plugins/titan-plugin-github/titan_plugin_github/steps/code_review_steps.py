@@ -6,7 +6,6 @@ AI analysis combined with project-specific skill guidelines.
 """
 import re
 import inspect
-import threading
 import time
 from difflib import SequenceMatcher
 from typing import Callable, List, Optional, Tuple
@@ -20,7 +19,15 @@ from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.result import ClientSuccess, ClientError
 from titan_cli.external_cli.adapters import get_headless_adapter, list_available_headless_clis
 from titan_cli.external_cli.adapters import ExternalCLIActivity
-from titan_cli.ui.tui.widgets import ChoiceOption, OptionItem, PromptChoice
+from titan_cli.ports.protocol import (
+    ContentBlock,
+    ContentBlockType,
+    ContentBlockVariant,
+    ItemReviewEditState,
+    ItemReviewItem,
+    ItemReviewState,
+)
+from titan_cli.ui.tui.widgets import ChoiceOption, OptionItem
 
 from ..managers.diff_context_manager import get_or_create_diff_manager
 from ..managers.prompt_budget_manager import get_prompt_budget_manager
@@ -408,160 +415,93 @@ def _is_derived_from_central(finding, central) -> bool:
     return (shared_api or mentions_central) and title_similarity >= 0.32
 
 
-# ============================================================================
-# UI HELPERS
-# ============================================================================
-
-
-def _show_review_action_and_get_decision(
-    ctx: WorkflowContext,
+def _review_action_item(
     action: ReviewActionProposal,
+    *,
+    item_id: str,
     diff_hunk: str,
-    idx: int,
-    total: int,
-    review_threads: Optional[List[UICommentThread]] = None,
-    file_excerpt: Optional[str] = None,
-) -> str:
-    """
-    Display a ReviewActionProposal and return the user's chosen decision.
-
-    For resolve_thread actions, shows thread context and resolve confirmation.
-    For reply_to_thread actions, shows the original thread context and proposed reply.
-    For new_comment actions, shows just the proposed comment.
-
-    ``file_excerpt`` carries real file content for findings the diff cannot anchor, so
-    they are shown with their code rather than as an unsupported claim.
-
-    Returns:
-        "approve", "edit", "skip", or "exit"
-    """
-    ctx.textual.text("")
-
-    # Handle resolve_thread actions differently
-    if action.action_type == ReviewActionType.RESOLVE_THREAD:
-        ctx.textual.bold_text(f"Thread {idx + 1} of {total}")
-        ctx.textual.text("")
-
-        # Show the original thread to be resolved
-        if review_threads:
-            from titan_plugin_github.widgets import CommentThread
-
-            original_thread = next(
-                (t for t in review_threads if t.thread_id == action.thread_id),
-                None
-            )
-            if original_thread:
-                ctx.textual.text("📌 Thread to resolve:")
-                ctx.textual.mount(
-                    CommentThread(
-                        thread=original_thread,
-                        options=[],  # No buttons in this display
-                    )
-                )
-                ctx.textual.text("")
-
-        ctx.textual.text("✓ Mark this thread as resolved")
-        ctx.textual.text("")
-
-        options = [
-            ChoiceOption(value="approve", label="✓ Resolve", variant="success"),
-            ChoiceOption(value="skip", label="— Skip", variant="default"),
-        ]
-        if idx < total - 1:
-            options.append(ChoiceOption(value="exit", label="✗ Exit review", variant="error"))
-
-        question = "What would you like to do with this thread?"
-    else:
-        # For reply_to_thread and new_comment actions
-        ctx.textual.bold_text(f"Comment {idx + 1} of {total}")
-        ctx.textual.text("")
-
-        # For reply_to_thread actions, show the original thread context
-        if action.action_type == ReviewActionType.REPLY_TO_THREAD and review_threads:
-            from titan_plugin_github.widgets import CommentThread
-
-            # Find the original thread
-            original_thread = next(
-                (t for t in review_threads if t.thread_id == action.thread_id),
-                None
-            )
-            if original_thread:
-                ctx.textual.text("📌 Original comment:")
-                ctx.textual.mount(
-                    CommentThread(
-                        thread=original_thread,
-                        options=[],  # No buttons in this display
-                    )
-                )
-                ctx.textual.text("")
-                ctx.textual.text("📝 Your reply:")
-
-        # Show the action (proposed reply or new comment)
-        from titan_plugin_github.widgets import CommentView
-        ctx.textual.mount(
-            CommentView.from_action(action, diff_hunk=diff_hunk, file_excerpt=file_excerpt)
+    file_excerpt: Optional[str],
+    review_threads: List[UICommentThread],
+) -> ItemReviewItem:
+    """Convert a GitHub review action into a portable semantic review item."""
+    blocks = [
+        ContentBlock(
+            type=ContentBlockType.MARKDOWN,
+            title="Proposed comment",
+            content=action.body,
         )
-        ctx.textual.text("")
+    ]
 
-        options = [
-            ChoiceOption(value="approve", label="✓ Approve", variant="success"),
-            ChoiceOption(value="edit", label="✎ Edit", variant="default"),
-            ChoiceOption(value="skip", label="— Skip", variant="default"),
-        ]
-        if idx < total - 1:
-            options.append(ChoiceOption(value="exit", label="✗ Exit review", variant="error"))
-
-        question = "What would you like to do with this comment?"
-
-    result_container: dict = {}
-    result_event = threading.Event()
-
-    def on_choice(value):
-        result_container["choice"] = value
-        result_event.set()
-
-    prompt = PromptChoice(
-        question=question,
-        options=options,
-        on_select=on_choice,
+    original_thread = next(
+        (thread for thread in review_threads if thread.thread_id == action.thread_id),
+        None,
     )
-    ctx.textual.mount(prompt)
-    result_event.wait()
-
-    choice = result_container.get("choice", "skip")
-
-    action_labels = {
-        "approve": "✓ Resolved" if action.action_type == ReviewActionType.RESOLVE_THREAD else "✓ Approved",
-        "edit": "✎ Edited",
-        "skip": "— Skipped",
-        "exit": "✗ Exit review",
-    }
-    action_variants = {
-        "approve": "success",
-        "edit": "default",
-        "skip": "default",
-        "exit": "warning",
-    }
-
-    def _replace_with_badge():
-        from titan_cli.ui.tui.widgets.decision_badge import DecisionBadge
-        try:
-            prompt.remove()
-        except Exception:
-            pass
-        try:
-            target = ctx.textual._active_step_container or ctx.textual.output_widget
-            target.mount(
-                DecisionBadge(
-                    action_labels.get(choice, choice),
-                    variant=action_variants.get(choice, "default"),
-                )
+    if original_thread is not None and original_thread.main_comment is not None:
+        thread_lines = [
+            f"**{original_thread.main_comment.author_login}:** {original_thread.main_comment.body}"
+        ]
+        thread_lines.extend(
+            f"**{reply.author_login}:** {reply.body}" for reply in original_thread.replies
+        )
+        blocks.append(
+            ContentBlock(
+                type=ContentBlockType.MARKDOWN,
+                title="Original thread",
+                content="\n\n".join(thread_lines),
+                variant=ContentBlockVariant.MUTED,
             )
-        except Exception:
-            pass
+        )
 
-    ctx.textual.app.call_from_thread(_replace_with_badge)
-    return choice
+    code_context = diff_hunk or file_excerpt or ""
+    if code_context:
+        blocks.append(
+            ContentBlock(
+                type=ContentBlockType.DIFF,
+                title="Code context",
+                content=code_context,
+                metadata={
+                    "path": action.path,
+                    "line": action.resolved_line or action.line,
+                    "presentation": "focused_hunk" if diff_hunk else "file_excerpt",
+                },
+            )
+        )
+
+    location = action.path or "General review"
+    line = action.resolved_line or action.line
+    if line is not None:
+        location = f"{location}:{line}"
+    summary_lines = [location, action.action_type.value.replace("_", " ").title()]
+    sections = []
+    if action.reasoning:
+        sections.append({"title": "Reasoning", "lines": [action.reasoning]})
+    if action.evidence:
+        sections.append({"title": "Evidence", "lines": [action.evidence]})
+    blocks.append(
+        ContentBlock(
+            type=ContentBlockType.STRUCTURED_SUMMARY,
+            title="Finding details",
+            content="\n".join(summary_lines),
+            metadata={"summary_lines": summary_lines, "sections": sections},
+        )
+    )
+
+    severity = action.severity.value if action.severity is not None else None
+    return ItemReviewItem(
+        id=item_id,
+        title=action.title,
+        status=severity,
+        content_blocks=blocks,
+        editable=action.action_type != ReviewActionType.RESOLVE_THREAD,
+        metadata={
+            "action_type": action.action_type.value,
+            "path": action.path,
+            "line": line,
+            "severity": severity,
+            "category": action.category,
+            "source": action.source.value,
+        },
+    )
 
 
 # ============================================================================
@@ -3220,50 +3160,47 @@ def validate_review_actions(ctx: WorkflowContext) -> WorkflowResult:
         prepared.append((action, diff_hunk, file_excerpt))
     _release_review_worktree(ctx)
 
+    item_ids = [f"review-action-{index + 1}" for index in range(len(prepared))]
+    items = [
+        _review_action_item(
+            action,
+            item_id=item_ids[index],
+            diff_hunk=diff_hunk or "",
+            file_excerpt=file_excerpt,
+            review_threads=review_threads,
+        )
+        for index, (action, diff_hunk, file_excerpt) in enumerate(prepared)
+    ]
+    response = ctx.interaction.item_review(
+        interaction_id="review-actions",
+        message="Review, edit, approve, or skip Titan's proposed PR comments.",
+        state=ItemReviewState(
+            review_id="review-pr-actions",
+            items=items,
+            allowed_actions=["approve", "edit", "skip"],
+            edit=ItemReviewEditState(enabled=True, label="Edit review comment"),
+            metadata={"total": len(items), "presentation": "review_actions"},
+        ),
+    )
+
+    actions_by_id = dict(zip(item_ids, (entry[0] for entry in prepared)))
     approved: List[ReviewActionProposal] = []
     skipped = 0
-    exit_requested = False
+    for decision in response.items:
+        action = actions_by_id.get(decision.item_id)
+        if action is None:
+            continue
+        if decision.action == "approve":
+            approved.append(action)
+        elif decision.action == "edit" and decision.content and decision.content.strip():
+            approved.append(action.model_copy(update={"body": decision.content.strip()}))
+        else:
+            skipped += 1
 
-    for idx, (action, diff_hunk, file_excerpt) in enumerate(prepared):
-        if exit_requested:
-            break
-
-        current = action
-
-        while True:
-            choice = _show_review_action_and_get_decision(
-                ctx, current, diff_hunk or "", idx, len(sorted_actions),
-                review_threads=review_threads,
-                file_excerpt=file_excerpt,
-            )
-
-            if choice == "exit":
-                exit_requested = True
-                ctx.textual.warning_text(
-                    f"Exiting validation. Approved {len(approved)}, skipped {skipped}."
-                )
-                break
-
-            elif choice == "approve":
-                approved.append(current)
-                break
-
-            elif choice == "edit":
-                ctx.textual.text("")
-                new_body = ctx.textual.ask_multiline(
-                    "Edit the review comment:",
-                    default=current.body,
-                )
-                if new_body and new_body.strip():
-                    approved.append(current.model_copy(update={"body": new_body.strip()}))
-                else:
-                    ctx.textual.warning_text("Empty body, comment skipped")
-                    skipped += 1
-                break
-
-            else:  # skip
-                skipped += 1
-                break
+    if response.exit_requested:
+        ctx.textual.warning_text(
+            f"Exiting validation. Approved {len(approved)}, skipped {skipped}."
+        )
 
     if not approved:
         ctx.textual.dim_text("No actions approved.")

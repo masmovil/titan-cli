@@ -3,10 +3,12 @@ from unittest.mock import Mock
 
 from titan_cli.core.result import ClientError, ClientSuccess
 from titan_cli.engine import WorkflowContext
+from titan_cli.engine.interaction.base import ItemReviewResponse
 from titan_cli.engine.results import Error, Exit, Skip, Success
+from titan_cli.ports.protocol import ItemReviewDecision
 from titan_cli.external_cli.adapters import HeadlessResponse
 from titan_cli.external_cli.adapters.base import SupportedCLI
-from titan_plugin_github.models.review_enums import FileReadMode, FileReviewPriority, FindingSeverity, PRSizeClass, ReviewStrategyType
+from titan_plugin_github.models.review_enums import FileReadMode, FileReviewPriority, FindingSeverity, PRSizeClass, ReviewActionSource, ReviewActionType, ReviewStrategyType
 from titan_plugin_github.models.review_models import (
     ChangeManifest,
     FileContextEntry,
@@ -15,6 +17,7 @@ from titan_plugin_github.models.review_models import (
     PullRequestManifest,
     ReferencedCommitContext,
     ReviewStrategy,
+    ReviewActionProposal,
     ScoredReviewCandidate,
     ThreadReviewCandidate,
     ThreadReviewContext,
@@ -2160,3 +2163,77 @@ def test_validate_review_actions_releases_worktree_even_with_no_actions(monkeypa
 
     assert isinstance(result, Skip)
     assert removed == ["/tmp/wt/titan-review-9"]
+
+
+def test_validate_review_actions_uses_portable_item_review(monkeypatch):
+    action = ReviewActionProposal(
+        action_type=ReviewActionType.NEW_COMMENT,
+        source=ReviewActionSource.NEW_FINDING,
+        path="Sources/App.swift",
+        line=42,
+        title="Avoid the race",
+        body="Protect this mutation with the actor.",
+        reasoning="Two tasks can write concurrently.",
+        evidence="The closure runs outside the actor.",
+        severity=FindingSeverity.BLOCKING,
+    )
+    ctx = WorkflowContext()
+    ctx.textual = _FakeTextual()
+    ctx.interaction = Mock()
+    ctx.interaction.item_review.return_value = ItemReviewResponse(
+        items=[ItemReviewDecision(item_id="review-action-1", action="approve")]
+    )
+    ctx.data["review_action_proposals"] = [action]
+    ctx.data["review_diff"] = "@@ -41,1 +42,1 @@\n+unsafeMutation()"
+
+    monkeypatch.setattr(code_review_steps, "resolve_action_anchors", lambda actions, *_args, **_kwargs: actions)
+    monkeypatch.setattr(code_review_steps, "extract_diff_hunk_for_action", lambda *_args, **_kwargs: ctx.data["review_diff"])
+    monkeypatch.setattr(code_review_steps, "extract_file_excerpt_for_action", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(code_review_steps, "_release_review_worktree", lambda _ctx: None)
+
+    result = code_review_steps.validate_review_actions(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata["approved_action_proposals"] == [action]
+    state = ctx.interaction.item_review.call_args.kwargs["state"]
+    assert state.items[0].status == "blocking"
+    assert state.items[0].editable is True
+    assert [block.type for block in state.items[0].content_blocks] == [
+        "markdown",
+        "diff",
+        "structured_summary",
+    ]
+
+
+def test_validate_review_actions_applies_portable_edit(monkeypatch):
+    action = ReviewActionProposal(
+        action_type=ReviewActionType.NEW_COMMENT,
+        source=ReviewActionSource.NEW_FINDING,
+        title="Improve error handling",
+        body="Original comment",
+        reasoning="The error is discarded.",
+        severity=FindingSeverity.IMPORTANT,
+    )
+    ctx = WorkflowContext()
+    ctx.textual = _FakeTextual()
+    ctx.interaction = Mock()
+    ctx.interaction.item_review.return_value = ItemReviewResponse(
+        items=[
+            ItemReviewDecision(
+                item_id="review-action-1",
+                action="edit",
+                content="Edited comment",
+            )
+        ]
+    )
+    ctx.data["review_action_proposals"] = [action]
+
+    monkeypatch.setattr(code_review_steps, "resolve_action_anchors", lambda actions, *_args, **_kwargs: actions)
+    monkeypatch.setattr(code_review_steps, "extract_diff_hunk_for_action", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(code_review_steps, "extract_file_excerpt_for_action", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(code_review_steps, "_release_review_worktree", lambda _ctx: None)
+
+    result = code_review_steps.validate_review_actions(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata["approved_action_proposals"][0].body == "Edited comment"
