@@ -6,13 +6,11 @@ to keep the main step functions clean and readable.
 """
 import json
 import os
-import threading
 import traceback
 from typing import List, Dict
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Exit, Skip
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import ChoiceOption, OptionItem
-from titan_plugin_github.widgets import CommentThread
+from titan_cli.ports.protocol import InteractionAction, InteractionOption
 from ..models import UICommentThread
 from ..operations import (
     fetch_pr_threads,
@@ -48,80 +46,69 @@ def _show_thread_and_get_action(
         User's choice: "ai_review", "reply", "skip", "resolve", or "exit"
     """
 
-    # Prepare action options
-    options = [
-        ChoiceOption(value="ai_review", label="AI Review", variant="primary"),
-        ChoiceOption(value="change_manually", label="Change", variant="default"),
-        ChoiceOption(value="reply", label="Reply", variant="default"),
-        ChoiceOption(value="skip", label="Skip", variant="default"),
+    actions = [
+        InteractionAction(id="ai_review", label="AI Review", variant="primary"),
+        InteractionAction(id="change_manually", label="Change"),
+        InteractionAction(id="reply", label="Reply"),
+        InteractionAction(id="skip", label="Skip"),
     ]
 
     # "Resolve" only applies to inline review threads, not general PR comments
     if not pr_thread.is_general_comment:
-        options.append(ChoiceOption(value="resolve", label="Resolve", variant="success"))
+        actions.append(InteractionAction(id="resolve", label="Resolve", variant="success"))
 
     # Add "Exit" option if not the last thread
     if thread_idx < total_threads - 1:
-        options.append(
-            ChoiceOption(value="exit", label="Exit", variant="error")
-        )
+        actions.append(InteractionAction(id="exit", label="Exit", variant="warning"))
 
-    # Result container for callback
-    result_container = {}
-    result_event = threading.Event()
+    main = pr_thread.main_comment
+    thread_title = f"Thread {thread_idx + 1} of {total_threads}"
+    location = main.path or "General PR comment"
+    if main.line is not None:
+        location = f"{location}:{main.line}"
 
-    def on_choice_selected(value):
-        result_container["choice"] = value
-        result_event.set()
-
-    # Create and mount CommentThread widget
-    thread_widget = CommentThread(
-        thread=pr_thread,
-        thread_number=f"Thread {thread_idx + 1} of {total_threads}",
-        options=options,
-        on_select=on_choice_selected
+    ctx.interaction.display_structured_summary(
+        title=thread_title,
+        summary_lines=[
+            f"{main.author_name or main.author_login} · {main.formatted_date}",
+            location,
+        ],
+        sections=[],
+        metadata={
+            "presentation": "review_thread",
+            "thread_id": pr_thread.thread_id,
+            "resolved": pr_thread.is_resolved,
+            "outdated": pr_thread.is_outdated,
+        },
     )
+    ctx.interaction.markdown(main.body)
+    if main.diff_hunk:
+        ctx.interaction.display_diff(
+            main.diff_hunk,
+            title=location,
+            metadata={"presentation": "focused_hunk", "path": main.path, "line": main.line},
+        )
+    for reply in pr_thread.replies:
+        ctx.interaction.display_structured_summary(
+            title=f"Reply from {reply.author_name or reply.author_login}",
+            summary_lines=[reply.formatted_date],
+            sections=[],
+            metadata={"presentation": "review_reply", "comment_id": reply.id},
+        )
+        ctx.interaction.markdown(reply.body)
 
-    ctx.textual.text("")
-    ctx.textual.mount(thread_widget)
-
-    # Wait for user selection
-    result_event.wait()
-    choice = result_container.get("choice")
-
-    # Replace the choice buttons with a DecisionBadge
-    def replace_buttons_with_badge():
-        from titan_cli.ui.tui.widgets import PromptChoice
-        from titan_cli.ui.tui.widgets.decision_badge import DecisionBadge
-        try:
-            prompt_widget = thread_widget.query_one(PromptChoice)
-            prompt_widget.remove()
-
-            action_labels = {
-                "ai_review": "✓ AI Review",
-                "change_manually": "✎ Changed",
-                "reply": "→ Reply",
-                "skip": "— Skip",
-                "resolve": "✓ Resolved",
-                "exit": "✗ Exit",
-            }
-            action_variants = {
-                "ai_review": "success",
-                "change_manually": "success",
-                "reply": "default",
-                "skip": "default",
-                "resolve": "success",
-                "exit": "warning",
-            }
-            label = action_labels.get(choice, f"→ {choice}")
-            variant = action_variants.get(choice, "default")
-            thread_widget.mount(DecisionBadge(label, variant=variant))
-        except Exception:
-            pass
-
-    ctx.textual.app.call_from_thread(replace_buttons_with_badge)
-
-    return choice
+    return ctx.interaction.action_list(
+        interaction_id=f"review-thread:{pr_thread.thread_id}",
+        message="What would you like to do?",
+        actions=actions,
+        state={
+            "presentation": "review_thread_actions",
+            "thread_id": pr_thread.thread_id,
+            "thread_index": thread_idx,
+            "total_threads": total_threads,
+            "is_general_comment": pr_thread.is_general_comment,
+        },
+    )
 
 
 def _commit_review_changes(
@@ -436,9 +423,10 @@ def select_pr_for_review_step(ctx: WorkflowContext) -> WorkflowResult:
             options = []
             for pr in prs:
                 options.append(
-                    OptionItem(
+                    InteractionOption(
+                        id=str(pr.number),
                         value=pr.number,
-                        title=build_pr_selection_title(pr),
+                        label=build_pr_selection_title(pr),
                         description=f"Branch: {build_pr_selection_description(pr)}",
                     )
                 )
@@ -957,9 +945,9 @@ def send_comment_replies_step(ctx: WorkflowContext) -> WorkflowResult:
         choice = ctx.textual.ask_choice(
             "What would you like to do?",
             options=[
-                ChoiceOption(value="send", label="Send", variant="primary"),
-                ChoiceOption(value="edit", label="Edit", variant="default"),
-                ChoiceOption(value="skip", label="Skip", variant="error"),
+                InteractionOption(id="send", value="send", label="Send"),
+                InteractionOption(id="edit", value="edit", label="Edit"),
+                InteractionOption(id="skip", value="skip", label="Skip"),
             ]
         )
 

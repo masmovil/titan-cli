@@ -1,6 +1,6 @@
 # plugins/titan-plugin-docker/titan_plugin_docker/steps/select_prune_targets_step.py
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Exit
-from titan_cli.ui.tui.widgets import SelectionOption
+from titan_cli.ports.protocol import InteractionOption
 
 _PRUNE_OPTIONS = [
     ("containers", "Stopped containers", "Remove containers that are not running"),
@@ -33,7 +33,7 @@ def select_prune_targets_step(ctx: WorkflowContext) -> WorkflowResult:
     ctx.textual.begin_step("Select What to Prune")
 
     options = [
-        SelectionOption(value=key, label=f"{label} - {description}", selected=False)
+        InteractionOption(id=key, value=key, label=f"{label} - {description}")
         for key, label, description in _PRUNE_OPTIONS
     ]
     selected = ctx.textual.ask_multiselect("Which resource categories should be pruned?", options)

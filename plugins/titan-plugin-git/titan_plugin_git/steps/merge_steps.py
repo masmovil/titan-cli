@@ -8,7 +8,7 @@ they started on.
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip, Exit
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import OptionItem
+from titan_cli.ports.protocol import InteractionOption
 
 from ..messages import msg
 from ..models.view.merge import MergeStatus
@@ -322,14 +322,16 @@ def complete_merge(ctx: WorkflowContext) -> WorkflowResult:
         choice = ctx.textual.ask_option(
             msg.Steps.Merge.ASK_UNRESOLVED,
             [
-                OptionItem(
+                InteractionOption(
+                    id="abort",
                     value="abort",
-                    title=msg.Steps.Merge.OPTION_ABORT_TITLE,
+                    label=msg.Steps.Merge.OPTION_ABORT_TITLE,
                     description=msg.Steps.Merge.OPTION_ABORT_DESC,
                 ),
-                OptionItem(
+                InteractionOption(
+                    id="force",
                     value="force",
-                    title=msg.Steps.Merge.OPTION_FORCE_TITLE,
+                    label=msg.Steps.Merge.OPTION_FORCE_TITLE,
                     description=msg.Steps.Merge.OPTION_FORCE_DESC,
                 ),
             ],

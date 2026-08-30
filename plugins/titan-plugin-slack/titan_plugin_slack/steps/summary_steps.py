@@ -5,7 +5,7 @@ from titan_cli.ai.router.enums import AIProviderType
 from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.core.logging import get_logger
 from titan_cli.core.result import ClientError, ClientSuccess
-from titan_cli.ui.tui.widgets import OptionItem
+from titan_cli.ports.protocol import InteractionOption
 
 from titan_cli.engine import Error, Skip, Success, WorkflowContext, WorkflowResult
 from ..models import UISlackConversation, UISlackTarget
@@ -125,7 +125,8 @@ def select_target_step(ctx: WorkflowContext) -> WorkflowResult:
     for user in users:
         display_name = user.real_name or user.name or user.id
         options.append(
-            OptionItem(
+            InteractionOption(
+                id=f"user:{user.id}",
                 value=UISlackTarget(
                     target_type="user",
                     target_id=user.id,
@@ -133,13 +134,14 @@ def select_target_step(ctx: WorkflowContext) -> WorkflowResult:
                     team_id=ctx.get("slack_team_id"),
                     connection_id=ctx.get("slack_connection_id"),
                 ),
-                title=display_name,
+                label=display_name,
                 description=f"Person  @ {user.name} ({user.id})",
             )
         )
     for channel in channels:
         options.append(
-            OptionItem(
+            InteractionOption(
+                id=f"channel:{channel.id}",
                 value=UISlackTarget(
                     target_type="channel",
                     target_id=channel.id,
@@ -147,7 +149,7 @@ def select_target_step(ctx: WorkflowContext) -> WorkflowResult:
                     team_id=ctx.get("slack_team_id"),
                     connection_id=ctx.get("slack_connection_id"),
                 ),
-                title=f"#{channel.name}",
+                label=f"#{channel.name}",
                 description=f"Channel  ({channel.id})",
             )
         )

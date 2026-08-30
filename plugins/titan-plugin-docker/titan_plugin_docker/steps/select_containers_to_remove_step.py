@@ -1,7 +1,7 @@
 # plugins/titan-plugin-docker/titan_plugin_docker/steps/select_containers_to_remove_step.py
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Exit
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import SelectionOption
+from titan_cli.ports.protocol import InteractionOption
 
 from ..operations import list_removable_containers
 
@@ -51,10 +51,10 @@ def select_containers_to_remove_step(ctx: WorkflowContext) -> WorkflowResult:
         return Exit("No stopped containers to remove", metadata={"docker_container_ids": []})
 
     options = [
-        SelectionOption(
+        InteractionOption(
+            id=container.container_id,
             value=container.container_id,
             label=f"{container.name} ({container.image}) - {container.status}",
-            selected=False,
         )
         for container in removable
     ]

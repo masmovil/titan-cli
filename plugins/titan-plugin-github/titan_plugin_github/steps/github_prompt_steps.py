@@ -2,7 +2,7 @@
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.engine.results import WorkflowResult, Success, Error, Skip
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import SelectionOption
+from titan_cli.ports.protocol import InteractionOption
 from ..messages import msg
 from ..operations import add_assignee_if_missing, parse_comma_separated_list
 
@@ -287,10 +287,11 @@ def prompt_for_labels_step(ctx: WorkflowContext) -> WorkflowResult:
 
                 selected_set = set(existing_labels)
                 options = [
-                    SelectionOption(
+                    InteractionOption(
+                        id=label,
                         value=label,
                         label=label,
-                        selected=label in selected_set,
+                        badges=["selected"] if label in selected_set else [],
                     )
                     for label in available_labels
                 ]

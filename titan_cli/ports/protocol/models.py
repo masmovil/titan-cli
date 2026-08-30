@@ -15,7 +15,9 @@ class EventType(StrEnum):
     STEP_STARTED = "step_started"
     OUTPUT_EMITTED = "output_emitted"
     PROMPT_REQUESTED = "prompt_requested"
+    PROMPT_ANSWERED = "prompt_answered"
     INTERACTION_REQUESTED = "interaction_requested"
+    INTERACTION_ANSWERED = "interaction_answered"
     STEP_FINISHED = "step_finished"
     STEP_FAILED = "step_failed"
     STEP_SKIPPED = "step_skipped"
@@ -52,6 +54,7 @@ class InteractionType(StrEnum):
     ACTION_LIST = "action_list"
     EDITABLE_TEXT = "editable_text"
     BATCH_PROGRESS = "batch_progress"
+    EXTERNAL_CLI_SESSION = "external_cli_session"
 
 
 class OutputFormat(StrEnum):

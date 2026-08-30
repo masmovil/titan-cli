@@ -2,7 +2,7 @@
 
 from titan_cli.core.result import ClientError, ClientSuccess
 from titan_cli.engine import Error, Skip, Success, WorkflowContext, WorkflowResult
-from titan_cli.ui.tui.widgets import OptionItem
+from titan_cli.ports.protocol import InteractionOption
 
 
 def select_release_step(ctx: WorkflowContext) -> WorkflowResult:
@@ -55,9 +55,10 @@ def select_release_step(ctx: WorkflowContext) -> WorkflowResult:
         return Skip("No published GitHub releases found")
 
     options = [
-        OptionItem(
+        InteractionOption(
+            id=release.tag_name,
             value=release.tag_name,
-            title=release.title,
+            label=release.title,
             description=release.published_at or release.url,
         )
         for release in releases

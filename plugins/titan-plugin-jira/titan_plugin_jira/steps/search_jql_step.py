@@ -4,7 +4,6 @@ Search JIRA issues using custom JQL query
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import Table
 from ..messages import msg
 from ..utils import IssueSorter
 from ..operations import substitute_jql_variables, build_issue_table_data
@@ -119,13 +118,10 @@ def search_jql_step(ctx: WorkflowContext) -> WorkflowResult:
                 # Build table data using operations
                 headers, rows = build_issue_table_data(sorted_issues, summary_max_length=60)
 
-                # Render table using textual widget
-                ctx.textual.mount(
-                    Table(
-                        headers=headers,
-                        rows=rows,
-                        title=f"Issues (sorted by {sorter.get_sort_description()})"
-                    )
+                ctx.interaction.table(
+                    headers=headers,
+                    rows=rows,
+                    title=f"Issues (sorted by {sorter.get_sort_description()})",
                 )
 
                 # Use sorted issues for downstream steps

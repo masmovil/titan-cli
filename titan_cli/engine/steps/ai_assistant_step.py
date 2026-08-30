@@ -178,7 +178,8 @@ def execute_ai_assistant_step(step: WorkflowStepModel, ctx: WorkflowContext) -> 
     project_root = ctx.get("project_root", ".")
 
     # Launch CLI and suspend TUI while it runs
-    exit_code = ctx.textual.launch_external_cli(
+    exit_code = ctx.interaction.external_cli_session(
+        interaction_id=f"ai-assistant:{cli_to_launch}",
         cli_name=cli_to_launch,
         prompt=prompt,
         cwd=project_root

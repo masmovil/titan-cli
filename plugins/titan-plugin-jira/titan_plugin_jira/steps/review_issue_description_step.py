@@ -5,7 +5,6 @@ Lets user review and optionally edit the AI-generated description.
 """
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
-from titan_cli.ui.tui.widgets import Panel
 from titan_plugin_jira.constants import (
     StepTitles,
     UserPrompts,
@@ -33,7 +32,7 @@ def review_issue_description(ctx: WorkflowContext) -> WorkflowResult:
     enhanced_description = ctx.data.get("enhanced_description")
 
     if not enhanced_description:
-        ctx.textual.mount(Panel(ErrorMessages.MISSING_ENHANCED_DESC, panel_type="error"))
+        ctx.interaction.panel(ErrorMessages.MISSING_ENHANCED_DESC, panel_type="error")
         ctx.textual.end_step("error")
         return Error("no_enhanced_description")
 
@@ -58,9 +57,7 @@ def review_issue_description(ctx: WorkflowContext) -> WorkflowResult:
         )
 
         if not final_description or not final_description.strip():
-            ctx.textual.mount(
-                Panel(InfoMessages.EMPTY_DESC_USING_AI, panel_type="warning")
-            )
+            ctx.interaction.panel(InfoMessages.EMPTY_DESC_USING_AI, panel_type="warning")
             final_description = enhanced_description
         else:
             final_description = final_description.strip()

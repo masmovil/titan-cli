@@ -6,7 +6,7 @@ Lists available issue types in the project and lets user select one.
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import Panel, OptionItem
+from titan_cli.ports.protocol import InteractionOption
 from titan_plugin_jira.models.enums import JiraIssueType
 from titan_plugin_jira.constants import (
     StepTitles,
@@ -35,7 +35,7 @@ def select_issue_type(ctx: WorkflowContext) -> WorkflowResult:
     # Get project key from client
     project_key = ctx.jira.project_key
     if not project_key:
-        ctx.textual.mount(Panel(ErrorMessages.NO_PROJECT_CONFIGURED, panel_type="error"))
+        ctx.interaction.panel(ErrorMessages.NO_PROJECT_CONFIGURED, panel_type="error")
         ctx.textual.end_step("error")
         return Error("no_default_project")
 
@@ -48,7 +48,7 @@ def select_issue_type(ctx: WorkflowContext) -> WorkflowResult:
     match result:
         case ClientSuccess(data=issue_types):
             if not issue_types:
-                ctx.textual.mount(Panel(ErrorMessages.NO_ISSUE_TYPES_FOUND, panel_type="error"))
+                ctx.interaction.panel(ErrorMessages.NO_ISSUE_TYPES_FOUND, panel_type="error")
                 ctx.textual.end_step("error")
                 return Error("no_issue_types")
 
@@ -56,7 +56,7 @@ def select_issue_type(ctx: WorkflowContext) -> WorkflowResult:
             issue_types = [it for it in issue_types if not it.subtask]
 
             if not issue_types:
-                ctx.textual.mount(Panel(ErrorMessages.ONLY_SUBTASKS_AVAILABLE, panel_type="error"))
+                ctx.interaction.panel(ErrorMessages.ONLY_SUBTASKS_AVAILABLE, panel_type="error")
                 ctx.textual.end_step("error")
                 return Error("only_subtasks")
 
@@ -79,9 +79,10 @@ def select_issue_type(ctx: WorkflowContext) -> WorkflowResult:
                 if len(description) > 80:
                     description = description[:77] + "..."
                 option_items.append(
-                    OptionItem(
+                    InteractionOption(
+                        id=issue_type.id,
                         value=issue_type,
-                        title=issue_type.label,
+                        label=issue_type.label,
                         description=description,
                     )
                 )
@@ -92,9 +93,7 @@ def select_issue_type(ctx: WorkflowContext) -> WorkflowResult:
             )
 
             if not selected_type:
-                ctx.textual.mount(
-                    Panel(ErrorMessages.SELECTED_TYPE_NOT_FOUND, panel_type="error")
-                )
+                ctx.interaction.panel(ErrorMessages.SELECTED_TYPE_NOT_FOUND, panel_type="error")
                 ctx.textual.end_step("error")
                 return Error("no_issue_type_selected")
 
@@ -113,8 +112,8 @@ def select_issue_type(ctx: WorkflowContext) -> WorkflowResult:
             )
 
         case ClientError(error_message=err):
-            ctx.textual.mount(
-                Panel(ErrorMessages.FAILED_TO_GET_ISSUE_TYPES.format(error=err), panel_type="error")
+            ctx.interaction.panel(
+                ErrorMessages.FAILED_TO_GET_ISSUE_TYPES.format(error=err), panel_type="error"
             )
             ctx.textual.end_step("error")
             return Error("failed_to_get_issue_types")

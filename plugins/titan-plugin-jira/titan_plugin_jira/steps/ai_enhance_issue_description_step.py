@@ -10,7 +10,6 @@ from titan_cli.ai.router.declaration import declare_ai_usage
 from titan_cli.ai.router.enums import AIProviderType
 from titan_cli.ai.router.models import AIExecutionError, AIExecutionSuccess
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip
-from titan_cli.ui.tui.widgets import Panel
 from titan_plugin_jira.constants import (
     StepTitles,
     ErrorMessages,
@@ -57,7 +56,7 @@ def ai_enhance_issue_description(ctx: WorkflowContext) -> WorkflowResult:
     issue_type = ctx.data.get("issue_type")
 
     if not brief_description or not issue_type:
-        ctx.textual.mount(Panel(ErrorMessages.MISSING_REQUIRED_DATA, panel_type="error"))
+        ctx.interaction.panel(ErrorMessages.MISSING_REQUIRED_DATA, panel_type="error")
         ctx.textual.end_step("error")
         return Error("missing_required_data")
 
@@ -65,7 +64,7 @@ def ai_enhance_issue_description(ctx: WorkflowContext) -> WorkflowResult:
     ctx.textual.text("")
 
     if not ctx.ai_router:
-        ctx.textual.mount(Panel(ErrorMessages.AI_NOT_AVAILABLE, panel_type="warning"))
+        ctx.interaction.panel(ErrorMessages.AI_NOT_AVAILABLE, panel_type="warning")
         ctx.data["enhanced_description"] = brief_description
         ctx.data["title"] = DEFAULT_TITLE
         ctx.textual.end_step("skip")
@@ -91,14 +90,14 @@ def ai_enhance_issue_description(ctx: WorkflowContext) -> WorkflowResult:
             pass
         case AIExecutionError(error_code="AI_DISABLED", error_message=disabled_message):
             # Keep the user's own words rather than leaving the issue empty.
-            ctx.textual.mount(Panel(disabled_message, panel_type="warning"))
+            ctx.interaction.panel(disabled_message, panel_type="warning")
             ctx.data["enhanced_description"] = brief_description
             ctx.data["title"] = DEFAULT_TITLE
             ctx.textual.end_step("skip")
             return Skip(disabled_message)
         case AIExecutionError(error_message=err):
-            ctx.textual.mount(
-                Panel(ErrorMessages.AI_GENERATION_FAILED.format(error=err), panel_type="error")
+            ctx.interaction.panel(
+                ErrorMessages.AI_GENERATION_FAILED.format(error=err), panel_type="error"
             )
             ctx.data["enhanced_description"] = brief_description
             ctx.data["title"] = DEFAULT_TITLE
@@ -123,8 +122,8 @@ def ai_enhance_issue_description(ctx: WorkflowContext) -> WorkflowResult:
         template = Template(template_content)
         enhanced_description = template.render(**parsed)
     except Exception as e:
-        ctx.textual.mount(
-            Panel(ErrorMessages.TEMPLATE_RENDER_FAILED.format(error=str(e)), panel_type="error")
+        ctx.interaction.panel(
+            ErrorMessages.TEMPLATE_RENDER_FAILED.format(error=str(e)), panel_type="error"
         )
         enhanced_description = response
 

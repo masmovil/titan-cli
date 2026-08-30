@@ -6,7 +6,6 @@ Creates the issue in Jira with all collected information.
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import Panel
 from titan_plugin_jira.constants import (
     StepTitles,
     ErrorMessages,
@@ -47,14 +46,14 @@ def create_generic_issue(ctx: WorkflowContext) -> WorkflowResult:
 
     # Validate required data
     if not all([title, description, issue_type, priority]):
-        ctx.textual.mount(Panel(ErrorMessages.MISSING_REQUIRED_DATA, panel_type="error"))
+        ctx.interaction.panel(ErrorMessages.MISSING_REQUIRED_DATA, panel_type="error")
         ctx.textual.end_step("error")
         return Error("missing_required_data")
 
     # Get project key
     project_key = ctx.jira.project_key
     if not project_key:
-        ctx.textual.mount(Panel(ErrorMessages.NO_PROJECT_CONFIGURED, panel_type="error"))
+        ctx.interaction.panel(ErrorMessages.NO_PROJECT_CONFIGURED, panel_type="error")
         ctx.textual.end_step("error")
         return Error("no_project_configured")
 
@@ -81,17 +80,15 @@ def create_generic_issue(ctx: WorkflowContext) -> WorkflowResult:
             ctx.textual.text("")
 
             # Show issue details
-            ctx.textual.mount(
-                Panel(
-                    f"**Issue:** {issue.key}  \n"
-                    f"**Title:** {issue.summary}  \n"
-                    f"**Type:** {issue.issue_type}  \n"
-                    f"**Status:** {issue.status_icon} {issue.status}  \n"
-                    f"**Priority:** {issue.priority_icon} {issue.priority}",
-                    panel_type="success",
-                    show_icon=False,
-                    use_markdown=True,
-                )
+            ctx.interaction.panel(
+                f"**Issue:** {issue.key}  \n"
+                f"**Title:** {issue.summary}  \n"
+                f"**Type:** {issue.issue_type}  \n"
+                f"**Status:** {issue.status_icon} {issue.status}  \n"
+                f"**Priority:** {issue.priority_icon} {issue.priority}",
+                panel_type="success",
+                show_icon=False,
+                use_markdown=True,
             )
 
             # Try to transition to "Ready to Dev" if possible (best-effort)
@@ -105,8 +102,8 @@ def create_generic_issue(ctx: WorkflowContext) -> WorkflowResult:
             )
 
         case ClientError(error_message=err):
-            ctx.textual.mount(
-                Panel(ErrorMessages.FAILED_TO_CREATE_ISSUE.format(error=err), panel_type="error")
+            ctx.interaction.panel(
+                ErrorMessages.FAILED_TO_CREATE_ISSUE.format(error=err), panel_type="error"
             )
             ctx.textual.end_step("error")
             return Error(f"failed_to_create_issue: {err}")

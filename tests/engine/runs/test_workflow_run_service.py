@@ -1214,3 +1214,93 @@ def test_cancel_run_during_resuming_transitions_to_cancelled(
     assert resumed_state.result_message == "stop while resuming"
     assert resumed_state.events[-2].type == "run_cancelled"
     assert resumed_state.events[-1].type == "run_result_emitted"
+
+
+@patch("titan_cli.engine.runs.service.create_broker_factory")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
+def test_secret_prompt_acknowledgement_never_emits_secret_value(
+    mock_executor_cls,
+    mock_secret_manager_cls,
+):
+    config = MagicMock()
+    config.workflows.get_workflow.return_value = MagicMock(name="workflow")
+    config.project_root = MagicMock()
+    config.registry.list_installed.return_value = []
+    config.config.ai = None
+    mock_secret_manager_cls.return_value = MagicMock()
+
+    calls = 0
+
+    def _execute(_workflow, ctx, params_override=None, start_step_index=0):
+        nonlocal calls
+        calls += 1
+        value = ctx.interaction.secret_text("token", "Enter token")
+        if calls > 1:
+            assert value == "super-secret"
+        return Success("workflow ok")
+
+    mock_executor_cls.return_value.execute.side_effect = _execute
+    service = WorkflowRunService(config=config)
+    response = service.start_workflow(StartWorkflowRequest(workflow_name="demo"))
+    waiting = service.get_run(response.run_id)
+    assert waiting is not None and waiting.pending_prompt is not None
+
+    completed = service.submit_prompt_response(
+        SubmitPromptResponseRequest(
+            run_id=response.run_id,
+            prompt_id=waiting.pending_prompt.prompt_id,
+            value="super-secret",
+        )
+    )
+
+    assert completed is not None
+    acknowledgement = next(event for event in completed.events if event.type == "prompt_answered")
+    assert acknowledgement.payload == {
+        "prompt_id": "token",
+        "prompt_type": "secret",
+    }
+
+
+@patch("titan_cli.engine.runs.service.create_broker_factory")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
+def test_external_cli_session_round_trips_through_headless_interaction(
+    mock_executor_cls,
+    mock_secret_manager_cls,
+):
+    config = MagicMock()
+    config.workflows.get_workflow.return_value = MagicMock(name="workflow")
+    config.project_root = MagicMock()
+    config.registry.list_installed.return_value = []
+    config.config.ai = None
+    mock_secret_manager_cls.return_value = MagicMock()
+
+    def _execute(_workflow, ctx, params_override=None, start_step_index=0):
+        exit_code = ctx.interaction.external_cli_session(
+            "fix-code",
+            cli_name="codex",
+            prompt="Fix the failing tests",
+            cwd="/project",
+        )
+        assert exit_code == 0
+        return Success("workflow ok")
+
+    mock_executor_cls.return_value.execute.side_effect = _execute
+    service = WorkflowRunService(config=config)
+    response = service.start_workflow(StartWorkflowRequest(workflow_name="demo"))
+    waiting = service.get_run(response.run_id)
+    assert waiting is not None and waiting.pending_interaction is not None
+    assert waiting.pending_interaction.interaction_type == "external_cli_session"
+    assert waiting.pending_interaction.state["cli_name"] == "codex"
+
+    completed = service.submit_interaction_response(
+        SubmitInteractionResponseRequest(
+            run_id=response.run_id,
+            interaction_id=waiting.pending_interaction.interaction_id,
+            response_type="complete",
+            value={"exit_code": 0},
+        )
+    )
+
+    assert completed is not None
+    assert completed.status == RunSessionStatus.COMPLETED
+    assert any(event.type == "interaction_answered" for event in completed.events)

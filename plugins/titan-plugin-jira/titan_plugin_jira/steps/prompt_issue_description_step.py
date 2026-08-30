@@ -5,7 +5,6 @@ Asks user for a brief description of the task/issue to create.
 """
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
-from titan_cli.ui.tui.widgets import Panel
 from titan_plugin_jira.constants import StepTitles, UserPrompts, ErrorMessages, SuccessMessages
 from titan_plugin_jira.utils import validate_non_empty_text
 
@@ -32,7 +31,7 @@ def prompt_issue_description(ctx: WorkflowContext) -> WorkflowResult:
     is_valid, cleaned_text, _ = validate_non_empty_text(description)
 
     if not is_valid:
-        ctx.textual.mount(Panel(ErrorMessages.DESCRIPTION_EMPTY, panel_type="error"))
+        ctx.interaction.panel(ErrorMessages.DESCRIPTION_EMPTY, panel_type="error")
         ctx.textual.end_step("error")
         return Error("description_required")
 

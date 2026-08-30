@@ -27,7 +27,7 @@ from titan_cli.ports.protocol import (
     ItemReviewItem,
     ItemReviewState,
 )
-from titan_cli.ui.tui.widgets import ChoiceOption, OptionItem
+from titan_cli.ports.protocol import InteractionOption
 
 from ..managers.diff_context_manager import get_or_create_diff_manager
 from ..managers.prompt_budget_manager import get_prompt_budget_manager
@@ -95,11 +95,7 @@ def _external_cli_activity_reporter(
     """Marshal provider activity through the active interaction adapter."""
 
     def report(activity: ExternalCLIActivity) -> None:
-        ctx.textual.app.call_from_thread(
-            ctx.textual.external_cli_activity,
-            activity_id,
-            activity,
-        )
+        ctx.interaction.external_cli_activity(activity_id, activity)
 
     return report
 
@@ -564,9 +560,10 @@ def select_pr_for_code_review(ctx: WorkflowContext) -> WorkflowResult:
                  [pr for pr in all_prs_list if pr.number not in assigned_numbers]
 
     options = [
-        OptionItem(
+        InteractionOption(
+            id=str(pr.number),
             value=pr.number,
-            title=build_pr_selection_title(
+            label=build_pr_selection_title(
                 pr,
                 highlight_assigned=pr.number in assigned_numbers,
                 include_review_badge=True,
@@ -3425,8 +3422,8 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
 
         # With findings - offer Comment or Request Changes
         event_options = [
-            OptionItem(value="COMMENT", title="💬 Comment", description="Post comments without approval decision"),
-            OptionItem(value="REQUEST_CHANGES", title="🔴 Request Changes", description="Block merge until changes are made"),
+            InteractionOption(id="COMMENT", value="COMMENT", label="💬 Comment", description="Post comments without approval decision"),
+            InteractionOption(id="REQUEST_CHANGES", value="REQUEST_CHANGES", label="🔴 Request Changes", description="Block merge until changes are made"),
         ]
     else:
         ctx.textual.success_text("✅ No issues found - PR looks good and can be approved")
@@ -3434,9 +3431,9 @@ def submit_review_actions(ctx: WorkflowContext) -> WorkflowResult:
 
         # No findings - offer all options
         event_options = [
-            OptionItem(value="APPROVE", title="✅ Approve", description="Approve the PR"),
-            OptionItem(value="COMMENT", title="💬 Comment", description="Post a general comment"),
-            OptionItem(value="REQUEST_CHANGES", title="🔴 Request Changes", description="Block merge until changes are made"),
+            InteractionOption(id="APPROVE", value="APPROVE", label="✅ Approve", description="Approve the PR"),
+            InteractionOption(id="COMMENT", value="COMMENT", label="💬 Comment", description="Post a general comment"),
+            InteractionOption(id="REQUEST_CHANGES", value="REQUEST_CHANGES", label="🔴 Request Changes", description="Block merge until changes are made"),
         ]
 
     try:

@@ -171,19 +171,18 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
             ))
 
         # Use the reusable AI content review flow
-        choice, pr_title, pr_body = ctx.textual.ai_content_review_flow(
+        review = ctx.interaction.review_generated_content(
+            interaction_id="review-pr-description",
             content_title=analysis.pr_title,
             content_body=analysis.pr_body,
             header_text=msg.GitHub.AI.AI_GENERATED_PR_TITLE,
             title_label=msg.GitHub.AI.TITLE_LABEL,
             description_label=msg.GitHub.AI.DESCRIPTION_LABEL,
-            edit_instruction="Edit the PR content below (first line = title, rest = description)",
-            confirm_question="Use this PR content?",
             choice_question="What would you like to do with this PR description?",
         )
 
         # Handle rejection
-        if choice == "reject":
+        if review.action == "reject":
             ctx.textual.warning_text(msg.GitHub.AI.AI_SUGGESTION_REJECTED)
             ctx.textual.end_step("skip")
             return Skip("User rejected AI-generated PR")
@@ -191,8 +190,8 @@ def ai_suggest_pr_description_step(ctx: WorkflowContext) -> WorkflowResult:
         # Success - save to context
         metadata = {
             "ai_generated": True,
-            "pr_title": pr_title,
-            "pr_body": pr_body,
+            "pr_title": review.title,
+            "pr_body": review.content,
             "pr_size": analysis.pr_size
         }
 

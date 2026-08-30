@@ -6,7 +6,6 @@ import re
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import Table
 from ..messages import msg
 from ..utils import SAVED_QUERIES, IssueSorter
 from ..operations import build_issue_table_data
@@ -112,9 +111,7 @@ def select_jira_issue_step(ctx: WorkflowContext) -> WorkflowResult:
             ctx.textual.text("")
 
             headers, rows = build_issue_table_data(sorted_issues, summary_max_length=60)
-            ctx.textual.mount(
-                Table(headers=headers, rows=rows, title="Ready to Dev Issues")
-            )
+            ctx.interaction.table(headers=headers, rows=rows, title="Ready to Dev Issues")
 
         case ClientError(error_message=err):
             error_msg = f"Failed to search JIRA issues: {err}"

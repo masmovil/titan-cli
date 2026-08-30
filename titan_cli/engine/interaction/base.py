@@ -14,6 +14,7 @@ from titan_cli.ports.protocol import ContentBlockType
 from titan_cli.ports.protocol import ItemReviewDecision
 from titan_cli.ports.protocol import ItemReviewState
 from titan_cli.ports.protocol import InteractionOption
+from titan_cli.ports.protocol import InteractionAction
 
 
 @dataclass(slots=True)
@@ -22,6 +23,15 @@ class ItemReviewResponse:
 
     items: list[ItemReviewDecision]
     exit_requested: bool = False
+
+
+@dataclass(slots=True)
+class EditableTextResponse:
+    """Final action and content returned by an editable-content interaction."""
+
+    action: str
+    title: str
+    content: str
 
 
 class InteractionPort(ABC):
@@ -42,6 +52,10 @@ class InteractionPort(ABC):
     @abstractmethod
     def step_output(self, text: str) -> None:
         """Emit step output content."""
+
+    def stream_output(self, text: str) -> None:
+        """Emit one increment from a long-running textual stream."""
+        self.step_output(text)
 
     def text(self, message: str) -> None:
         """Legacy-compatible alias for plain text output."""
@@ -240,6 +254,10 @@ class InteractionPort(ABC):
         """Request multiline input from the current UI client."""
         return self.input_text(prompt_id=prompt_id, message=message, default=default)
 
+    def secret_text(self, prompt_id: str, message: str) -> str:
+        """Request sensitive text without exposing it in output events."""
+        raise NotImplementedError("secret_text is not implemented for this interaction port")
+
     def ask_confirm(self, message: str, default: bool = False) -> bool:
         """Legacy-compatible confirmation API."""
         return self.confirm(prompt_id="confirm", message=message, default=default)
@@ -251,6 +269,10 @@ class InteractionPort(ABC):
     def ask_multiline(self, message: str, default: str = "") -> str:
         """Legacy-compatible multiline prompt API."""
         return self.multiline_text(prompt_id="multiline", message=message, default=default)
+
+    def ask_password(self, message: str) -> str:
+        """Legacy-compatible secret prompt API."""
+        return self.secret_text(prompt_id="secret", message=message)
 
     def ask_multiselect(self, message: str, options: list[Any]) -> list[Any]:
         """Legacy-compatible multiselect API.
@@ -288,6 +310,118 @@ class InteractionPort(ABC):
     ) -> str:
         """Request a single-choice selection from the current UI client."""
         raise NotImplementedError("select_one is not implemented for this interaction port")
+
+    def action_list(
+        self,
+        interaction_id: str,
+        message: str,
+        actions: list[InteractionAction],
+        *,
+        state: Optional[dict[str, Any]] = None,
+    ) -> str:
+        """Request one action from a semantic action collection."""
+        options = [
+            {
+                "id": action.id,
+                "label": action.label,
+                "description": action.description,
+            }
+            for action in actions
+        ]
+        return self.select_one(interaction_id, message, options)
+
+    def editable_text(
+        self,
+        interaction_id: str,
+        message: str,
+        *,
+        title: str,
+        content: str,
+        title_label: str = "Title",
+        content_label: str = "Content",
+        actions: Optional[list[InteractionAction]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> EditableTextResponse:
+        """Review and optionally edit a title plus multiline body."""
+        available_actions = actions or [
+            InteractionAction(id="use", label="Use", variant="primary"),
+            InteractionAction(id="edit", label="Edit"),
+            InteractionAction(id="reject", label="Reject", variant="warning"),
+        ]
+        action = self.action_list(
+            interaction_id=f"{interaction_id}:action",
+            message=message,
+            actions=available_actions,
+        )
+        if action != "edit":
+            return EditableTextResponse(action=action, title=title, content=content)
+
+        edited = self.multiline_text(
+            prompt_id=f"{interaction_id}:edit",
+            message=f"{title_label} on the first line, then {content_label.lower()}:",
+            default=f"{title}\n{content}",
+        )
+        lines = edited.splitlines()
+        edited_title = lines[0].strip() if lines else title
+        edited_content = "\n".join(lines[1:]).strip() if len(lines) > 1 else content
+        return EditableTextResponse(action="edit", title=edited_title, content=edited_content)
+
+    def review_generated_content(
+        self,
+        interaction_id: str,
+        *,
+        content_title: str,
+        content_body: str,
+        header_text: str,
+        title_label: str,
+        description_label: str,
+        choice_question: str,
+    ) -> EditableTextResponse:
+        """Portable replacement for Textual's AI content review flow."""
+        return self.editable_text(
+            interaction_id=interaction_id,
+            message=choice_question,
+            title=content_title,
+            content=content_body,
+            title_label=title_label,
+            content_label=description_label,
+            metadata={"header": header_text, "presentation": "generated_content"},
+        )
+
+    def batch_progress(
+        self,
+        progress_id: str,
+        message: str,
+        *,
+        completed: int,
+        total: int,
+        state: str = "running",
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Publish replaceable progress for a bounded batch operation."""
+        self.info(f"{message} ({completed}/{total})")
+
+    def external_cli_session(
+        self,
+        interaction_id: str,
+        *,
+        cli_name: str,
+        prompt: str,
+        cwd: str,
+    ) -> int:
+        """Hand an interactive CLI session to the active client and await completion."""
+        raise NotImplementedError(
+            "external_cli_session requires a client capable of hosting a terminal"
+        )
+
+    def launch_external_cli(self, cli_name: str, prompt: str, cwd: str) -> int:
+        """Compatibility alias for workflows that launch an interactive CLI."""
+        return self.external_cli_session(
+            interaction_id=f"external-cli:{cli_name}",
+            cli_name=cli_name,
+            prompt=prompt,
+            cwd=cwd,
+        )
 
     def option_list(
         self,

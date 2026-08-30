@@ -1,7 +1,7 @@
 # plugins/titan-plugin-docker/titan_plugin_docker/steps/select_services_to_stop_step.py
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Exit
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import SelectionOption
+from titan_cli.ports.protocol import InteractionOption
 
 from ..operations import resolve_stop_selection
 
@@ -45,7 +45,10 @@ def select_services_to_stop_step(ctx: WorkflowContext) -> WorkflowResult:
         ctx.textual.end_step("error")
         return Error("No services found in the compose file.")
 
-    options = [SelectionOption(value=name, label=name, selected=True) for name in all_services]
+    options = [
+        InteractionOption(id=name, value=name, label=name, badges=["selected"])
+        for name in all_services
+    ]
     selected = ctx.textual.ask_multiselect("Which services should be stopped?", options)
 
     if not selected:

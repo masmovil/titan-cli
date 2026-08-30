@@ -1,7 +1,7 @@
 # plugins/titan-plugin-git/titan_plugin_git/steps/diff_summary_step.py
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Skip, Exit
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import SelectionOption
+from titan_cli.ports.protocol import InteractionOption
 from titan_plugin_git.messages import msg
 from ..operations import parse_diff_stat_output, expand_rename_path, colorize_diff_stats, colorize_diff_summary, format_diff_stat_display
 
@@ -41,10 +41,11 @@ def show_uncommitted_diff_summary(ctx: WorkflowContext) -> WorkflowResult:
             if file_lines:
                 max_len = max(len(filename) for filename, _ in file_lines)
                 options = [
-                    SelectionOption(
+                    InteractionOption(
+                        id=expand_rename_path(filename),
                         value=expand_rename_path(filename),
                         label=f"{filename.ljust(max_len)} |{colorize_diff_stats(stats)}",
-                        selected=True,
+                        badges=["selected"],
                     )
                     for filename, stats in file_lines
                 ]

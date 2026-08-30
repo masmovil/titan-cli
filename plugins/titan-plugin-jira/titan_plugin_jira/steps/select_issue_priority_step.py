@@ -6,7 +6,7 @@ Lists available priorities from Jira and lets user select one.
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import Panel, OptionItem
+from titan_cli.ports.protocol import InteractionOption
 from titan_plugin_jira.constants import (
     StepTitles,
     ErrorMessages,
@@ -30,7 +30,7 @@ def select_issue_priority(ctx: WorkflowContext) -> WorkflowResult:
 
     # Verify Jira client is available
     if not ctx.jira:
-        ctx.textual.mount(Panel(ErrorMessages.JIRA_CLIENT_UNAVAILABLE, panel_type="error"))
+        ctx.interaction.panel(ErrorMessages.JIRA_CLIENT_UNAVAILABLE, panel_type="error")
         ctx.textual.end_step("error")
         return Error("jira_client_unavailable")
 
@@ -45,31 +45,28 @@ def select_issue_priority(ctx: WorkflowContext) -> WorkflowResult:
         case ClientSuccess(data=fetched_priorities):
             if not fetched_priorities:
                 # Fallback to standard priorities if none found
-                ctx.textual.mount(
-                    Panel(
-                        f"{ErrorMessages.NO_PRIORITIES_FOUND}\n\n{InfoMessages.USING_STANDARD_PRIORITIES}",
-                        panel_type="warning",
-                    )
+                ctx.interaction.panel(
+                    f"{ErrorMessages.NO_PRIORITIES_FOUND}\n\n{InfoMessages.USING_STANDARD_PRIORITIES}",
+                    panel_type="warning",
                 )
                 priorities = DEFAULT_PRIORITIES
             else:
                 priorities = fetched_priorities
 
         case ClientError(error_message=err):
-            ctx.textual.mount(
-                Panel(
-                    f"{ErrorMessages.FAILED_TO_GET_PRIORITIES.format(error=err)}\n\n{InfoMessages.USING_STANDARD_PRIORITIES}",
-                    panel_type="warning",
-                )
+            ctx.interaction.panel(
+                f"{ErrorMessages.FAILED_TO_GET_PRIORITIES.format(error=err)}\n\n{InfoMessages.USING_STANDARD_PRIORITIES}",
+                panel_type="warning",
             )
             priorities = DEFAULT_PRIORITIES
 
     priorities.sort(key=lambda priority: priority.name == "-")
 
     option_items = [
-        OptionItem(
+        InteractionOption(
+            id=priority.name,
             value=priority,
-            title=priority.label,
+            label=priority.label,
         )
         for priority in priorities
     ]

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from titan_cli.engine.context import WorkflowContext
 from titan_cli.external_cli.adapters.base import ExternalCLIActivity
 from titan_cli.external_cli.adapters.base import ExternalCLIActivityPhase
-from titan_cli.engine.interaction.base import ItemReviewResponse
+from titan_cli.engine.interaction.base import EditableTextResponse, ItemReviewResponse
 from titan_cli.engine.interaction.headless import HeadlessInteractionPort
 from titan_cli.engine.runs.projection import normalize_step_status
 from titan_cli.engine.runs.session import RunSession
@@ -66,19 +66,11 @@ class RunInteractionPort(HeadlessInteractionPort):
         self._queued_prompt_responses = queued_prompt_responses or []
         self._queued_interaction_responses = queued_interaction_responses or []
         self._resume_step_id = resume_step_id
+        self._is_resuming = resume_step_id is not None
         self._suppress_replayed_prefix = bool(
             resume_step_id and (self._queued_prompt_responses or self._queued_interaction_responses)
         )
         self._progress_counter = 0
-
-    @property
-    def app(self):
-        """Compatibility facade for plugins that marshal UI callbacks."""
-        return self
-
-    def call_from_thread(self, callback, *args, **kwargs) -> None:
-        """Run callback synchronously; headless execution has no UI thread."""
-        callback(*args, **kwargs)
 
     def stream_output(self, text: str) -> None:
         """Emit output produced by a streaming toolkit widget."""
@@ -87,6 +79,14 @@ class RunInteractionPort(HeadlessInteractionPort):
             variant=ContentBlockVariant.MUTED,
             metadata={"presentation": "stream"},
         )
+
+    def secret_text(self, prompt_id: str, message: str) -> str:
+        value = self._request_prompt(
+            prompt_type=PromptType.SECRET,
+            prompt_id=prompt_id,
+            message=message,
+        )
+        return "" if value is None else str(value)
 
     def step_output(self, text: str) -> None:
         super().step_output(text)
@@ -211,7 +211,10 @@ class RunInteractionPort(HeadlessInteractionPort):
         )
 
     def mount(self, widget: Any) -> None:
-        """Ignore toolkit-only widgets; portable steps must use semantic APIs."""
+        """Reject toolkit widgets so headless never loses workflow output silently."""
+        raise TypeError(
+            "Headless workflows cannot mount UI widgets; use a semantic interaction method"
+        )
 
     def _emit_text_output(
         self,
@@ -465,7 +468,8 @@ class RunInteractionPort(HeadlessInteractionPort):
         )
         if self._queued_prompt_responses:
             value = self._queued_prompt_responses.pop(0)
-            self._session.record_prompt_answer(prompt, value)
+            if not self._is_resuming:
+                self._session.record_prompt_answer(prompt, value)
             if self._suppress_replayed_prefix and self._ctx.current_step_id == self._resume_step_id:
                 self._suppress_replayed_prefix = False
             return value
@@ -499,6 +503,142 @@ class RunInteractionPort(HeadlessInteractionPort):
         response = self._request_interaction(interaction)
         return self._resolve_interaction_value(interaction, response)
 
+    def select_one(
+        self,
+        prompt_id: str,
+        message: str,
+        options: list[dict[str, Any]],
+    ) -> str:
+        selected = self.option_list(
+            interaction_id=prompt_id,
+            message=message,
+            options=[
+                InteractionOption(
+                    id=str(option.get("id") or index),
+                    label=str(option.get("label") or option.get("id") or "Option"),
+                    value=option.get("value", option.get("id")),
+                    description=option.get("description"),
+                )
+                for index, option in enumerate(options, start=1)
+            ],
+        )
+        return "" if selected is None else str(selected)
+
+    def action_list(
+        self,
+        interaction_id: str,
+        message: str,
+        actions: list[InteractionAction],
+        *,
+        state: Optional[dict[str, Any]] = None,
+    ) -> str:
+        interaction = self._build_interaction_request(
+            interaction_id=interaction_id,
+            interaction_type=InteractionType.ACTION_LIST,
+            message=message,
+            state=dict(state or {}),
+            actions=actions,
+        )
+        response = self._request_interaction(interaction)
+        value = self._resolve_interaction_value(interaction, response)
+        return "" if value is None else str(value)
+
+    def editable_text(
+        self,
+        interaction_id: str,
+        message: str,
+        *,
+        title: str,
+        content: str,
+        title_label: str = "Title",
+        content_label: str = "Content",
+        actions: Optional[list[InteractionAction]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> EditableTextResponse:
+        interaction = self._build_interaction_request(
+            interaction_id=interaction_id,
+            interaction_type=InteractionType.EDITABLE_TEXT,
+            message=message,
+            state={
+                "title": title,
+                "content": content,
+                "title_label": title_label,
+                "content_label": content_label,
+                "metadata": dict(metadata or {}),
+            },
+            actions=actions or [
+                InteractionAction(id="use", label="Use", variant="primary"),
+                InteractionAction(id="edit", label="Edit"),
+                InteractionAction(id="reject", label="Reject", variant="warning"),
+            ],
+        )
+        response = self._request_interaction(interaction)
+        value = self._resolve_interaction_value(interaction, response)
+        if not isinstance(value, dict):
+            return EditableTextResponse(action=str(value or "reject"), title=title, content=content)
+        return EditableTextResponse(
+            action=str(value.get("action") or "use"),
+            title=str(value.get("title") or title),
+            content=str(value.get("content") or content),
+        )
+
+    def batch_progress(
+        self,
+        progress_id: str,
+        message: str,
+        *,
+        completed: int,
+        total: int,
+        state: str = "running",
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> None:
+        progress_metadata = {
+            "progress_id": f"batch:{progress_id}",
+            "state": state,
+            "completed": completed,
+            "total": total,
+            "indeterminate": total <= 0,
+            "interaction_type": InteractionType.BATCH_PROGRESS.value,
+        }
+        progress_metadata.update(metadata or {})
+        self._emit_output_payload(
+            OutputPayload(
+                format=OutputFormat.PROGRESS,
+                title="Batch progress",
+                content=message,
+                metadata=progress_metadata,
+            )
+        )
+
+    def external_cli_session(
+        self,
+        interaction_id: str,
+        *,
+        cli_name: str,
+        prompt: str,
+        cwd: str,
+    ) -> int:
+        interaction = self._build_interaction_request(
+            interaction_id=interaction_id,
+            interaction_type=InteractionType.EXTERNAL_CLI_SESSION,
+            message=f"Open {cli_name} to continue this workflow.",
+            state={
+                "cli_name": cli_name,
+                "prompt": prompt,
+                "cwd": cwd,
+                "presentation": "external_cli_session",
+            },
+            actions=[
+                InteractionAction(id="complete", label="Session completed", variant="primary"),
+                InteractionAction(id="cancel", label="Cancel", variant="warning"),
+            ],
+        )
+        response = self._request_interaction(interaction)
+        value = self._resolve_interaction_value(interaction, response)
+        if isinstance(value, dict):
+            return int(value.get("exit_code", 1))
+        return int(value or 0)
+
     def ask_multiselect(self, message: str, options: list[Any]) -> list[Any]:
         """Expose legacy checkbox prompts as a portable multi-select interaction."""
         semantic_options = [
@@ -507,7 +647,12 @@ class RunInteractionPort(HeadlessInteractionPort):
                 label=str(getattr(option, "label", getattr(option, "title", option))),
                 value=getattr(option, "value", option),
                 description=getattr(option, "description", None),
-                badges=["selected"] if getattr(option, "selected", False) else [],
+                badges=["selected"]
+                if (
+                    getattr(option, "selected", False)
+                    or "selected" in getattr(option, "badges", [])
+                )
+                else [],
             )
             for index, option in enumerate(options, start=1)
         ]
@@ -576,7 +721,8 @@ class RunInteractionPort(HeadlessInteractionPort):
     def _request_interaction(self, interaction: InteractionRequest) -> dict[str, object]:
         if self._queued_interaction_responses:
             response = self._queued_interaction_responses.pop(0)
-            self._session.record_interaction_answer(interaction, response)
+            if not self._is_resuming:
+                self._session.record_interaction_answer(interaction, response)
             if self._suppress_replayed_prefix and self._ctx.current_step_id == self._resume_step_id:
                 self._suppress_replayed_prefix = False
             return response
@@ -649,6 +795,12 @@ class RunInteractionPort(HeadlessInteractionPort):
                 items=decisions,
                 exit_requested=bool(value.get("exit_requested", False)),
             )
+        if interaction.interaction_type == InteractionType.ACTION_LIST:
+            return response.get("value")
+        if interaction.interaction_type == InteractionType.EDITABLE_TEXT:
+            return response.get("value")
+        if interaction.interaction_type == InteractionType.EXTERNAL_CLI_SESSION:
+            return response.get("value")
         return response.get("value")
 
     def _step_ref(self, step_name: Optional[str] = None) -> StepRef:

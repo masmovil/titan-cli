@@ -6,7 +6,6 @@ from contextlib import nullcontext
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import Table
 from ..messages import msg
 from ..utils import SAVED_QUERIES, IssueSorter
 from ..operations import (
@@ -177,19 +176,11 @@ def search_saved_query_step(ctx: WorkflowContext) -> WorkflowResult:
                 # Build table data using operations
                 headers, rows = build_issue_table_data(sorted_issues, summary_max_length=60)
 
-                if ctx.textual:
-                    # Render table using textual widget
-                    ctx.textual.mount(
-                        Table(
-                            headers=headers,
-                            rows=rows,
-                            title=f"Issues (sorted by {sorter.get_sort_description()})"
-                        )
-                    )
-                else:
-                    ui.text(f"Issues (sorted by {sorter.get_sort_description()})")
-                    for row in rows:
-                        ui.text(" | ".join(str(cell) for cell in row))
+                ui.table(
+                    headers=headers,
+                    rows=rows,
+                    title=f"Issues (sorted by {sorter.get_sort_description()})",
+                )
 
                 # Use sorted issues for downstream steps
                 issues = sorted_issues

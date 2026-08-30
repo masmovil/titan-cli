@@ -108,26 +108,25 @@ def ai_suggest_issue_title_and_body_step(ctx: WorkflowContext) -> WorkflowResult
             ctx.textual.warning_text(f"No template found for {category}, using default structure")
 
         # Use the reusable AI content review flow
-        choice, issue_title, issue_body = ctx.textual.ai_content_review_flow(
+        review = ctx.interaction.review_generated_content(
+            interaction_id="review-generated-issue",
             content_title=result["title"],
             content_body=result["body"],
             header_text="AI-Generated Issue",
             title_label="Title:",
             description_label="Description:",
-            edit_instruction="Edit the issue content below (first line = title, rest = description)",
-            confirm_question="Use this issue content?",
             choice_question="What would you like to do with this issue?",
         )
 
         # Handle rejection
-        if choice == "reject":
+        if review.action == "reject":
             ctx.textual.warning_text("User rejected AI-generated issue")
             ctx.textual.end_step("skip")
             return Skip("User rejected AI-generated issue")
 
         # Save the final content (whether used as-is or edited)
-        ctx.set("issue_title", issue_title)
-        ctx.set("issue_body", issue_body)
+        ctx.set("issue_title", review.title)
+        ctx.set("issue_body", review.content)
         ctx.set("issue_category", category)
         ctx.set("labels", result["labels"])
 

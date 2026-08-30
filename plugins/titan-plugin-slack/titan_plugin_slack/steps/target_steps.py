@@ -1,6 +1,6 @@
 """Reusable Slack target selection steps for users and channels."""
 
-from titan_cli.ui.tui.widgets import OptionItem, SelectionOption
+from titan_cli.ports.protocol import InteractionOption
 
 from titan_cli.core.result import ClientError, ClientSuccess
 from titan_cli.engine import Error, Success, WorkflowContext, WorkflowResult
@@ -179,7 +179,7 @@ def select_default_or_search_channel_target_step(ctx: WorkflowContext) -> Workfl
     ctx.textual.begin_step("Select Slack Channels")
 
     options = [
-        SelectionOption(value=channel_name, label=channel_name, selected=False)
+        InteractionOption(id=channel_name, value=channel_name, label=channel_name)
         for channel_name in configured_channels
     ]
     selected_names = ctx.textual.ask_multiselect(
@@ -404,21 +404,21 @@ def _select_target_step(
     )
 
 
-def _build_user_option(user) -> OptionItem:
+def _build_user_option(user) -> InteractionOption:
     display_name = user.real_name or user.name or user.id
     description = f"@{user.name} ({user.id})"
     if not user.is_active:
         description += " - inactive"
     elif user.is_bot:
         description += " - bot"
-    return OptionItem(value=user, title=display_name, description=description)
+    return InteractionOption(id=f"user:{user.id}", value=user, label=display_name, description=description)
 
 
-def _build_channel_option(channel) -> OptionItem:
+def _build_channel_option(channel) -> InteractionOption:
     description = f"#{channel.name} ({channel.id})"
     if channel.is_private:
         description += " - private"
-    return OptionItem(value=channel, title=f"#{channel.name}", description=description)
+    return InteractionOption(id=f"channel:{channel.id}", value=channel, label=f"#{channel.name}", description=description)
 
 
 def _normalize_channel_name(value: str) -> str:

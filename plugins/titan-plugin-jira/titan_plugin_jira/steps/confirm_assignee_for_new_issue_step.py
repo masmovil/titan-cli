@@ -6,7 +6,6 @@ Asks user if the JIRA issue about to be created should be self-assigned.
 
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success
 from titan_cli.core.result import ClientSuccess, ClientError
-from titan_cli.ui.tui.widgets import Panel
 from titan_plugin_jira.constants import (
     StepTitles,
     UserPrompts,
@@ -53,11 +52,9 @@ def confirm_assignee_for_new_issue(ctx: WorkflowContext) -> WorkflowResult:
                 ctx.textual.dim_text(InfoMessages.WILL_REMAIN_UNASSIGNED)
 
         case ClientError(error_message=err):
-            ctx.textual.mount(
-                Panel(
-                    ErrorMessages.FAILED_TO_GET_CURRENT_USER.format(error=err),
-                    panel_type="warning",
-                )
+            ctx.interaction.panel(
+                ErrorMessages.FAILED_TO_GET_CURRENT_USER.format(error=err),
+                panel_type="warning",
             )
             ctx.data["auto_assign"] = False
             ctx.data["assignee_id"] = None

@@ -20,11 +20,71 @@ def validate_interaction_response(
     """
     if interaction.interaction_type == InteractionType.ITEM_REVIEW:
         return _validate_item_review_response(interaction, response_type, value)
+    if interaction.interaction_type == InteractionType.ACTION_LIST:
+        return _validate_action_list_response(interaction, response_type, value)
+    if interaction.interaction_type == InteractionType.EDITABLE_TEXT:
+        return _validate_editable_text_response(interaction, response_type, value)
+    if interaction.interaction_type == InteractionType.EXTERNAL_CLI_SESSION:
+        return _validate_external_cli_session_response(response_type, value)
 
     return {
         "response_type": response_type,
         "value": value,
     }
+
+
+def _validate_action_list_response(
+    interaction: InteractionRequest,
+    response_type: str,
+    value: Any,
+) -> dict[str, object]:
+    if response_type not in {"select", "complete"}:
+        raise ValueError(f"Unsupported action_list response_type: {response_type or 'empty'}")
+    action_ids = {action.id for action in interaction.actions}
+    if str(value) not in action_ids:
+        raise ValueError(f"action_list response uses unsupported action '{value}'")
+    return {"response_type": response_type, "value": str(value)}
+
+
+def _validate_editable_text_response(
+    interaction: InteractionRequest,
+    response_type: str,
+    value: Any,
+) -> dict[str, object]:
+    if response_type != "complete":
+        raise ValueError(f"Unsupported editable_text response_type: {response_type or 'empty'}")
+    if not isinstance(value, dict):
+        raise ValueError("editable_text response value must be an object")
+    action = str(value.get("action") or "")
+    action_ids = {item.id for item in interaction.actions}
+    if action not in action_ids:
+        raise ValueError(f"editable_text response uses unsupported action '{action}'")
+    if action == "edit":
+        if not isinstance(value.get("title"), str) or not isinstance(value.get("content"), str):
+            raise ValueError("editable_text edit response requires string title and content")
+    return {
+        "response_type": response_type,
+        "value": {
+            "action": action,
+            "title": value.get("title", interaction.state.get("title", "")),
+            "content": value.get("content", interaction.state.get("content", "")),
+        },
+    }
+
+
+def _validate_external_cli_session_response(
+    response_type: str,
+    value: Any,
+) -> dict[str, object]:
+    if response_type not in {"complete", "cancel"}:
+        raise ValueError(
+            f"Unsupported external_cli_session response_type: {response_type or 'empty'}"
+        )
+    if response_type == "cancel":
+        return {"response_type": response_type, "value": {"exit_code": 130}}
+    if not isinstance(value, dict) or not isinstance(value.get("exit_code"), int):
+        raise ValueError("external_cli_session completion requires an integer exit_code")
+    return {"response_type": response_type, "value": {"exit_code": value["exit_code"]}}
 
 
 def _validate_item_review_response(

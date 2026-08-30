@@ -173,9 +173,20 @@ class WorkflowRunService:
         if session.pending_prompt.prompt_id != request.prompt_id:
             return self.get_run(request.run_id)
 
-        session.record_prompt_answer(session.pending_prompt, request.value)
+        pending_prompt = session.pending_prompt
+        answer_payload: dict[str, Any] = {
+            "prompt_id": pending_prompt.prompt_id,
+            "prompt_type": pending_prompt.prompt_type.value,
+        }
+        if pending_prompt.prompt_type.value != "secret":
+            answer_payload["value"] = request.value
+        self._append_event(session, EventType.PROMPT_ANSWERED, answer_payload)
+        session.record_prompt_answer(pending_prompt, request.value)
         session.metadata.setdefault("prompt_responses", [])
         session.metadata["prompt_responses"].append(request.value)
+        resume_step_id = session.metadata.get("resume_step_id")
+        step_responses = session.metadata.setdefault("step_prompt_responses", {})
+        step_responses.setdefault(resume_step_id or "", []).append(request.value)
         session.pending_interaction = None
         session.status = RunSessionStatus.RESUMING
         self._run_store.save(session)
@@ -186,8 +197,8 @@ class WorkflowRunService:
             start_step_index=max(resume_step_index - 1, 0),
             emit_run_started=False,
             resuming=True,
-            queued_prompt_responses=[request.value],
-            resume_step_id=session.metadata.get("resume_step_id"),
+            queued_prompt_responses=list(step_responses.get(resume_step_id or "", [])),
+            resume_step_id=resume_step_id,
         )
         self._run_store.save(session)
         return self.get_run(request.run_id)
@@ -226,9 +237,23 @@ class WorkflowRunService:
             self._run_store.save(session)
             return self.get_run(request.run_id)
 
-        session.record_interaction_answer(session.pending_interaction, response)
+        pending_interaction = session.pending_interaction
+        self._append_event(
+            session,
+            EventType.INTERACTION_ANSWERED,
+            {
+                "interaction_id": pending_interaction.interaction_id,
+                "interaction_type": pending_interaction.interaction_type.value,
+                "response_type": response.get("response_type"),
+                "value": response.get("value"),
+            },
+        )
+        session.record_interaction_answer(pending_interaction, response)
         session.metadata.setdefault("interaction_responses", [])
         session.metadata["interaction_responses"].append(response)
+        resume_step_id = session.metadata.get("resume_step_id")
+        step_responses = session.metadata.setdefault("step_interaction_responses", {})
+        step_responses.setdefault(resume_step_id or "", []).append(response)
         session.pending_prompt = None
         session.status = RunSessionStatus.RESUMING
         self._run_store.save(session)
@@ -239,8 +264,10 @@ class WorkflowRunService:
             start_step_index=max(resume_step_index - 1, 0),
             emit_run_started=False,
             resuming=True,
-            queued_interaction_responses=[response],
-            resume_step_id=session.metadata.get("resume_step_id"),
+            queued_interaction_responses=list(
+                step_responses.get(resume_step_id or "", [])
+            ),
+            resume_step_id=resume_step_id,
         )
         self._run_store.save(session)
         return self.get_run(request.run_id)

@@ -1,6 +1,6 @@
 # plugins/titan-plugin-docker/titan_plugin_docker/steps/select_service_group_step.py
 from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error
-from titan_cli.ui.tui.widgets import OptionItem
+from titan_cli.ports.protocol import InteractionOption
 
 from ..operations import resolve_services, list_group_names
 from ..exceptions import DockerError
@@ -32,9 +32,9 @@ def select_service_group_step(ctx: WorkflowContext) -> WorkflowResult:
     group_names = list_group_names(ctx.docker.service_groups)
 
     ALL_SERVICES = ""  # sentinel distinct from any real group name
-    options = [OptionItem(value=ALL_SERVICES, title="All services", description="Operate on every service in the compose file")]
+    options = [InteractionOption(id=ALL_SERVICES, value=ALL_SERVICES, label="All services", description="Operate on every service in the compose file")]
     options.extend(
-        OptionItem(value=name, title=name, description=", ".join(ctx.docker.service_groups[name]))
+        InteractionOption(id=name, value=name, label=name, description=", ".join(ctx.docker.service_groups[name]))
         for name in group_names
     )
 
