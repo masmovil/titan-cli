@@ -9,9 +9,9 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
-from .base import HeadlessResponse, SupportedCLI, resolve_cli_executable
+from .base import ExternalCLIActivityCallback, HeadlessResponse, SupportedCLI, resolve_cli_executable
 
 _ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -90,6 +90,8 @@ class AntigravityHeadlessAdapter:
         disallowed_tools: Optional[list[str]] = None,
         effort: Optional[str] = None,
         model: Optional[str] = None,
+        on_activity: Optional[ExternalCLIActivityCallback] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> HeadlessResponse:
         self._ensure_read_permissions()
         executable = resolve_cli_executable("agy")

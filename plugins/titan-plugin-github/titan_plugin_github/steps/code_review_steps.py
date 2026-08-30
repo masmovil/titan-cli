@@ -5,6 +5,7 @@ This module contains steps for reviewing pull requests authored by others using
 AI analysis combined with project-specific skill guidelines.
 """
 import re
+import inspect
 import threading
 import time
 from difflib import SequenceMatcher
@@ -18,6 +19,7 @@ from titan_cli.engine import WorkflowContext, WorkflowResult, Success, Error, Ex
 from titan_cli.core.interrupt import run_interruptible
 from titan_cli.core.result import ClientSuccess, ClientError
 from titan_cli.external_cli.adapters import get_headless_adapter, list_available_headless_clis
+from titan_cli.external_cli.adapters import ExternalCLIActivity
 from titan_cli.ui.tui.widgets import ChoiceOption, OptionItem, PromptChoice
 
 from ..managers.diff_context_manager import get_or_create_diff_manager
@@ -77,6 +79,43 @@ _CENTRAL_PATH_HINTS = ("/utils/", "/configuration/", "/interceptors/", "/base/",
 _MAX_REFERENCED_COMMITS_PER_THREAD = 3
 _MAX_REFERENCED_COMMIT_FILES = 3
 _MAX_REFERENCED_COMMIT_PATCH_CHARS = 4000
+
+
+def _external_cli_activity_reporter(
+    ctx: WorkflowContext,
+    activity_id: str,
+) -> Callable[[ExternalCLIActivity], None]:
+    """Marshal provider activity through the active interaction adapter."""
+
+    def report(activity: ExternalCLIActivity) -> None:
+        ctx.textual.app.call_from_thread(
+            ctx.textual.external_cli_activity,
+            activity_id,
+            activity,
+        )
+
+    return report
+
+
+def _external_cli_activity_kwargs(
+    adapter,
+    reporter: Callable[[ExternalCLIActivity], None],
+    is_cancelled: Optional[Callable[[], bool]] = None,
+) -> dict:
+    """Negotiate the optional activity extension with older adapters."""
+    try:
+        parameters = inspect.signature(adapter.execute).parameters
+    except (TypeError, ValueError):
+        return {}
+    kwargs = {"on_activity": reporter} if "on_activity" in parameters else {}
+    if is_cancelled is not None and "is_cancelled" in parameters:
+        kwargs["is_cancelled"] = is_cancelled
+    return kwargs
+
+
+def _external_cli_cancellation_check(ctx: WorkflowContext) -> Callable[[], bool]:
+    check = getattr(ctx.textual, "cancellation_requested", None)
+    return check if callable(check) else lambda: False
 
 
 def _preview_edges(text: str, limit: int) -> tuple[str, str]:
@@ -1543,7 +1582,16 @@ def ai_review_plan(ctx: WorkflowContext) -> WorkflowResult:
     )
     with ctx.textual.loading(f"Asking {cli_display} to plan the review…"):
         response = run_interruptible(
-            lambda: adapter.execute(prompt, cwd=project_root, timeout=240)
+            lambda: adapter.execute(
+                prompt,
+                cwd=project_root,
+                timeout=240,
+                **_external_cli_activity_kwargs(
+                    adapter,
+                    _external_cli_activity_reporter(ctx, "review-plan"),
+                    _external_cli_cancellation_check(ctx),
+                ),
+            )
         )
     _log_ai_response(
         step_name="ai_review_plan",
@@ -2096,6 +2144,8 @@ def _execute_findings_batch(
     effort: Optional[str],
     use_structured_output: bool,
     strategy_name: Optional[str],
+    on_activity: Optional[Callable[[ExternalCLIActivity], None]] = None,
+    is_cancelled: Optional[Callable[[], bool]] = None,
 ) -> dict:
     """Run one findings batch end-to-end: CLI call, parse, reformat retry.
 
@@ -2117,6 +2167,7 @@ def _execute_findings_batch(
             json_schema=findings_schema,
             disallowed_tools=disallowed_tools,
             effort=effort,
+            **_external_cli_activity_kwargs(adapter, on_activity, is_cancelled) if on_activity else {},
         )
     )
     adapter_duration_seconds = time.monotonic() - adapter_started_at
@@ -2396,6 +2447,11 @@ def ai_review_findings(ctx: WorkflowContext) -> WorkflowResult:
                 effort=entry_effort,
                 use_structured_output=use_structured_output,
                 strategy_name=str(strategy.strategy) if strategy else None,
+                on_activity=_external_cli_activity_reporter(
+                    ctx,
+                    f"review-findings:{entry_batch.batch_id}",
+                ),
+                is_cancelled=_external_cli_cancellation_check(ctx),
             )
         except Exception as exc:
             logger.error("findings_batch_crashed", batch_id=entry_batch.batch_id, error=str(exc))
@@ -2949,6 +3005,11 @@ def verify_findings(ctx: WorkflowContext) -> WorkflowResult:
                 json_schema=verification_json_schema() if use_structured_output else None,
                 disallowed_tools=disallowed_tools,
                 effort=effort,
+                **_external_cli_activity_kwargs(
+                    adapter,
+                    _external_cli_activity_reporter(ctx, "verify-findings"),
+                    _external_cli_cancellation_check(ctx),
+                ),
             )
         )
     adapter_duration_seconds = time.monotonic() - adapter_started_at
@@ -3819,7 +3880,19 @@ def ai_thread_resolution(ctx: WorkflowContext) -> WorkflowResult:
             f"Asking {cli_display} to analyse {batch_label} ({len(batch)} thread(s))…"
         ):
             response = run_interruptible(
-                lambda: adapter.execute(prompt, cwd=project_root, timeout=300)
+                lambda: adapter.execute(
+                    prompt,
+                    cwd=project_root,
+                    timeout=300,
+                    **_external_cli_activity_kwargs(
+                        adapter,
+                        _external_cli_activity_reporter(
+                            ctx,
+                            f"thread-resolution:{batch_index}",
+                        ),
+                        _external_cli_cancellation_check(ctx),
+                    ),
+                )
             )
         adapter_duration_seconds = time.monotonic() - adapter_started_at
         logger.info(

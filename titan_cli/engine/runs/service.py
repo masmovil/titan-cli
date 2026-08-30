@@ -61,6 +61,7 @@ class WorkflowRunService:
         self._config = config
         self._run_store = run_store or RunStore()
         self._run_event_stream = run_event_stream or RunEventStream(self._run_store)
+        self._event_lock = threading.RLock()
 
     def list_workflows(self, project_path: Optional[str] = None) -> list[WorkflowSummary]:
         """Return available workflows from the active registry."""
@@ -278,16 +279,17 @@ class WorkflowRunService:
         payload: dict[str, Any],
     ) -> EngineEvent:
         """Append, persist, and publish a run event."""
-        event = EngineEvent(
-            type=event_type,
-            run_id=session.run_id,
-            sequence=len(session.events) + 1,
-            payload=payload,
-        )
-        session.events.append(event)
-        self._run_store.save(session)
-        self._run_event_stream.publish(event)
-        return event
+        with self._event_lock:
+            event = EngineEvent(
+                type=event_type,
+                run_id=session.run_id,
+                sequence=len(session.events) + 1,
+                payload=payload,
+            )
+            session.events.append(event)
+            self._run_store.save(session)
+            self._run_event_stream.publish(event)
+            return event
 
     def _finish_run(
         self,

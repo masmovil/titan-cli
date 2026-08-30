@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Optional
 
 from titan_cli.engine.context import WorkflowContext
+from titan_cli.external_cli.adapters.base import ExternalCLIActivity
+from titan_cli.external_cli.adapters.base import ExternalCLIActivityPhase
 from titan_cli.engine.interaction.base import ItemReviewResponse
 from titan_cli.engine.interaction.headless import HeadlessInteractionPort
 from titan_cli.engine.runs.projection import normalize_step_status
@@ -117,6 +119,50 @@ class RunInteractionPort(HeadlessInteractionPort):
             variant=ContentBlockVariant.MUTED,
             metadata={"presentation": "ai_chip"},
         )
+
+    def external_cli_activity(
+        self,
+        activity_id: str,
+        activity: ExternalCLIActivity,
+    ) -> None:
+        """Mirror provider activity as one correlatable progress lifecycle."""
+        terminal_state = {
+            ExternalCLIActivityPhase.COMPLETED: "finished",
+            ExternalCLIActivityPhase.TIMED_OUT: "timed_out",
+            ExternalCLIActivityPhase.FAILED: "failed",
+            ExternalCLIActivityPhase.CANCELLED: "cancelled",
+        }
+        state = terminal_state.get(activity.phase, "running")
+        variant = {
+            "finished": ContentBlockVariant.SUCCESS,
+            "timed_out": ContentBlockVariant.WARNING,
+            "failed": ContentBlockVariant.ERROR,
+            "cancelled": ContentBlockVariant.WARNING,
+        }.get(state, ContentBlockVariant.DEFAULT)
+        metadata = {
+            "progress_id": f"external-cli:{activity_id}",
+            "state": state,
+            "indeterminate": state == "running",
+            "variant": variant.value,
+            "provider": activity.provider.value,
+            "phase": activity.phase.value,
+            "elapsed_seconds": round(activity.elapsed_seconds, 1),
+            "idle_seconds": round(activity.idle_seconds, 1),
+        }
+        if activity.activity_kind:
+            metadata["activity_kind"] = activity.activity_kind
+        metadata.update(activity.metadata or {})
+        self._emit_output_payload(
+            OutputPayload(
+                format=OutputFormat.PROGRESS,
+                title=f"{activity.provider.value.capitalize()} activity",
+                content=activity.message,
+                metadata=metadata,
+            )
+        )
+
+    def cancellation_requested(self) -> bool:
+        return bool(self._session.metadata.get("cancel_requested"))
 
     def panel(
         self,

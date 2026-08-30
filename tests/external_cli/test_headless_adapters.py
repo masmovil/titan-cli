@@ -3,6 +3,8 @@ Tests for external_cli.adapters — HeadlessCliAdapter implementations and regis
 """
 
 import json
+import io
+import inspect
 import os
 import subprocess
 import tempfile
@@ -15,6 +17,7 @@ from titan_cli.external_cli.adapters.antigravity import (
     AntigravityHeadlessAdapter,
 )
 from titan_cli.external_cli.adapters.base import (
+    ExternalCLIActivityPhase,
     HeadlessResponse,
     SupportedCLI,
     resolve_cli_executable,
@@ -31,6 +34,7 @@ from titan_cli.external_cli.adapters.registry import (
     HEADLESS_ADAPTER_REGISTRY,
     get_headless_adapter,
 )
+from titan_cli.core.interrupt import WorkflowAborted
 
 
 # ── SupportedCLI ─────────────────────────────────────────────────────────────
@@ -45,6 +49,16 @@ class TestSupportedCLI(unittest.TestCase):
 
     def test_is_str_compatible(self):
         self.assertIsInstance(SupportedCLI.CLAUDE, str)
+
+    def test_every_registered_adapter_supports_observability_and_cancellation(self):
+        required = {"on_activity", "is_cancelled"}
+        for cli_name, adapter_type in HEADLESS_ADAPTER_REGISTRY.items():
+            with self.subTest(cli=cli_name):
+                parameters = set(inspect.signature(adapter_type.execute).parameters)
+                self.assertTrue(
+                    required.issubset(parameters),
+                    f"{adapter_type.__name__}.execute must preserve {sorted(required)}",
+                )
 
 
 # ── HeadlessResponse ─────────────────────────────────────────────────────────
@@ -299,35 +313,104 @@ class TestCodexHeadlessAdapterStructuredOutput(unittest.TestCase):
     def test_supports_structured_output_is_false(self):
         self.assertFalse(self.adapter.supports_structured_output)
 
-    @patch("subprocess.run")
-    def test_execute_ignores_json_schema(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+    def _process(self, stdout="", stderr="", returncode=0):
+        process = MagicMock()
+        process.stdout = io.StringIO(stdout)
+        process.stderr = io.StringIO(stderr)
+        process.returncode = returncode
+        process.poll.return_value = returncode
+        process.wait.return_value = returncode
+        return process
+
+    @patch("titan_cli.external_cli.adapters.codex.subprocess.Popen")
+    def test_execute_ignores_json_schema(self, mock_popen):
+        mock_popen.return_value = self._process()
         self.adapter.execute("prompt", json_schema={"type": "object"})
 
-        called_cmd = mock_run.call_args.args[0]
+        called_cmd = mock_popen.call_args.args[0]
         self.assertNotIn("--json-schema", called_cmd)
 
     def test_supports_tool_restriction_is_false(self):
         self.assertFalse(self.adapter.supports_tool_restriction)
 
-    @patch("subprocess.run")
-    def test_execute_ignores_disallowed_tools(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+    @patch("titan_cli.external_cli.adapters.codex.subprocess.Popen")
+    def test_execute_ignores_disallowed_tools(self, mock_popen):
+        mock_popen.return_value = self._process()
         self.adapter.execute("prompt", disallowed_tools=["Bash", "Agent"])
 
-        called_cmd = mock_run.call_args.args[0]
+        called_cmd = mock_popen.call_args.args[0]
         self.assertNotIn("--disallowedTools", called_cmd)
 
     def test_supports_effort_control_is_false(self):
         self.assertFalse(self.adapter.supports_effort_control)
 
-    @patch("subprocess.run")
-    def test_execute_ignores_effort(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+    @patch("titan_cli.external_cli.adapters.codex.subprocess.Popen")
+    def test_execute_ignores_effort(self, mock_popen):
+        mock_popen.return_value = self._process()
         self.adapter.execute("prompt", effort="medium")
 
-        called_cmd = mock_run.call_args.args[0]
+        called_cmd = mock_popen.call_args.args[0]
         self.assertNotIn("--effort", called_cmd)
+
+    @patch("titan_cli.external_cli.adapters.codex.subprocess.Popen")
+    def test_execute_streams_safe_activity_and_extracts_answer(self, mock_popen):
+        jsonl = "\n".join([
+            json.dumps({"type": "thread.started", "thread_id": "secret-thread"}),
+            json.dumps({"type": "turn.started"}),
+            json.dumps({
+                "type": "item.completed",
+                "item": {"type": "command_execution", "command": "cat private.env"},
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {"type": "agent_message", "text": "final answer"},
+            }),
+            json.dumps({"type": "turn.completed", "usage": {"input_tokens": 10}}),
+        ]) + "\n"
+        mock_popen.return_value = self._process(stdout=jsonl)
+        activities = []
+
+        response = self.adapter.execute("prompt", on_activity=activities.append)
+
+        self.assertEqual(response.stdout, "final answer")
+        self.assertTrue(response.succeeded)
+        self.assertEqual(activities[0].phase, ExternalCLIActivityPhase.STARTED)
+        self.assertEqual(activities[-1].phase, ExternalCLIActivityPhase.COMPLETED)
+        self.assertTrue(any(item.activity_kind == "command_execution" for item in activities))
+        self.assertNotIn("cat private.env", " ".join(item.message for item in activities))
+
+    @patch("titan_cli.external_cli.adapters.codex.subprocess.Popen")
+    def test_execute_terminates_subprocess_when_run_is_cancelled(self, mock_popen):
+        process = self._process()
+        process.poll.return_value = None
+        mock_popen.return_value = process
+        activities = []
+
+        with self.assertRaises(WorkflowAborted):
+            self.adapter.execute(
+                "prompt",
+                on_activity=activities.append,
+                is_cancelled=lambda: True,
+            )
+
+        process.terminate.assert_called_once()
+        self.assertEqual(activities[-1].phase, ExternalCLIActivityPhase.CANCELLED)
+
+    @patch("titan_cli.external_cli.adapters.codex.subprocess.Popen")
+    def test_activity_callback_failure_does_not_fail_provider_call(self, mock_popen):
+        jsonl = json.dumps({
+            "type": "item.completed",
+            "item": {"type": "agent_message", "text": "answer"},
+        }) + "\n"
+        mock_popen.return_value = self._process(stdout=jsonl)
+
+        response = self.adapter.execute(
+            "prompt",
+            on_activity=lambda _activity: (_ for _ in ()).throw(RuntimeError("UI gone")),
+        )
+
+        self.assertTrue(response.succeeded)
+        self.assertEqual(response.stdout, "answer")
 
 
 # ── GeminiHeadlessAdapter ─────────────────────────────────────────────────────

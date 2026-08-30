@@ -9,11 +9,15 @@ from titan_cli.engine.runs.status import RunSessionStatus
 from titan_cli.engine.runs.service import WorkflowRunService
 from titan_cli.core.workflows.workflow_sources import WorkflowInfo
 from titan_cli.engine.results import Error, Success
+from titan_cli.external_cli.adapters import ExternalCLIActivity
+from titan_cli.external_cli.adapters import ExternalCLIActivityPhase
+from titan_cli.external_cli.adapters.base import SupportedCLI
 from titan_cli.ports.protocol import ContentBlock
 from titan_cli.ports.protocol import ContentBlockType
 from titan_cli.ports.protocol import ItemReviewEditState
 from titan_cli.ports.protocol import ItemReviewItem
 from titan_cli.ports.protocol import ItemReviewState
+from titan_cli.ports.protocol import EventType
 
 
 def test_list_workflows_maps_registry_discovery():
@@ -65,6 +69,25 @@ def test_create_run_persists_explicit_ai_cli_selection():
     )
 
     assert session.metadata["ai_cli"] == "codex"
+
+
+def test_parallel_activity_callbacks_keep_event_sequences_unique_and_monotonic():
+    service = WorkflowRunService(config=MagicMock())
+    session = service.create_run(StartWorkflowRequest(workflow_name="demo"))
+    workers = [
+        threading.Thread(
+            target=service._append_event,
+            args=(session, EventType.OUTPUT_EMITTED, {"worker": index}),
+        )
+        for index in range(24)
+    ]
+
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    assert [event.sequence for event in session.events] == list(range(1, 25))
 
 
 @patch("titan_cli.engine.runs.service.create_broker_factory")
@@ -1058,6 +1081,65 @@ def test_loading_emits_progress_lifecycle_outputs(
     assert progress_outputs[0].metadata["state"] == "started"
     assert progress_outputs[1].metadata["state"] == "finished"
     assert progress_outputs[0].metadata["progress_id"] == progress_outputs[1].metadata["progress_id"]
+
+
+@patch("titan_cli.engine.runs.service.create_broker_factory")
+@patch("titan_cli.engine.runs.service.WorkflowExecutor")
+def test_external_cli_activity_emits_correlated_progress_updates(
+    mock_executor_cls,
+    mock_secret_manager_cls,
+):
+    config = MagicMock()
+    workflow = MagicMock(name="workflow")
+    config.workflows.discover.return_value = []
+    config.workflows.get_workflow.return_value = workflow
+    config.project_root = MagicMock()
+    config.registry.list_installed.return_value = []
+    config.config.ai = None
+    mock_secret_manager_cls.return_value = MagicMock()
+
+    def _execute(_workflow, ctx, params_override=None, start_step_index=0):
+        ctx.current_step = 1
+        ctx.current_step_id = "ai_plan"
+        ctx.current_step_name = "AI Review Plan"
+        for phase, message, elapsed in [
+            (ExternalCLIActivityPhase.STARTED, "Codex started", 0.0),
+            (ExternalCLIActivityPhase.HEARTBEAT, "Codex is still working", 10.0),
+            (ExternalCLIActivityPhase.COMPLETED, "Codex finished", 12.0),
+        ]:
+            ctx.interaction.external_cli_activity(
+                "review-plan",
+                ExternalCLIActivity(
+                    provider=SupportedCLI.CODEX,
+                    phase=phase,
+                    message=message,
+                    elapsed_seconds=elapsed,
+                    idle_seconds=elapsed,
+                ),
+            )
+        return Success("workflow ok")
+
+    mock_executor_cls.return_value.execute.side_effect = _execute
+    service = WorkflowRunService(config=config)
+    response = service.start_workflow(StartWorkflowRequest(workflow_name="demo"))
+    run = service.get_run(response.run_id)
+
+    assert run is not None
+    progress_outputs = [
+        event.payload["output"]
+        for event in run.events
+        if event.type == "output_emitted" and event.payload["output"].format == "progress"
+    ]
+    assert [output.metadata["state"] for output in progress_outputs] == [
+        "running",
+        "running",
+        "finished",
+    ]
+    assert {output.metadata["progress_id"] for output in progress_outputs} == {
+        "external-cli:review-plan"
+    }
+    assert progress_outputs[1].metadata["elapsed_seconds"] == 10.0
+    assert progress_outputs[1].metadata["provider"] == "codex"
 
 
 @patch("titan_cli.engine.runs.service.create_broker_factory")

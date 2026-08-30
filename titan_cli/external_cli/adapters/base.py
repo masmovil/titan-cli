@@ -12,7 +12,7 @@ import shutil
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from typing import Protocol, runtime_checkable
 
 
@@ -28,6 +28,39 @@ class SupportedCLI(StrEnum):
     CODEX = "codex"
     OPENCODE = "opencode"
     ANTIGRAVITY = "agy"
+
+
+class ExternalCLIActivityPhase(StrEnum):
+    """Portable lifecycle phases emitted while an external CLI is working."""
+
+    STARTED = "started"
+    ACTIVITY = "activity"
+    HEARTBEAT = "heartbeat"
+    COMPLETED = "completed"
+    TIMED_OUT = "timed_out"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalCLIActivity:
+    """Safe, provider-neutral activity suitable for headless clients.
+
+    ``message`` is deliberately a summary owned by the adapter. Raw model
+    reasoning, prompts, command arguments, and tool payloads must never be
+    forwarded through this contract.
+    """
+
+    provider: SupportedCLI
+    phase: ExternalCLIActivityPhase
+    message: str
+    elapsed_seconds: float
+    idle_seconds: float = 0
+    activity_kind: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+ExternalCLIActivityCallback = Callable[[ExternalCLIActivity], None]
 
 
 _QUOTA_PATTERNS = re.compile(
@@ -161,6 +194,8 @@ class HeadlessCliAdapter(Protocol):
         disallowed_tools: Optional[list[str]] = None,
         effort: Optional[str] = None,
         model: Optional[str] = None,
+        on_activity: Optional[ExternalCLIActivityCallback] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> HeadlessResponse:
         """
         Run the CLI with the given prompt in headless mode.
@@ -178,6 +213,8 @@ class HeadlessCliAdapter(Protocol):
                 adapters where `supports_effort_control` is False.
             model: Optional model identifier to run the CLI with (e.g. "claude-opus-4-8").
                 Ignored by adapters where `supports_model_selection` is False.
+            on_activity: Optional callback receiving safe lifecycle/activity summaries.
+            is_cancelled: Optional cooperative cancellation check for the active run.
 
         Returns:
             HeadlessResponse with stdout, stderr, and exit_code. When `json_schema` is

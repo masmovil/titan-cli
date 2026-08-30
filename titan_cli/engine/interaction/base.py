@@ -7,6 +7,8 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from titan_cli.external_cli.adapters.base import ExternalCLIActivity
+
 from titan_cli.ports.protocol import ContentBlock
 from titan_cli.ports.protocol import ContentBlockType
 from titan_cli.ports.protocol import ItemReviewDecision
@@ -69,6 +71,22 @@ class InteractionPort(ABC):
         interaction contract regardless of the active UI.
         """
         self.dim_text(text)
+
+    def external_cli_activity(
+        self,
+        activity_id: str,
+        activity: ExternalCLIActivity,
+    ) -> None:
+        """Receive replaceable activity from an unattended external CLI call.
+
+        Visual adapters may render this as one live status surface. The base
+        implementation intentionally stays silent so heartbeat updates do not
+        become an ever-growing transcript.
+        """
+
+    def cancellation_requested(self) -> bool:
+        """Whether the active workflow run requested cooperative cancellation."""
+        return False
 
     def bold_text(self, message: str) -> None:
         """Legacy-compatible alias for emphasized text output."""
