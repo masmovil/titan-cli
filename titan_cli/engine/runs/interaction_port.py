@@ -101,6 +101,55 @@ class RunInteractionPort(HeadlessInteractionPort):
             metadata={"presentation": "ai_chip"},
         )
 
+    def panel(
+        self,
+        text: str,
+        *,
+        panel_type: str = "info",
+        show_icon: bool = True,
+        use_markdown: bool = False,
+    ) -> None:
+        """Emit a panel as content with a semantic visual variant."""
+        variant = {
+            "success": ContentBlockVariant.SUCCESS,
+            "warning": ContentBlockVariant.WARNING,
+            "error": ContentBlockVariant.ERROR,
+        }.get(panel_type, ContentBlockVariant.DEFAULT)
+        if use_markdown:
+            self._emit_output_payload(
+                OutputPayload(
+                    format=OutputFormat.MARKDOWN,
+                    content=text,
+                    metadata={"variant": variant.value, "presentation": "panel", "show_icon": show_icon},
+                )
+            )
+            return
+        self._emit_text_output(
+            text,
+            variant=variant,
+            metadata={"presentation": "panel", "panel_type": panel_type, "show_icon": show_icon},
+        )
+
+    def table(
+        self,
+        headers: list[str],
+        rows: list[list[str]],
+        title: str = "",
+        **_: Any,
+    ) -> None:
+        """Emit table data instead of relying on Textual's widget renderer."""
+        self._emit_output_payload(
+            OutputPayload(
+                format=OutputFormat.TABLE,
+                title=title or None,
+                content="\n".join(" | ".join(str(cell) for cell in row) for row in rows),
+                metadata={"headers": list(headers), "rows": [list(row) for row in rows]},
+            )
+        )
+
+    def mount(self, widget: Any) -> None:
+        """Ignore toolkit-only widgets; portable steps must use semantic APIs."""
+
     def _emit_text_output(
         self,
         text: str,
@@ -387,6 +436,32 @@ class RunInteractionPort(HeadlessInteractionPort):
         response = self._request_interaction(interaction)
         return self._resolve_interaction_value(interaction, response)
 
+    def ask_multiselect(self, message: str, options: list[Any]) -> list[Any]:
+        """Expose legacy checkbox prompts as a portable multi-select interaction."""
+        semantic_options = [
+            InteractionOption(
+                id=str(index),
+                label=str(getattr(option, "label", getattr(option, "title", option))),
+                value=getattr(option, "value", option),
+                description=getattr(option, "description", None),
+                badges=["selected"] if getattr(option, "selected", False) else [],
+            )
+            for index, option in enumerate(options, start=1)
+        ]
+        interaction = self._build_interaction_request(
+            interaction_id="select-options",
+            interaction_type=InteractionType.OPTION_LIST,
+            message=message,
+            state={
+                "options": semantic_options,
+                "selection_mode": "multiple",
+                "allow_empty": True,
+            },
+        )
+        response = self._request_interaction(interaction)
+        value = self._resolve_interaction_value(interaction, response)
+        return list(value) if isinstance(value, list) else ([] if value is None else [value])
+
     def item_review(
         self,
         interaction_id: str,
@@ -463,6 +538,18 @@ class RunInteractionPort(HeadlessInteractionPort):
         if interaction.interaction_type == InteractionType.OPTION_LIST:
             selected_id = response.get("value")
             options = interaction.state.get("options") or []
+            if interaction.state.get("selection_mode") == "multiple":
+                selected_values = selected_id if isinstance(selected_id, list) else []
+                resolved: list[object] = []
+                for selected in selected_values:
+                    for option in options:
+                        if not isinstance(option, InteractionOption):
+                            continue
+                        option_value = option.value if option.value is not None else option.id
+                        if option.id == selected or str(option_value) == str(selected):
+                            resolved.append(option_value)
+                            break
+                return resolved
             for option in options:
                 if not isinstance(option, InteractionOption):
                     continue

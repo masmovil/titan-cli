@@ -86,6 +86,43 @@ class InteractionPort(ABC):
         """Render markdown-capable output in the current UI."""
         self.step_output(markdown_text)
 
+    def panel(
+        self,
+        text: str,
+        *,
+        panel_type: str = "info",
+        show_icon: bool = True,
+        use_markdown: bool = False,
+    ) -> None:
+        """Render a semantic panel without requiring a concrete UI toolkit."""
+        if use_markdown:
+            self.markdown(text)
+        else:
+            self.step_output(text)
+
+    def table(
+        self,
+        headers: list[str],
+        rows: list[list[str]],
+        title: str = "",
+        **_: Any,
+    ) -> None:
+        """Render a tabular result in a portable interaction adapter."""
+        if title:
+            self.step_output(title)
+        if headers:
+            self.step_output(" | ".join(headers))
+        for row in rows:
+            self.step_output(" | ".join(str(cell) for cell in row))
+
+    def mount(self, widget: Any) -> None:
+        """Compatibility hook for toolkit-only widgets.
+
+        Portable adapters cannot serialize arbitrary UI widgets. Workflow steps
+        should use semantic methods such as ``panel`` or ``table`` for content
+        that must be consumed by another UI.
+        """
+
     def display_diff(
         self,
         diff_text: str,
@@ -204,13 +241,7 @@ class InteractionPort(ABC):
         options already marked as selected. If the option shape is unknown, use
         its value when present and otherwise the option itself.
         """
-        selected: list[Any] = []
-        for option in options:
-            if getattr(option, "selected", False):
-                selected.append(getattr(option, "value", option))
-        if selected:
-            return selected
-        return [getattr(option, "value", option) for option in options]
+        raise NotImplementedError("ask_multiselect is not implemented for this interaction port")
 
     def show_diff_stat(
         self,

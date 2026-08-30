@@ -58,6 +58,10 @@ class TextualInteractionPort(InteractionPort):
     ) -> str:
         return self.legacy.ask_multiline(message, default=default or "")
 
+    def ask_multiselect(self, message: str, options: list[Any]) -> list[Any]:
+        """Keep legacy checkbox rendering for the Textual adapter."""
+        return self.legacy.ask_multiselect(message, options)
+
     def option_list(
         self,
         interaction_id: str,
