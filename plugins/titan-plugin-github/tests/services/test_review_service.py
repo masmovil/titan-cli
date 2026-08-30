@@ -316,6 +316,34 @@ def test_submit_review_pending_review_exists(review_service, mock_gh_network):
     assert result.log_level == "warning"
 
 
+def test_submit_pending_review_uses_typed_json_payload(review_service, mock_gh_network):
+    mock_gh_network.get_repo_string.return_value = "owner/repo"
+
+    result = review_service.submit_review(7, 42, "REQUEST_CHANGES", "Please fix these issues")
+
+    assert isinstance(result, ClientSuccess)
+    args = mock_gh_network.run_command.call_args.args[0]
+    stdin_input = mock_gh_network.run_command.call_args.kwargs["stdin_input"]
+    assert args == [
+        "api",
+        "/repos/owner/repo/pulls/7/reviews/42/events",
+        "--method", "POST",
+        "--input", "-",
+    ]
+    assert json.loads(stdin_input) == {
+        "event": "REQUEST_CHANGES",
+        "body": "Please fix these issues",
+    }
+
+
+def test_submit_review_rejects_invalid_event_before_network(review_service, mock_gh_network):
+    result = review_service.submit_review(7, 42, "Request Changes")
+
+    assert isinstance(result, ClientError)
+    assert result.error_code == "INVALID_REVIEW_EVENT"
+    mock_gh_network.run_command.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # get_pr_general_comments: issue comments + submitted review bodies
 # ---------------------------------------------------------------------------

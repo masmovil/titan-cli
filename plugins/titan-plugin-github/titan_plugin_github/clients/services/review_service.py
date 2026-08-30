@@ -307,8 +307,18 @@ class ReviewService:
         Returns:
             ClientResult[None]
         """
+        allowed_events = {"APPROVE", "REQUEST_CHANGES", "COMMENT"}
+        if event not in allowed_events:
+            return ClientError(
+                error_message=f"Invalid pull request review event: {event}",
+                error_code="INVALID_REVIEW_EVENT",
+            )
+
         try:
             repo = self.gh.get_repo_string()
+            payload = {"event": event}
+            if body:
+                payload["body"] = body
 
             # If no review_id, create review directly with event
             if review_id is None:
@@ -316,13 +326,9 @@ class ReviewService:
                     "api",
                     f"/repos/{repo}/pulls/{pr_number}/reviews",
                     "--method", "POST",
-                    "-f", f"event={event}",
+                    "--input", "-",
                 ]
-
-                if body:
-                    args.extend(["-f", f"body={body}"])
-
-                self.gh.run_command(args)
+                self.gh.run_command(args, stdin_input=json.dumps(payload))
                 return ClientSuccess(data=None, message=f"Review submitted with event {event}")
 
             # Otherwise, submit pending review with event
@@ -330,13 +336,9 @@ class ReviewService:
                 "api",
                 f"/repos/{repo}/pulls/{pr_number}/reviews/{review_id}/events",
                 "--method", "POST",
-                "-f", f"event={event}",
+                "--input", "-",
             ]
-
-            if body:
-                args.extend(["-f", f"body={body}"])
-
-            self.gh.run_command(args)
+            self.gh.run_command(args, stdin_input=json.dumps(payload))
 
             return ClientSuccess(data=None, message=f"Review #{review_id} submitted")
 
