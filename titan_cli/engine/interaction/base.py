@@ -358,3 +358,7 @@ class InteractionPort(ABC):
             message=message,
             options=semantic_options,
         )
+
+    def ask_choice(self, message: str, options: list[Any]) -> Any:
+        """Legacy-compatible single-choice API used by button-style prompts."""
+        return self.ask_option(message, options)

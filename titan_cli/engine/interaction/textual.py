@@ -62,6 +62,30 @@ class TextualInteractionPort(InteractionPort):
         """Keep legacy checkbox rendering for the Textual adapter."""
         return self.legacy.ask_multiselect(message, options)
 
+    def panel(
+        self,
+        text: str,
+        *,
+        panel_type: str = "info",
+        show_icon: bool = True,
+        use_markdown: bool = False,
+    ) -> None:
+        return self.legacy.panel(
+            text,
+            panel_type=panel_type,
+            show_icon=show_icon,
+            use_markdown=use_markdown,
+        )
+
+    def table(self, headers: list[str], rows: list[list[str]], title: str = "", **kwargs: Any) -> None:
+        return self.legacy.table(headers, rows, title=title, **kwargs)
+
+    def mount(self, widget: Any) -> None:
+        return self.legacy.mount(widget)
+
+    def ask_choice(self, message: str, options: list[Any]) -> Any:
+        return self.legacy.ask_choice(message, options)
+
     def option_list(
         self,
         interaction_id: str,
