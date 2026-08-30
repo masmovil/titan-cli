@@ -494,6 +494,18 @@ class WorkflowRunService:
                 },
             )
         except PromptRequestedError as prompt_exc:
+            cancel_reason = session.metadata.get("cancel_requested")
+            if cancel_reason:
+                session.pending_prompt = None
+                session.pending_interaction = None
+                session.status = RunSessionStatus.CANCELLED
+                session.result_message = str(cancel_reason)
+                self._finish_run(
+                    session,
+                    EventType.RUN_CANCELLED,
+                    {"message": str(cancel_reason)},
+                )
+                return
             session.status = RunSessionStatus.WAITING_FOR_PROMPT
             session.pending_prompt = prompt_exc.prompt
             session.pending_interaction = None
@@ -505,6 +517,18 @@ class WorkflowRunService:
                 session.metadata["resume_step_name"] = ctx.current_step_name
             self._run_store.save(session)
         except InteractionRequestedError as interaction_exc:
+            cancel_reason = session.metadata.get("cancel_requested")
+            if cancel_reason:
+                session.pending_prompt = None
+                session.pending_interaction = None
+                session.status = RunSessionStatus.CANCELLED
+                session.result_message = str(cancel_reason)
+                self._finish_run(
+                    session,
+                    EventType.RUN_CANCELLED,
+                    {"message": str(cancel_reason)},
+                )
+                return
             session.status = RunSessionStatus.WAITING_FOR_INTERACTION
             session.pending_interaction = interaction_exc.interaction
             session.pending_prompt = None

@@ -845,9 +845,14 @@ def test_headless_runs_start_streams_next_interaction_after_resume(monkeypatch):
         def workflow_run_service(self):
             return self._service
 
-    command_iter = iter(
-        [
-            EngineCommand(
+    container = StubContainer()
+    command_count = 0
+
+    def _next_command(_run_id):
+        nonlocal command_count
+        command_count += 1
+        if command_count == 1:
+            return EngineCommand(
                 type=CommandType.SUBMIT_INTERACTION_RESPONSE,
                 run_id="run-1",
                 payload={
@@ -855,19 +860,24 @@ def test_headless_runs_start_streams_next_interaction_after_resume(monkeypatch):
                     "response_type": "select",
                     "value": "223",
                 },
-            ),
-            EngineCommand(
-                type=CommandType.CANCEL_RUN,
-                run_id="run-1",
-                payload={"reason": "stop"},
-            ),
-        ]
-    )
+            )
+        if command_count > 2:
+            raise StopIteration
+        while (
+            container._service.session.pending_interaction is None
+            or container._service.session.pending_interaction.interaction_id != "select_cli:select-cli"
+        ):
+            time.sleep(0.005)
+        return EngineCommand(
+            type=CommandType.CANCEL_RUN,
+            run_id="run-1",
+            payload={"reason": "stop"},
+        )
     emitted = []
 
     monkeypatch.setattr(
         "titan_cli.commands.headless.runs._read_engine_command",
-        lambda _run_id: next(command_iter),
+        _next_command,
     )
     monkeypatch.setattr(
         "titan_cli.commands.headless.runs.typer.echo",
@@ -875,7 +885,7 @@ def test_headless_runs_start_streams_next_interaction_after_resume(monkeypatch):
     )
 
     _run_event_stream_mode(
-        StubContainer(),
+        container,
         StartWorkflowRequest(workflow_name="demo"),
     )
 

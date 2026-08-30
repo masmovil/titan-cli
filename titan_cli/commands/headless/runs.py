@@ -3,7 +3,8 @@
 import json
 import sys
 import threading
-from queue import Empty
+from collections import deque
+from queue import Empty, Queue
 from typing import Any, Optional
 
 import typer
@@ -211,6 +212,25 @@ def _run_event_stream_mode(container: TitanRuntimeContainer, request: StartWorkf
             _emit_event(event)
 
     event_queue = service.subscribe_events(session.run_id)
+    command_queue: Queue[EngineCommand | BaseException] = Queue()
+
+    def _read_commands() -> None:
+        """Continuously receive inbound commands for the lifetime of the run."""
+        while True:
+            try:
+                command_queue.put(_read_engine_command(session.run_id))
+            except BaseException as exc:
+                command_queue.put(exc)
+                return
+
+    command_reader = threading.Thread(
+        target=_read_commands,
+        name=f"titan-headless-stdin-{session.run_id}",
+        daemon=True,
+    )
+    command_reader.start()
+    pending_commands: deque[EngineCommand] = deque()
+    stdin_error: Optional[BaseException] = None
 
     run_worker = threading.Thread(
         target=lambda: service.execute_run(session, request),
@@ -238,9 +258,57 @@ def _run_event_stream_mode(container: TitanRuntimeContainer, request: StartWorkf
             _emit_event(event)
             timeout_seconds = 0
 
+    def _receive_commands() -> None:
+        nonlocal stdin_error
+        while True:
+            try:
+                item = command_queue.get_nowait()
+            except Empty:
+                return
+            if isinstance(item, BaseException):
+                stdin_error = item
+                return
+            pending_commands.append(item)
+
+    def _take_next_command(run_state) -> Optional[EngineCommand]:
+        """Take one ordered command when the current run state accepts it."""
+        if not pending_commands:
+            return None
+        command = pending_commands[0]
+
+        if command.type == CommandType.CANCEL_RUN:
+            pending_commands.popleft()
+            _log_inbound_command(command)
+            return command
+
+        if (
+            command.type == CommandType.SUBMIT_PROMPT_RESPONSE
+            and run_state.status == RunSessionStatus.WAITING_FOR_PROMPT
+        ):
+            pending_commands.popleft()
+            _log_inbound_command(command)
+            return command
+
+        if (
+            command.type == CommandType.SUBMIT_INTERACTION_RESPONSE
+            and run_state.status == RunSessionStatus.WAITING_FOR_INTERACTION
+        ):
+            pending_commands.popleft()
+            _log_inbound_command(command)
+            return command
+
+        return None
+
     try:
         while True:
+            _receive_commands()
             if resume_worker is not None and resume_worker.is_alive():
+                run_state = service.get_run(session.run_id)
+                if run_state is not None and pending_commands and pending_commands[0].type == CommandType.CANCEL_RUN:
+                    command = _take_next_command(run_state)
+                    if command is not None:
+                        reason = str(command.payload.get("reason") or "Run cancelled by user")
+                        service.cancel_run(command.run_id, reason=reason)
                 _emit_live_events(timeout_seconds=0.1)
                 continue
 
@@ -271,6 +339,13 @@ def _run_event_stream_mode(container: TitanRuntimeContainer, request: StartWorkf
                 )
                 return
 
+            if pending_commands and pending_commands[0].type == CommandType.CANCEL_RUN:
+                command = _take_next_command(run_state)
+                if command is not None:
+                    reason = str(command.payload.get("reason") or "Run cancelled by user")
+                    service.cancel_run(command.run_id, reason=reason)
+                continue
+
             if resume_worker is not None and not resume_worker.is_alive():
                 resume_worker.join(timeout=0)
                 resume_worker = None
@@ -288,12 +363,25 @@ def _run_event_stream_mode(container: TitanRuntimeContainer, request: StartWorkf
                     interaction_id=(run_state.pending_interaction.interaction_id if run_state.pending_interaction else None),
                     interaction_type=(run_state.pending_interaction.interaction_type if run_state.pending_interaction else None),
                 )
-                command = _read_engine_command(run_state.run_id)
-                _log_inbound_command(command)
+                command = _take_next_command(run_state)
+                if command is None:
+                    if stdin_error is not None:
+                        _log_protocol_error(
+                            "headless_protocol_stdin_unavailable",
+                            run_id=run_state.run_id,
+                            error_type=type(stdin_error).__name__,
+                            error=str(stdin_error),
+                        )
+                        service.cancel_run(
+                            run_state.run_id,
+                            reason="Headless client disconnected while input was required",
+                        )
+                    continue
+
                 if command.type == CommandType.SUBMIT_PROMPT_RESPONSE:
                     prompt_id = str(command.payload.get("prompt_id") or "")
                     resume_worker = _start_resume_worker(
-                        lambda: service.submit_prompt_response(
+                        lambda command=command, prompt_id=prompt_id: service.submit_prompt_response(
                             SubmitPromptResponseRequest(
                                 run_id=command.run_id,
                                 prompt_id=prompt_id,
@@ -308,7 +396,7 @@ def _run_event_stream_mode(container: TitanRuntimeContainer, request: StartWorkf
                     interaction_id = str(command.payload.get("interaction_id") or "")
                     response_type = str(command.payload.get("response_type") or "")
                     resume_worker = _start_resume_worker(
-                        lambda: service.submit_interaction_response(
+                        lambda command=command, interaction_id=interaction_id, response_type=response_type: service.submit_interaction_response(
                             SubmitInteractionResponseRequest(
                                 run_id=command.run_id,
                                 interaction_id=interaction_id,
@@ -318,11 +406,6 @@ def _run_event_stream_mode(container: TitanRuntimeContainer, request: StartWorkf
                         ),
                         "headless_event_stream_interaction_resume_started",
                     )
-                    continue
-
-                if command.type == CommandType.CANCEL_RUN:
-                    reason = str(command.payload.get("reason") or "Run cancelled by user")
-                    service.cancel_run(command.run_id, reason=reason)
                     continue
     finally:
         service.unsubscribe_events(session.run_id, event_queue)
