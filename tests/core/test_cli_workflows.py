@@ -1038,6 +1038,38 @@ def test_headless_ai_list_outputs_connections(monkeypatch):
     }
 
 
+def test_headless_ai_execution_outputs_persisted_routing(monkeypatch):
+    class StubTitanConfig:
+        def get_ai_connections_config(self):
+            return {"default_cli": "codex", "connections": {}}
+
+        def get_ai_preferences_config(self):
+            return {
+                "tasks": {"code_review_findings": {"provider": "cli_headless"}}
+            }
+
+    monkeypatch.setattr("titan_cli.cli._ai_config", lambda: StubTitanConfig())
+    monkeypatch.setattr(
+        "titan_cli.core.services.ai_execution_configuration_service.resolve_cli_executable",
+        lambda _: None,
+    )
+
+    result = CliRunner().invoke(app, ["headless", "ai", "execution", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["default_cli"] == "codex"
+    assert payload["task_preferences"] == [
+        {"task_id": "code_review_findings", "provider": "cli_headless"}
+    ]
+    assert {item["id"] for item in payload["clis"]} >= {
+        "claude",
+        "gemini",
+        "codex",
+        "opencode",
+    }
+
+
 def test_headless_ai_upsert_saves_connection_and_secret(monkeypatch):
     saved_connection = None
     saved_secret = None

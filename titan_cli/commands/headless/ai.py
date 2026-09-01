@@ -141,4 +141,84 @@ def build_app(container: TitanRuntimeContainer) -> typer.Typer:
         except Exception as exc:
             fail_headless_command(exc, as_json=output_json)
 
+    @app.command("execution")
+    def get_ai_execution_configuration(
+        output_json: bool = typer.Option(
+            False,
+            "--json",
+            help="Print a machine-readable JSON response.",
+        ),
+    ):
+        """Read the persisted CLI default and per-task provider routing."""
+        try:
+            payload = run_headless_operation(
+                lambda: container.ai_execution_configuration_service().get_configuration()
+            )
+            output_presenter(output_json).write(payload)
+        except Exception as exc:
+            fail_headless_command(exc, as_json=output_json)
+
+    @app.command("set-default-cli")
+    def set_default_ai_cli(
+        cli_id: str = typer.Argument(..., help="Registered AI CLI ID."),
+        output_json: bool = typer.Option(False, "--json"),
+    ):
+        """Persist the CLI used by all CLI-routed tasks."""
+        try:
+            payload = run_headless_operation(
+                lambda: container.ai_execution_configuration_service().set_default_cli(
+                    cli_id
+                )
+            )
+            output_presenter(output_json).write(payload)
+        except Exception as exc:
+            fail_headless_command(exc, as_json=output_json)
+
+    @app.command("clear-default-cli")
+    def clear_default_ai_cli(
+        output_json: bool = typer.Option(False, "--json"),
+    ):
+        """Remove the persisted default CLI."""
+        try:
+            payload = run_headless_operation(
+                lambda: container.ai_execution_configuration_service().clear_default_cli()
+            )
+            output_presenter(output_json).write(payload)
+        except Exception as exc:
+            fail_headless_command(exc, as_json=output_json)
+
+    @app.command("set-task-provider")
+    def set_ai_task_provider(
+        task_id: str = typer.Argument(..., help="Stable AI task ID."),
+        provider: str = typer.Argument(..., help="AI provider type."),
+        output_json: bool = typer.Option(False, "--json"),
+    ):
+        """Persist the provider kind used by one AI task."""
+        try:
+            payload = run_headless_operation(
+                lambda: container.ai_execution_configuration_service().set_task_provider(
+                    task_id,
+                    provider,
+                )
+            )
+            output_presenter(output_json).write(payload)
+        except Exception as exc:
+            fail_headless_command(exc, as_json=output_json)
+
+    @app.command("clear-task-provider")
+    def clear_ai_task_provider(
+        task_id: str = typer.Argument(..., help="Stable AI task ID."),
+        output_json: bool = typer.Option(False, "--json"),
+    ):
+        """Restore one AI task to its workflow policy default."""
+        try:
+            payload = run_headless_operation(
+                lambda: container.ai_execution_configuration_service().clear_task_provider(
+                    task_id
+                )
+            )
+            output_presenter(output_json).write(payload)
+        except Exception as exc:
+            fail_headless_command(exc, as_json=output_json)
+
     return app

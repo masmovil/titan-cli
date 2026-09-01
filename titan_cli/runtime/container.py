@@ -1,6 +1,9 @@
 """Dependency composition for Titan command entrypoints."""
 
 from titan_cli.core.services.ai_connection_service import AIConnectionService
+from titan_cli.core.services.ai_execution_configuration_service import (
+    AIExecutionConfigurationService,
+)
 from titan_cli.core.services.plugin_service import PluginService
 from titan_cli.core.services.project_inspection_service import (
     ProjectInspectionService,
@@ -31,6 +34,10 @@ class TitanRuntimeContainer:
     def ai_connection_service(self) -> AIConnectionService:
         """Return the AI connection application service."""
         return AIConnectionService(config=self.ai_config())
+
+    def ai_execution_configuration_service(self) -> AIExecutionConfigurationService:
+        """Return persisted AI execution configuration management."""
+        return AIExecutionConfigurationService(config=self.ai_config())
 
     def plugin_service(self) -> PluginService:
         """Return the plugin management application service."""
