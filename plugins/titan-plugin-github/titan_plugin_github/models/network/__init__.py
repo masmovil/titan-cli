@@ -24,6 +24,7 @@ from .graphql import (
     GraphQLPullRequestReviewComment,
     GraphQLPullRequestReviewThread,
     GraphQLIssueComment,
+    GraphQLPullRequestMergeQueueState,
 )
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     "GraphQLPullRequestReviewComment",
     "GraphQLPullRequestReviewThread",
     "GraphQLIssueComment",
+    "GraphQLPullRequestMergeQueueState",
 ]

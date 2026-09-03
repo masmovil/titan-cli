@@ -11,12 +11,20 @@ from typing import List, Optional
 
 from titan_cli.core.result import ClientResult, ClientSuccess, ClientError
 from titan_cli.core.logging import log_client_operation
+from titan_cli.core.logging.config import get_logger
 
-from ..network import GHNetwork
+from ..network import GHNetwork, GraphQLNetwork, graphql_queries
 from ...models.network.rest import NetworkPullRequest, NetworkPRMergeResult, NetworkPRFile, NetworkPRCreated
+from ...models.network.graphql import GraphQLPullRequestMergeQueueState
 from ...models.review_models import ReferencedCommitContext
-from ...models.view import UIPullRequest, UIPRMergeResult, UIFileChange, UIPRCreated
-from ...models.mappers import from_rest_pr, from_network_pr_merge_result, from_network_pr_file, from_network_pr_created
+from ...models.view import UIPullRequest, UIPRMergeResult, UIMergeQueueState, UIFileChange, UIPRCreated
+from ...models.mappers import (
+    from_rest_pr,
+    from_network_pr_merge_result,
+    from_graphql_merge_queue_state,
+    from_network_pr_file,
+    from_network_pr_created,
+)
 from ...exceptions import GitHubAPIError
 from ...messages import msg
 
@@ -29,14 +37,19 @@ class PRService:
     Returns view models ready for UI rendering.
     """
 
-    def __init__(self, gh_network: GHNetwork):
+    def __init__(self, gh_network: GHNetwork, graphql_network: Optional[GraphQLNetwork] = None):
         """
         Initialize PR service.
 
         Args:
             gh_network: GHNetwork instance for REST operations
+            graphql_network: GraphQLNetwork instance, required only for the merge
+                queue fields the gh CLI does not expose. Without it, merge queue
+                lookups fail and merges behave as if no queue existed.
         """
         self.gh = gh_network
+        self.graphql = graphql_network
+        self._logger = get_logger(__name__)
 
     @log_client_operation()
     def get_pull_request(self, pr_number: int) -> ClientResult[UIPullRequest]:
@@ -557,15 +570,25 @@ class PRService:
         merge_method: str = "squash",
         commit_title: Optional[str] = None,
         commit_message: Optional[str] = None,
+        merge_queue_enabled: Optional[bool] = None,
     ) -> ClientResult[UIPRMergeResult]:
         """
-        Merge a pull request.
+        Merge a pull request, or add it to the base branch's merge queue.
+
+        When the base branch requires a merge queue, GitHub decides the merge
+        strategy and merges later: `gh pr merge` is run without a strategy flag and
+        the result is reported as queued (`queued=True`, `merged=False`), never as a
+        merge. Otherwise the requested merge method is used and the PR is merged now.
 
         Args:
             pr_number: PR number
-            merge_method: Merge method (squash, merge, rebase)
-            commit_title: Optional commit title
-            commit_message: Optional commit message
+            merge_method: Merge method (squash, merge, rebase). Ignored when the base
+                branch requires a merge queue.
+            commit_title: Optional commit title. Ignored for a queued merge.
+            commit_message: Optional commit message. Ignored for a queued merge.
+            merge_queue_enabled: Known merge queue state, to avoid a second lookup.
+                When None, it is detected here; a failed detection falls back to a
+                regular merge.
 
         Returns:
             ClientResult[UIPRMergeResult]
@@ -582,6 +605,12 @@ class PRService:
                 )
                 ui_result = from_network_pr_merge_result(network_result)
                 return ClientSuccess(data=ui_result, message="Invalid merge method")
+
+            if merge_queue_enabled is None:
+                merge_queue_enabled = self._detect_merge_queue_enabled(pr_number)
+
+            if merge_queue_enabled:
+                return self._enqueue_pr(pr_number)
 
             # Build command
             args = ["pr", "merge", str(pr_number), f"--{merge_method}"]
@@ -616,6 +645,122 @@ class PRService:
             network_result = NetworkPRMergeResult(merged=False, message=str(e))
             ui_result = from_network_pr_merge_result(network_result)
             return ClientSuccess(data=ui_result, message="Merge failed")
+
+    def _detect_merge_queue_enabled(self, pr_number: int) -> bool:
+        """
+        Check whether the PR's base branch requires a merge queue.
+
+        A failed detection is not an error: it returns False so the caller merges the
+        way it always did instead of blocking on a lookup.
+
+        Args:
+            pr_number: PR number
+
+        Returns:
+            True when the base branch requires a merge queue
+        """
+        match self.get_merge_queue_state(pr_number):
+            case ClientSuccess(data=queue_state):
+                return queue_state.is_merge_queue_enabled
+            case ClientError(error_message=err):
+                self._logger.warning(
+                    "Merge queue detection failed for PR #%s, assuming no merge queue: %s",
+                    pr_number,
+                    err,
+                )
+                return False
+
+    def _enqueue_pr(self, pr_number: int) -> ClientResult[UIPRMergeResult]:
+        """
+        Add a pull request to its base branch's merge queue.
+
+        No strategy flag is passed: with a merge queue the strategy belongs to the
+        queue configuration, and gh warns and ignores it when given one.
+
+        Args:
+            pr_number: PR number
+
+        Returns:
+            ClientResult[UIPRMergeResult] with queued=True on success
+        """
+        args = ["pr", "merge", str(pr_number)] + self.gh.get_repo_arg()
+
+        try:
+            self.gh.run_command(args)
+        except GitHubAPIError as e:
+            network_result = NetworkPRMergeResult(merged=False, message=str(e))
+            ui_result = from_network_pr_merge_result(network_result)
+            return ClientSuccess(data=ui_result, message="Merge queue request failed")
+
+        # Read back the position, when GitHub already has an entry for the PR
+        queue_position = None
+        match self.get_merge_queue_state(pr_number):
+            case ClientSuccess(data=queue_state):
+                queue_position = queue_state.queue_position
+            case ClientError():
+                pass
+
+        network_result = NetworkPRMergeResult(
+            merged=False,
+            queued=True,
+            queue_position=queue_position,
+            message=f"PR #{pr_number} added to the merge queue",
+        )
+        ui_result = from_network_pr_merge_result(network_result)
+        return ClientSuccess(data=ui_result, message=f"PR #{pr_number} added to the merge queue")
+
+    @log_client_operation()
+    def get_merge_queue_state(self, pr_number: int) -> ClientResult[UIMergeQueueState]:
+        """
+        Get the merge queue state of a pull request.
+
+        The gh CLI does not expose these fields through `pr view --json`, so this
+        goes through GraphQL.
+
+        Args:
+            pr_number: PR number
+
+        Returns:
+            ClientResult[UIMergeQueueState]
+        """
+        if not self.graphql:
+            return ClientError(
+                error_message="GraphQL network is not available for merge queue lookups",
+                error_code="GRAPHQL_UNAVAILABLE",
+                log_level="warning",
+            )
+
+        try:
+            owner, repo = self.gh.get_repo_string().split('/')
+
+            response = self.graphql.run_query(
+                graphql_queries.GET_PR_MERGE_QUEUE_STATE,
+                {"owner": owner, "repo": repo, "prNumber": pr_number},
+            )
+
+            pr_data = (
+                response.get("data", {})
+                .get("repository", {})
+                .get("pullRequest")
+            )
+
+            if not pr_data:
+                return ClientError(
+                    error_message=msg.GitHub.PR_NOT_FOUND.format(pr_number=pr_number),
+                    error_code="PR_NOT_FOUND",
+                    log_level="warning",
+                )
+
+            graphql_state = GraphQLPullRequestMergeQueueState.from_graphql(pr_data)
+            ui_state = from_graphql_merge_queue_state(graphql_state)
+
+            return ClientSuccess(
+                data=ui_state,
+                message=f"PR #{pr_number} merge queue state retrieved",
+            )
+
+        except GitHubAPIError as e:
+            return ClientError(error_message=str(e), error_code="API_ERROR")
 
     @log_client_operation()
     def add_comment(self, pr_number: int, body: str) -> ClientResult[None]:

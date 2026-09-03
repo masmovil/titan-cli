@@ -2,11 +2,13 @@ from unittest.mock import Mock
 
 from titan_cli.core.result import ClientError, ClientSuccess
 from titan_cli.engine import Error, Success, WorkflowContext
-from titan_plugin_github.models.view import UIPRMergeResult
+from titan_plugin_github.models.view import UIMergeQueueState, UIPRMergeResult
 from titan_plugin_github.steps.pull_request_steps import (
     get_pull_request_step,
+    check_merge_queue_step,
     merge_pull_request_step,
     verify_pull_request_state_step,
+    verify_merge_outcome_step,
 )
 from titan_plugin_github.steps.create_pr_step import create_pr_step
 
@@ -87,12 +89,17 @@ def test_merge_pull_request_step_success():
     result = merge_pull_request_step(ctx)
 
     assert isinstance(result, Success)
-    assert result.metadata == {"merge_result": merge_result}
+    assert result.metadata == {
+        "merge_result": merge_result,
+        "merge_queued": False,
+        "expected_pr_state": "MERGED",
+    }
     github.merge_pr.assert_called_once_with(
         123,
         merge_method="squash",
         commit_title=None,
         commit_message=None,
+        merge_queue_enabled=None,
     )
     ctx.textual.end_step.assert_called_once_with("success")
 
@@ -112,6 +119,165 @@ def test_merge_pull_request_step_treats_unsuccessful_merge_as_error():
 
     assert isinstance(result, Error)
     assert result.message == "Failed to merge PR #123: Merge failed"
+    ctx.textual.end_step.assert_called_once_with("error")
+
+
+def make_queue_state(
+    *,
+    enabled=True,
+    in_queue=True,
+    pr_state="OPEN",
+    position=None,
+    entry_state=None,
+    summary="In merge queue",
+):
+    return UIMergeQueueState(
+        pr_number=123,
+        pr_state=pr_state,
+        is_merge_queue_enabled=enabled,
+        is_in_merge_queue=in_queue,
+        queue_position=position,
+        queue_entry_state=entry_state,
+        summary=summary,
+    )
+
+
+def test_check_merge_queue_step_reports_enabled_queue():
+    github = Mock()
+    queue_state = make_queue_state(in_queue=False, summary="Merge queue required")
+    github.get_merge_queue_state.return_value = ClientSuccess(data=queue_state, message="ok")
+    ctx = make_context(github, pr_number=123)
+
+    result = check_merge_queue_step(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata == {
+        "merge_queue_enabled": True,
+        "merge_queue_state": queue_state,
+    }
+    github.get_merge_queue_state.assert_called_once_with(123)
+    ctx.textual.end_step.assert_called_once_with("success")
+
+
+def test_check_merge_queue_step_reports_no_queue():
+    github = Mock()
+    queue_state = make_queue_state(enabled=False, in_queue=False, summary="No merge queue")
+    github.get_merge_queue_state.return_value = ClientSuccess(data=queue_state, message="ok")
+    ctx = make_context(github, pr_number=123)
+
+    result = check_merge_queue_step(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata["merge_queue_enabled"] is False
+
+
+def test_check_merge_queue_step_does_not_block_on_lookup_failure():
+    github = Mock()
+    github.get_merge_queue_state.return_value = ClientError(error_message="graphql down")
+    ctx = make_context(github, pr_number=123)
+
+    result = check_merge_queue_step(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata == {"merge_queue_enabled": False}
+    ctx.textual.end_step.assert_called_once_with("success")
+
+
+def test_merge_pull_request_step_reports_queued_pr():
+    github = Mock()
+    merge_result = UIPRMergeResult(
+        merged=False,
+        status_icon="⏳",
+        sha_short="",
+        message="PR #123 added to the merge queue",
+        queued=True,
+        queue_position=2,
+    )
+    github.merge_pr.return_value = ClientSuccess(data=merge_result, message="queued")
+    ctx = make_context(github, pr_number=123, merge_method="squash", merge_queue_enabled=True)
+
+    result = merge_pull_request_step(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata == {
+        "merge_result": merge_result,
+        "merge_queued": True,
+        "expected_pr_state": "OPEN",
+    }
+    github.merge_pr.assert_called_once_with(
+        123,
+        merge_method="squash",
+        commit_title=None,
+        commit_message=None,
+        merge_queue_enabled=True,
+    )
+    ctx.textual.end_step.assert_called_once_with("success")
+
+
+def test_verify_merge_outcome_step_verifies_regular_merge(sample_ui_pr):
+    github = Mock()
+    merged_pr = sample_ui_pr
+    merged_pr.state = "MERGED"
+    github.get_pull_request.return_value = ClientSuccess(data=merged_pr, message="ok")
+    ctx = make_context(github, pr_number=123)
+
+    result = verify_merge_outcome_step(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata == {"verified_pr_info": merged_pr}
+    github.get_merge_queue_state.assert_not_called()
+    ctx.textual.end_step.assert_called_once_with("success")
+
+
+def test_verify_merge_outcome_step_errors_when_regular_merge_did_not_happen(sample_ui_pr):
+    github = Mock()
+    sample_ui_pr.state = "OPEN"
+    github.get_pull_request.return_value = ClientSuccess(data=sample_ui_pr, message="ok")
+    ctx = make_context(github, pr_number=123)
+
+    result = verify_merge_outcome_step(ctx)
+
+    assert isinstance(result, Error)
+    assert result.message == "PR #123 state mismatch: expected MERGED, got OPEN"
+    ctx.textual.end_step.assert_called_once_with("error")
+
+
+def test_verify_merge_outcome_step_accepts_queued_pr():
+    github = Mock()
+    queue_state = make_queue_state(position=1, entry_state="QUEUED")
+    github.get_merge_queue_state.return_value = ClientSuccess(data=queue_state, message="ok")
+    ctx = make_context(github, pr_number=123, merge_queued=True)
+
+    result = verify_merge_outcome_step(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata == {"merge_queue_state": queue_state}
+    github.get_pull_request.assert_not_called()
+    ctx.textual.end_step.assert_called_once_with("success")
+
+
+def test_verify_merge_outcome_step_accepts_pr_already_merged_by_the_queue():
+    github = Mock()
+    queue_state = make_queue_state(in_queue=False, pr_state="MERGED", summary="Merged")
+    github.get_merge_queue_state.return_value = ClientSuccess(data=queue_state, message="ok")
+    ctx = make_context(github, pr_number=123, merge_queued=True)
+
+    result = verify_merge_outcome_step(ctx)
+
+    assert isinstance(result, Success)
+    assert result.metadata == {"merge_queue_state": queue_state}
+
+
+def test_verify_merge_outcome_step_errors_when_pr_left_the_queue():
+    github = Mock()
+    queue_state = make_queue_state(in_queue=False, pr_state="OPEN", summary="Not queued")
+    github.get_merge_queue_state.return_value = ClientSuccess(data=queue_state, message="ok")
+    ctx = make_context(github, pr_number=123, merge_queued=True)
+
+    result = verify_merge_outcome_step(ctx)
+
+    assert isinstance(result, Error)
+    assert "left the merge queue" in result.message
     ctx.textual.end_step.assert_called_once_with("error")
 
 

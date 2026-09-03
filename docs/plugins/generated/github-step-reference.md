@@ -104,9 +104,54 @@ Fetch a pull request and store it in workflow context.
 | `Success` | `pr_info` | If the pull request is fetched successfully. |
 | `Error` | - | If required context is missing or the GitHub call fails. |
 
+### `check_merge_queue`
+
+Check whether the pull request's base branch requires a merge queue.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: github
+  step: check_merge_queue
+```
+
+**Available to later steps:** `merge_queue_enabled`, `merge_queue_state`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.github` | - | An initialized GitHubClient. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `pr_number` | int | Pull request number to inspect. |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `merge_queue_enabled` | bool | Whether the base branch requires a merge queue. |
+| `merge_queue_state` | - | The merge queue state object, when the lookup succeeded. |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `merge_queue_enabled`, `merge_queue_state` | When the PR number is available. A failed lookup is not fatal: it reports merge_queue_enabled=False so the workflow behaves as it always did. |
+| `Error` | - | If required context is missing. |
+
 ### `merge_pull_request`
 
-Merge a pull request using the configured GitHub client.
+Merge a pull request, or add it to the base branch's merge queue.
 
 **How to read this contract**
 
@@ -121,7 +166,7 @@ Merge a pull request using the configured GitHub client.
   step: merge_pull_request
 ```
 
-**Available to later steps:** `merge_result`
+**Available to later steps:** `merge_result`, `merge_queued`, `expected_pr_state`
 
 **Requires**
 
@@ -134,21 +179,24 @@ Merge a pull request using the configured GitHub client.
 | Name | Type | Description |
 |------|------|-------------|
 | `pr_number` | int | Pull request number to merge. |
-| `merge_method` | str, optional | Merge strategy. |
-| `commit_title` | str, optional | Override commit title. |
-| `commit_message` | str, optional | Override commit message. |
+| `merge_method` | str, optional | Merge strategy. Ignored with a merge queue. |
+| `commit_title` | str, optional | Override commit title. Ignored with a merge queue. |
+| `commit_message` | str, optional | Override commit message. Ignored with a merge queue. |
+| `merge_queue_enabled` | bool, optional | Result of a previous `check_merge_queue`, reused to avoid looking the queue up twice. |
 
 **Outputs (saved to ctx.data)**
 
 | Name | Type | Description |
 |------|------|-------------|
 | `merge_result` | - | The GitHub merge result object. |
+| `merge_queued` | bool | True when the PR was added to the merge queue. |
+| `expected_pr_state` | str | "MERGED" after a regular merge, "OPEN" once queued. |
 
 **Returns**
 
 | Result | Saved for later steps | Description |
 |--------|-----------------------|-------------|
-| `Success` | `merge_result` | If the pull request is merged successfully. |
+| `Success` | `merge_result`, `merge_queued`, `expected_pr_state` | If the pull request is merged or added to the merge queue. |
 | `Error` | - | If required context is missing or the GitHub call fails. |
 
 ### `verify_pull_request_state`
@@ -196,6 +244,52 @@ Verify a pull request is currently in the expected state.
 | `Success` | `verified_pr_info` | If the pull request is in the expected state. |
 | `Error` | - | If required context is missing, verification fails, or the GitHub call fails. |
 
+### `verify_merge_outcome`
+
+Verify the outcome of a merge that may have gone through a merge queue.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: github
+  step: verify_merge_outcome
+```
+
+**Available to later steps:** `verified_pr_info`, `merge_queue_state`
+
+**Requires**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ctx.github` | - | An initialized GitHubClient. |
+
+**Inputs (from ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `pr_number` | int | Pull request number to inspect. |
+| `merge_queued` | bool, optional | Set by `merge_pull_request` when the PR was added to the merge queue. |
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `verified_pr_info` | - | The pull request object, after a regular merge. |
+| `merge_queue_state` | - | The merge queue state, after a queued merge. |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success` | `verified_pr_info`, `merge_queue_state` | If the PR is merged, or still queued when it was enqueued. |
+| `Error` | - | If required context is missing, the PR is in neither state, or the GitHub call fails. |
+
 ### `ai_suggest_pr_description`
 
 Generate PR title and description using PRAgent.
@@ -221,7 +315,7 @@ Generate PR title and description using PRAgent.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `ctx.ai` | - | An initialized AIClient |
+| `ctx.ai_router` | - | The AI execution façade (falls back to ctx.ai) |
 | `ctx.git` | - | An initialized GitClient |
 | `ctx.github` | - | An initialized GitHubClient |
 
@@ -1424,6 +1518,40 @@ Remove findings that duplicate existing PR comments.
 |--------|-----------------------|-------------|
 | `Success or Error` | - | - |
 
+### `verify_findings`
+
+Adversarial verification pass: try to REFUTE each finding before the human gate.
+
+**How to read this contract**
+
+- `Inputs (from ctx.data)` shows what the step expects before it runs.
+- `Outputs (saved to ctx.data)` shows the metadata keys later steps can read after `Success` or `Skip`.
+- `Returns` describes the workflow result type (`Success`, `Skip`, `Error`, `Exit`), not a separate function return payload.
+
+**Workflow usage**
+
+```yaml
+- plugin: github
+  step: verify_findings
+```
+
+**Used by built-in workflows:** `review-pr`
+
+**Available to later steps:** `deduped_findings`, `refuted_findings`
+
+**Outputs (saved to ctx.data)**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `deduped_findings` | List[Finding] | verified set, refuted findings removed |
+| `refuted_findings` | List[Finding] | findings dropped by this pass |
+
+**Returns**
+
+| Result | Saved for later steps | Description |
+|--------|-----------------------|-------------|
+| `Success or Skip` | - | - |
+
 ### `build_new_comment_actions`
 
 Convert deduplicated findings into ReviewActionProposal objects.
@@ -1612,7 +1740,7 @@ AI call: decide what to do with each open thread.
 
 | Name | Type | Description |
 |------|------|-------------|
-| `raw_thread_decisions` | list | Raw AI output before normalization |
+| `raw_thread_decisions` | list | Raw AI output aggregated across batches, before normalization |
 
 **Returns**
 
@@ -1747,7 +1875,10 @@ Cleanup a worktree created for PR review.
 | Result | Saved for later steps | Description |
 |--------|-----------------------|-------------|
 | `Success` | - | Worktree cleaned up |
-| `Exit` | - | No worktree to cleanup |
+| `Skip` | - | Nothing to clean up, no git client, or removal failed |
+| `Never returns Exit` | - | that would stop the whole workflow, and this step may run |
+| `before others (nothing was created is a normal case when worktree setup was` | - | - |
+| `allowed to fail). Skip keeps the workflow going.` | - | - |
 
 ## Releases
 

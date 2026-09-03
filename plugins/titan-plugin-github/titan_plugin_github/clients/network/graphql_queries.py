@@ -92,6 +92,23 @@ query($owner: String!, $repo: String!, $prNumber: Int!) {
 }
 '''
 
+GET_PR_MERGE_QUEUE_STATE = '''
+query($owner: String!, $repo: String!, $prNumber: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $prNumber) {
+      number
+      state
+      isInMergeQueue
+      isMergeQueueEnabled
+      mergeQueueEntry {
+        position
+        state
+      }
+    }
+  }
+}
+'''
+
 GET_PR_WITH_REVIEWERS = '''
 query($owner: String!, $repo: String!, $prNumber: Int!) {
   repository(owner: $owner, name: $repo) {

@@ -6,8 +6,10 @@
       "steps": [
         {"name": "create_pr", "summary": "Create a pull request from workflow context data."},
         {"name": "get_pull_request", "summary": "Fetch a pull request and expose it to downstream steps."},
-        {"name": "merge_pull_request", "summary": "Merge a pull request with workflow-selected merge options."},
+        {"name": "check_merge_queue", "summary": "Detect whether the PR base branch requires a merge queue."},
+        {"name": "merge_pull_request", "summary": "Merge a pull request, or add it to the base branch's merge queue."},
         {"name": "verify_pull_request_state", "summary": "Validate PR state before continuing a workflow."},
+        {"name": "verify_merge_outcome", "summary": "Validate that a PR was merged, or queued in the merge queue."},
         {"name": "ai_suggest_pr_description", "summary": "Generate PR title and body from branch changes using AI."}
       ]
     },
@@ -61,6 +63,7 @@
         {"name": "ai_review_findings", "summary": "Run targeted AI analysis and produce candidate findings."},
         {"name": "normalize_findings", "summary": "Normalize raw AI findings into workflow-friendly structures."},
         {"name": "dedupe_findings", "summary": "Remove duplicate or overlapping findings before submission."},
+        {"name": "verify_findings", "summary": "Adversarially verify candidate findings and drop the refuted ones."},
         {"name": "build_new_comment_actions", "summary": "Translate validated findings into GitHub review actions."},
         {"name": "validate_review_actions", "summary": "Validate review actions before posting comments."},
         {"name": "submit_review_actions", "summary": "Submit review comments or review actions to GitHub."},

@@ -99,7 +99,7 @@ def test_merge_pr_delegates_to_service(github_client):
 
     assert isinstance(result, ClientSuccess)
     assert result.data.merged is True
-    github_client._pr_service.merge_pr.assert_called_once_with(123, "squash", None, None)
+    github_client._pr_service.merge_pr.assert_called_once_with(123, "squash", None, None, None)
 
 
 def test_create_issue_delegates_to_service(github_client, sample_ui_issue):

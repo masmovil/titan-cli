@@ -288,7 +288,8 @@ client.get_commit_review_context(
 
 ### Merge a pull request
 
-Merges a pull request using the selected merge strategy.
+Merges a pull request using the selected merge strategy, or adds it to the base branch's
+merge queue when that branch requires one.
 
 **Call:**
 
@@ -304,9 +305,37 @@ client.merge_pr(
 **Parameters:**
 
 - `pr_number`: Required. Pull request number.
-- `merge_method`: Optional. Merge strategy such as `merge`, `squash`, or `rebase`.
-- `commit_title`: Optional. Merge commit title.
-- `commit_message`: Optional. Merge commit message.
+- `merge_method`: Optional. Merge strategy such as `merge`, `squash`, or `rebase`. Ignored
+  when the base branch requires a merge queue: the queue owns the strategy.
+- `commit_title`: Optional. Merge commit title. Ignored for a queued pull request.
+- `commit_message`: Optional. Merge commit message. Ignored for a queued pull request.
+- `merge_queue_enabled`: Optional. Known merge queue state, to skip the detection lookup
+  (for example the `merge_queue_enabled` value produced by the `check_merge_queue` step).
+  When omitted the state is detected automatically; a failed detection falls back to a
+  regular merge.
+
+**Result:** `UIPRMergeResult`. A queued pull request comes back with `merged=False`,
+`queued=True` and, when GitHub already has an entry for it, `queue_position`. It is neither
+a merge nor a failure: GitHub merges it when the queue clears.
+
+### Get the merge queue state of a pull request
+
+Returns whether the base branch requires a merge queue and whether the pull request is
+currently queued. These fields are only available through GraphQL, so they are not part of
+`get_pull_request`.
+
+**Call:**
+
+```python
+client.get_merge_queue_state(pr_number=123)
+```
+
+**Parameters:**
+
+- `pr_number`: Required. Pull request number.
+
+**Result:** `UIMergeQueueState` with `is_merge_queue_enabled`, `is_in_merge_queue`,
+`pr_state`, `queue_position`, `queue_entry_state` and a pre-formatted `summary`.
 
 ---
 

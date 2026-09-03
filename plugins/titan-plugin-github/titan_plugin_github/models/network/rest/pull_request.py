@@ -211,11 +211,19 @@ class NetworkPRMergeResult:
     """
     Result of merging a pull request via REST API.
 
+    A PR whose base branch requires a merge queue is not merged on request: it is
+    added to the queue and merged later by GitHub. That case is reported with
+    `merged=False` and `queued=True` — never as a merge.
+
     Attributes:
         merged: Whether the PR was successfully merged
         sha: Commit SHA of the merge (if successful)
         message: Success or error message
+        queued: Whether the PR was added to the base branch's merge queue
+        queue_position: Position in the merge queue, when known
     """
     merged: bool
     sha: Optional[str] = None
     message: str = ""
+    queued: bool = False
+    queue_position: Optional[int] = None
