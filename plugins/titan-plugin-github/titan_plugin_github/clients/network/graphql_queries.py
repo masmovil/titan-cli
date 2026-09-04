@@ -109,6 +109,17 @@ query($owner: String!, $repo: String!, $prNumber: Int!) {
 }
 '''
 
+ENQUEUE_PULL_REQUEST = '''
+mutation($prId: ID!) {
+  enqueuePullRequest(input: {pullRequestId: $prId}) {
+    mergeQueueEntry {
+      position
+      state
+    }
+  }
+}
+'''
+
 GET_PR_WITH_REVIEWERS = '''
 query($owner: String!, $repo: String!, $prNumber: Int!) {
   repository(owner: $owner, name: $repo) {

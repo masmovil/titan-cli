@@ -315,8 +315,12 @@ client.merge_pr(
   regular merge.
 
 **Result:** `UIPRMergeResult`. A queued pull request comes back with `merged=False`,
-`queued=True` and, when GitHub already has an entry for it, `queue_position`. It is neither
-a merge nor a failure: GitHub merges it when the queue clears.
+`queued=True` and the `queue_position` GitHub assigned it. It is neither a merge nor a
+failure: GitHub merges it when the queue clears.
+
+Queueing goes through GraphQL, so it needs a client with a GraphQL network configured. A
+regular merge does not. Without one, a pull request whose base branch requires a queue
+comes back with `merged=False` and `queued=False` rather than being merged directly.
 
 ### Get the merge queue state of a pull request
 

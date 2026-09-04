@@ -52,6 +52,22 @@ def merge_queue_response(
     }
 
 
+def pr_node_id_response(node_id: str = "PR_node_123"):
+    """Build a GraphQL response for the PR node ID query"""
+    return {"data": {"repository": {"pullRequest": {"id": node_id}}}}
+
+
+def enqueue_response(*, position: int = None, state: str = "QUEUED"):
+    """Build a GraphQL response for the enqueuePullRequest mutation"""
+    return {
+        "data": {
+            "enqueuePullRequest": {
+                "mergeQueueEntry": {"position": position, "state": state}
+            }
+        }
+    }
+
+
 @pytest.fixture
 def sample_pr_json():
     """Sample PR response from gh CLI"""
@@ -239,14 +255,12 @@ def test_merge_pr_without_graphql_merges_normally(pr_service, mock_gh_network):
 
 
 def test_merge_pr_enqueues_when_merge_queue_enabled(queue_pr_service, mock_gh_network, mock_graphql_network):
-    """With a merge queue the PR is queued, not merged, and no strategy is passed"""
+    """With a merge queue the PR is queued through the mutation, not merged by gh"""
     mock_graphql_network.run_query.side_effect = [
         merge_queue_response(enabled=True),
-        merge_queue_response(enabled=True, in_queue=True, position=3, entry_state="QUEUED"),
+        pr_node_id_response(),
     ]
-    mock_gh_network.run_command.return_value = (
-        "✓ Pull request #123 will be added to the merge queue"
-    )
+    mock_graphql_network.run_mutation.return_value = enqueue_response(position=3)
 
     result = queue_pr_service.merge_pr(123, merge_method="squash")
 
@@ -256,25 +270,68 @@ def test_merge_pr_enqueues_when_merge_queue_enabled(queue_pr_service, mock_gh_ne
     assert result.data.queue_position == 3
     assert result.data.status_icon == "⏳"
 
-    call_args = mock_gh_network.run_command.call_args[0][0]
-    assert "merge" in call_args
-    assert "123" in call_args
-    assert "--squash" not in call_args
+    # gh pr merge queues by enabling auto-merge, which repositories that disallow
+    # auto-merge reject: the queue is reached through its own mutation instead.
+    mock_gh_network.run_command.assert_not_called()
+
+    mutation, variables = mock_graphql_network.run_mutation.call_args[0]
+    assert "enqueuePullRequest" in mutation
+    assert variables == {"prId": "PR_node_123"}
 
 
 def test_merge_pr_reuses_known_merge_queue_state(queue_pr_service, mock_gh_network, mock_graphql_network):
     """A known merge_queue_enabled skips the detection lookup"""
-    mock_graphql_network.run_query.return_value = merge_queue_response(
-        enabled=True, in_queue=True, position=1, entry_state="QUEUED"
-    )
-    mock_gh_network.run_command.return_value = "✓ queued"
+    mock_graphql_network.run_query.return_value = pr_node_id_response()
+    mock_graphql_network.run_mutation.return_value = enqueue_response(position=1)
 
     result = queue_pr_service.merge_pr(123, merge_method="squash", merge_queue_enabled=True)
 
     assert isinstance(result, ClientSuccess)
     assert result.data.queued is True
-    # Only the read-back of the queue position, not a detection call before it
+    assert result.data.queue_position == 1
+    # Only the node ID lookup, not a detection call before it
     assert mock_graphql_network.run_query.call_count == 1
+
+
+def test_merge_pr_queues_without_position_when_entry_missing(
+    queue_pr_service, mock_graphql_network
+):
+    """A mutation that returns no entry still counts as queued, without a position"""
+    mock_graphql_network.run_query.return_value = pr_node_id_response()
+    mock_graphql_network.run_mutation.return_value = {
+        "data": {"enqueuePullRequest": {"mergeQueueEntry": None}}
+    }
+
+    result = queue_pr_service.merge_pr(123, merge_queue_enabled=True)
+
+    assert isinstance(result, ClientSuccess)
+    assert result.data.queued is True
+    assert result.data.queue_position is None
+
+
+def test_merge_pr_reports_failed_enqueue_mutation(queue_pr_service, mock_graphql_network):
+    """A rejected enqueue mutation is reported, not swallowed as a merge"""
+    mock_graphql_network.run_query.return_value = pr_node_id_response()
+    mock_graphql_network.run_mutation.side_effect = GitHubAPIError(
+        "Pull request is in an unmergeable state"
+    )
+
+    result = queue_pr_service.merge_pr(123, merge_queue_enabled=True)
+
+    assert isinstance(result, ClientSuccess)
+    assert result.data.merged is False
+    assert result.data.queued is False
+    assert "unmergeable" in result.data.message.lower()
+
+
+def test_merge_pr_reports_enqueue_without_graphql(pr_service):
+    """A known merge queue with no GraphQL network fails instead of merging directly"""
+    result = pr_service.merge_pr(123, merge_queue_enabled=True)
+
+    assert isinstance(result, ClientSuccess)
+    assert result.data.merged is False
+    assert result.data.queued is False
+    assert "graphql" in result.data.message.lower()
 
 
 def test_merge_pr_merges_when_no_merge_queue(queue_pr_service, mock_gh_network, mock_graphql_network):
@@ -304,17 +361,19 @@ def test_merge_pr_falls_back_to_regular_merge_when_detection_fails(
     assert "--squash" in mock_gh_network.run_command.call_args[0][0]
 
 
-def test_merge_pr_reports_failed_enqueue(queue_pr_service, mock_gh_network, mock_graphql_network):
-    """A failing enqueue is neither merged nor queued"""
-    mock_graphql_network.run_query.return_value = merge_queue_response(enabled=True)
-    mock_gh_network.run_command.side_effect = GitHubAPIError("not mergeable")
+def test_merge_pr_reports_enqueue_when_pr_node_missing(queue_pr_service, mock_graphql_network):
+    """A PR whose node ID cannot be read is neither merged nor queued"""
+    mock_graphql_network.run_query.side_effect = [
+        merge_queue_response(enabled=True),
+        {"data": {"repository": {"pullRequest": None}}},
+    ]
 
     result = queue_pr_service.merge_pr(123)
 
     assert isinstance(result, ClientSuccess)
     assert result.data.merged is False
     assert result.data.queued is False
-    assert "not mergeable" in result.data.message.lower()
+    mock_graphql_network.run_mutation.assert_not_called()
 
 
 def test_get_merge_queue_state_success(queue_pr_service, mock_graphql_network):

@@ -674,8 +674,14 @@ class PRService:
         """
         Add a pull request to its base branch's merge queue.
 
-        No strategy flag is passed: with a merge queue the strategy belongs to the
-        queue configuration, and gh warns and ignores it when given one.
+        This goes through the `enqueuePullRequest` GraphQL mutation rather than
+        `gh pr merge`. The gh CLI queues a PR by enabling auto-merge, which the API
+        rejects on repositories that do not allow auto-merge ("Auto merge is not
+        allowed for this repository"); the mutation is the merge queue's own entry
+        point and works regardless of that repository setting.
+
+        No merge strategy is passed: with a merge queue the strategy belongs to the
+        queue configuration.
 
         Args:
             pr_number: PR number
@@ -683,22 +689,55 @@ class PRService:
         Returns:
             ClientResult[UIPRMergeResult] with queued=True on success
         """
-        args = ["pr", "merge", str(pr_number)] + self.gh.get_repo_arg()
-
-        try:
-            self.gh.run_command(args)
-        except GitHubAPIError as e:
-            network_result = NetworkPRMergeResult(merged=False, message=str(e))
+        def failed(reason: str) -> ClientResult[UIPRMergeResult]:
+            # merge_pr reports failures as ClientSuccess(merged=False), so the
+            # operation decorator logs this call as a success. Log the reason here or
+            # the log says a merge queue request succeeded when it did not.
+            self._logger.warning(
+                "Merge queue request failed for PR #%s: %s", pr_number, reason
+            )
+            network_result = NetworkPRMergeResult(merged=False, message=reason)
             ui_result = from_network_pr_merge_result(network_result)
             return ClientSuccess(data=ui_result, message="Merge queue request failed")
 
-        # Read back the position, when GitHub already has an entry for the PR
-        queue_position = None
-        match self.get_merge_queue_state(pr_number):
-            case ClientSuccess(data=queue_state):
-                queue_position = queue_state.queue_position
-            case ClientError():
-                pass
+        if not self.graphql:
+            return failed("GraphQL network is not available to reach the merge queue")
+
+        try:
+            owner, repo = self.gh.get_repo_string().split('/')
+
+            node_response = self.graphql.run_query(
+                graphql_queries.GET_PR_NODE_ID,
+                {"owner": owner, "repo": repo, "prNumber": pr_number},
+            )
+
+            pr_node_id = (
+                (
+                    node_response.get("data", {})
+                    .get("repository", {})
+                    .get("pullRequest")
+                    or {}
+                ).get("id")
+            )
+
+            if not pr_node_id:
+                return failed(msg.GitHub.PR_NOT_FOUND.format(pr_number=pr_number))
+
+            response = self.graphql.run_mutation(
+                graphql_queries.ENQUEUE_PULL_REQUEST,
+                {"prId": pr_node_id},
+            )
+
+        except GitHubAPIError as e:
+            return failed(str(e))
+
+        # The mutation returns the entry it just created, so no read-back is needed
+        entry = (
+            response.get("data", {})
+            .get("enqueuePullRequest", {})
+            .get("mergeQueueEntry")
+        ) or {}
+        queue_position = entry.get("position")
 
         network_result = NetworkPRMergeResult(
             merged=False,
