@@ -15,7 +15,7 @@ from titan_plugin_git.clients.git_client import GitClient
 from .network import GHNetwork, GraphQLNetwork
 from .services import PRService, ReviewService, IssueService, TeamService, ReleaseService, ContentsService
 from ..models.review_models import ReferencedCommitContext
-from ..models.view import UIPullRequest, UICommentThread, UIIssue, UIPRMergeResult, UIReview, UIFileChange, UIPRCreated, UIRelease
+from ..models.view import UIPullRequest, UICommentThread, UIIssue, UIPRMergeResult, UIMergeQueueState, UIReview, UIFileChange, UIPRCreated, UIRelease
 
 
 class GitHubClient:
@@ -68,7 +68,7 @@ class GitHubClient:
         self._graphql_network = GraphQLNetwork(self._gh_network)
 
         # Initialize services
-        self._pr_service = PRService(self._gh_network)
+        self._pr_service = PRService(self._gh_network, self._graphql_network)
         self._review_service = ReviewService(self._gh_network, self._graphql_network)
         self._issue_service = IssueService(self._gh_network)
         self._team_service = TeamService(self._gh_network)
@@ -177,9 +177,21 @@ class GitHubClient:
         merge_method: str = "squash",
         commit_title: Optional[str] = None,
         commit_message: Optional[str] = None,
+        merge_queue_enabled: Optional[bool] = None,
     ) -> ClientResult[UIPRMergeResult]:
-        """Merge a pull request."""
-        return self._pr_service.merge_pr(pr_number, merge_method, commit_title, commit_message)
+        """
+        Merge a pull request, or add it to the base branch's merge queue.
+
+        When the base branch requires a merge queue the PR is queued instead of
+        merged, and the result carries `queued=True` with `merged=False`.
+        """
+        return self._pr_service.merge_pr(
+            pr_number, merge_method, commit_title, commit_message, merge_queue_enabled
+        )
+
+    def get_merge_queue_state(self, pr_number: int) -> ClientResult[UIMergeQueueState]:
+        """Get the merge queue state of a pull request."""
+        return self._pr_service.get_merge_queue_state(pr_number)
 
     def add_comment(self, pr_number: int, body: str) -> ClientResult[None]:
         """Add a comment to a PR."""

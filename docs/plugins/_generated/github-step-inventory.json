@@ -13,12 +13,20 @@
           "summary": "Fetch a pull request and expose it to downstream steps."
         },
         {
+          "name": "check_merge_queue",
+          "summary": "Detect whether the PR base branch requires a merge queue."
+        },
+        {
           "name": "merge_pull_request",
-          "summary": "Merge a pull request with workflow-selected merge options."
+          "summary": "Merge a pull request, or add it to the base branch's merge queue."
         },
         {
           "name": "verify_pull_request_state",
           "summary": "Validate PR state before continuing a workflow."
+        },
+        {
+          "name": "verify_merge_outcome",
+          "summary": "Validate that a PR was merged, or queued in the merge queue."
         },
         {
           "name": "ai_suggest_pr_description",
@@ -173,6 +181,10 @@
           "summary": "Remove duplicate or overlapping findings before submission."
         },
         {
+          "name": "verify_findings",
+          "summary": "Adversarially verify candidate findings and drop the refuted ones."
+        },
+        {
           "name": "build_new_comment_actions",
           "summary": "Translate validated findings into GitHub review actions."
         },
@@ -305,7 +317,7 @@
       "summary": "Generate PR title and description using PRAgent.",
       "docstring_sections": {
         "Requires": [
-          "    ctx.ai: An initialized AIClient",
+          "    ctx.ai_router: The AI execution fa\u00e7ade (falls back to ctx.ai)",
           "    ctx.git: An initialized GitClient",
           "    ctx.github: An initialized GitHubClient"
         ],
@@ -338,7 +350,7 @@
         "Requires": [],
         "Inputs (from ctx.data)": [],
         "Outputs (saved to ctx.data)": [
-          "    raw_thread_decisions (list): Raw AI output before normalization"
+          "    raw_thread_decisions (list): Raw AI output aggregated across batches, before normalization"
         ],
         "Returns": [
           "    Success or Error"
@@ -511,6 +523,30 @@
       ]
     },
     {
+      "name": "check_merge_queue",
+      "group": "Pull Requests",
+      "module": "titan_plugin_github.steps.pull_request_steps",
+      "function": "check_merge_queue_step",
+      "summary": "Check whether the pull request's base branch requires a merge queue.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    pr_number (int): Pull request number to inspect."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    merge_queue_enabled (bool): Whether the base branch requires a merge queue.",
+          "    merge_queue_state: The merge queue state object, when the lookup succeeded."
+        ],
+        "Returns": [
+          "    Success: When the PR number is available. A failed lookup is not fatal: it reports merge_queue_enabled=False so the workflow behaves as it always did.",
+          "    Error: If required context is missing."
+        ]
+      },
+      "used_by_workflows": []
+    },
+    {
       "name": "checkout_original_branch",
       "group": "Pull Request Review",
       "module": "titan_plugin_github.steps.pr_review_steps",
@@ -590,7 +626,10 @@
         "Outputs (saved to ctx.data)": [],
         "Returns": [
           "    Success: Worktree cleaned up",
-          "    Exit: No worktree to cleanup"
+          "    Skip: Nothing to clean up, no git client, or removal failed",
+          "Never returns Exit: that would stop the whole workflow, and this step may run",
+          "before others (nothing was created is a normal case when worktree setup was",
+          "allowed to fail). Skip keeps the workflow going."
         ]
       },
       "used_by_workflows": [
@@ -781,22 +820,25 @@
       "group": "Pull Requests",
       "module": "titan_plugin_github.steps.pull_request_steps",
       "function": "merge_pull_request_step",
-      "summary": "Merge a pull request using the configured GitHub client.",
+      "summary": "Merge a pull request, or add it to the base branch's merge queue.",
       "docstring_sections": {
         "Requires": [
           "    ctx.github: An initialized GitHubClient."
         ],
         "Inputs (from ctx.data)": [
           "    pr_number (int): Pull request number to merge.",
-          "    merge_method (str, optional): Merge strategy.",
-          "    commit_title (str, optional): Override commit title.",
-          "    commit_message (str, optional): Override commit message."
+          "    merge_method (str, optional): Merge strategy. Ignored with a merge queue.",
+          "    commit_title (str, optional): Override commit title. Ignored with a merge queue.",
+          "    commit_message (str, optional): Override commit message. Ignored with a merge queue.",
+          "    merge_queue_enabled (bool, optional): Result of a previous `check_merge_queue`, reused to avoid looking the queue up twice."
         ],
         "Outputs (saved to ctx.data)": [
-          "    merge_result: The GitHub merge result object."
+          "    merge_result: The GitHub merge result object.",
+          "    merge_queued (bool): True when the PR was added to the merge queue.",
+          "    expected_pr_state (str): \"MERGED\" after a regular merge, \"OPEN\" once queued."
         ],
         "Returns": [
-          "    Success: If the pull request is merged successfully.",
+          "    Success: If the pull request is merged or added to the merge queue.",
           "    Error: If required context is missing or the GitHub call fails."
         ]
       },
@@ -1293,6 +1335,52 @@
       "used_by_workflows": [
         "review-pr"
       ]
+    },
+    {
+      "name": "verify_findings",
+      "group": "Code Review",
+      "module": "titan_plugin_github.steps.code_review_steps",
+      "function": "verify_findings",
+      "summary": "Adversarial verification pass: try to REFUTE each finding before the human gate.",
+      "docstring_sections": {
+        "Requires": [],
+        "Inputs (from ctx.data)": [],
+        "Outputs (saved to ctx.data)": [
+          "    deduped_findings (List[Finding]): verified set, refuted findings removed",
+          "    refuted_findings (List[Finding]): findings dropped by this pass"
+        ],
+        "Returns": [
+          "    Success or Skip"
+        ]
+      },
+      "used_by_workflows": [
+        "review-pr"
+      ]
+    },
+    {
+      "name": "verify_merge_outcome",
+      "group": "Pull Requests",
+      "module": "titan_plugin_github.steps.pull_request_steps",
+      "function": "verify_merge_outcome_step",
+      "summary": "Verify the outcome of a merge that may have gone through a merge queue.",
+      "docstring_sections": {
+        "Requires": [
+          "    ctx.github: An initialized GitHubClient."
+        ],
+        "Inputs (from ctx.data)": [
+          "    pr_number (int): Pull request number to inspect.",
+          "    merge_queued (bool, optional): Set by `merge_pull_request` when the PR was added to the merge queue."
+        ],
+        "Outputs (saved to ctx.data)": [
+          "    verified_pr_info: The pull request object, after a regular merge.",
+          "    merge_queue_state: The merge queue state, after a queued merge."
+        ],
+        "Returns": [
+          "    Success: If the PR is merged, or still queued when it was enqueued.",
+          "    Error: If required context is missing, the PR is in neither state, or the GitHub call fails."
+        ]
+      },
+      "used_by_workflows": []
     },
     {
       "name": "verify_pull_request_state",

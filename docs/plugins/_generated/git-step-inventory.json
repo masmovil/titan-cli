@@ -126,7 +126,7 @@
       "docstring_sections": {
         "Requires": [
           "    ctx.git: An initialized GitClient.",
-          "    ctx.ai: An initialized AIClient."
+          "    ctx.ai_router: The AI execution fa\u00e7ade."
         ],
         "Inputs (from ctx.data)": [
           "    git_status: Current git status with changes."
@@ -137,7 +137,8 @@
         "Returns": [
           "    Success: If the commit message was generated successfully.",
           "    Error: If the operation fails.",
-          "    Skip: If no changes, AI not configured, or user declined."
+          "    Skip: If there are no changes, AI is turned off for this task, or the",
+          "        user declined the suggestion."
         ]
       },
       "used_by_workflows": [
@@ -176,7 +177,8 @@
         ],
         "Inputs (from ctx.data)": [
           "    merge_status (str): Status published by merge_source_branch",
-          "    merge_commit_no_verify (bool, optional): Skip pre-commit and commit-msg hooks on the merge commit (default: True)"
+          "    merge_commit_no_verify (bool, optional): Skip pre-commit and commit-msg",
+          "        hooks on the merge commit (default: True)"
         ],
         "Outputs (saved to ctx.data)": [
           "    merge_commit_sha (str): SHA of the merge commit"

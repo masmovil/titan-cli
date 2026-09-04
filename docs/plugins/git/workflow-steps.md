@@ -320,7 +320,7 @@ How to read these contracts:
     | Name | Type | Description |
     |------|------|-------------|
     | `ctx.git` | - | An initialized GitClient. |
-    | `ctx.ai` | - | An initialized AIClient. |
+    | `ctx.ai_router` | - | The AI execution façade. |
 
     **Inputs (from ctx.data)**
 
@@ -340,7 +340,8 @@ How to read these contracts:
     |--------|-----------------------|-------------|
     | `Success` | `commit_message` | If the commit message was generated successfully. |
     | `Error` | - | If the operation fails. |
-    | `Skip` | `commit_message` | If no changes, AI not configured, or user declined. |
+    | `Skip` | `commit_message` | If there are no changes, AI is turned off for this task, or the |
+    | `user declined the suggestion.` | - | - |
 
 
 ### Branching
@@ -649,7 +650,8 @@ How to read these contracts:
     | Name | Type | Description |
     |------|------|-------------|
     | `merge_status` | str | Status published by merge_source_branch |
-    | `merge_commit_no_verify` | bool, optional | Skip pre-commit and commit-msg hooks on the merge commit. Defaults to True. |
+    | `merge_commit_no_verify` | bool, optional | Skip pre-commit and commit-msg |
+    | hooks on the merge commit (default: True) | - | - |
 
     **Outputs (saved to ctx.data)**
 

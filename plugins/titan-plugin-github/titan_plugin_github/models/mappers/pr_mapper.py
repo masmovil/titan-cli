@@ -7,7 +7,8 @@ All presentation logic and transformations live here.
 """
 from ..review_enums import FileChangeStatus
 from ..network.rest import NetworkPullRequest, NetworkPRMergeResult, NetworkPRFile, NetworkPRCreated
-from ..view import UIPullRequest, UIPRMergeResult, UIFileChange, UIPRCreated
+from ..network.graphql import GraphQLPullRequestMergeQueueState
+from ..view import UIPullRequest, UIPRMergeResult, UIMergeQueueState, UIFileChange, UIPRCreated
 from ..formatting import (
     format_date,
     get_pr_status_icon,
@@ -143,12 +144,53 @@ def from_network_pr_merge_result(network_result: NetworkPRMergeResult) -> UIPRMe
     # Format SHA to short format
     sha_short = format_short_sha(network_result.sha)
 
-    # Set status icon based on merge success
-    status_icon = "✅" if network_result.merged else "❌"
+    # Set status icon based on outcome: merged, queued for a later merge, or failed
+    if network_result.merged:
+        status_icon = "✅"
+    elif network_result.queued:
+        status_icon = "⏳"
+    else:
+        status_icon = "❌"
 
     return UIPRMergeResult(
         merged=network_result.merged,
         status_icon=status_icon,
         sha_short=sha_short,
         message=network_result.message,
+        queued=network_result.queued,
+        queue_position=network_result.queue_position,
+    )
+
+
+def from_graphql_merge_queue_state(
+    graphql_state: GraphQLPullRequestMergeQueueState,
+) -> UIMergeQueueState:
+    """
+    Convert GraphQL merge queue state to UI merge queue state.
+
+    Args:
+        graphql_state: GraphQLPullRequestMergeQueueState from the GraphQL API
+
+    Returns:
+        UIMergeQueueState with a pre-formatted summary
+    """
+    if graphql_state.isInMergeQueue:
+        summary = "In merge queue"
+        if graphql_state.mergeQueueEntryPosition is not None:
+            summary = f"{summary} (position {graphql_state.mergeQueueEntryPosition})"
+        if graphql_state.mergeQueueEntryState:
+            summary = f"{summary} - {graphql_state.mergeQueueEntryState}"
+    elif graphql_state.isMergeQueueEnabled:
+        summary = "Merge queue required on the base branch, PR not queued"
+    else:
+        summary = "No merge queue on the base branch"
+
+    return UIMergeQueueState(
+        pr_number=graphql_state.number,
+        pr_state=graphql_state.state,
+        is_merge_queue_enabled=graphql_state.isMergeQueueEnabled,
+        is_in_merge_queue=graphql_state.isInMergeQueue,
+        queue_position=graphql_state.mergeQueueEntryPosition,
+        queue_entry_state=graphql_state.mergeQueueEntryState,
+        summary=summary,
     )

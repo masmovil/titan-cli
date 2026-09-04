@@ -247,24 +247,35 @@
       "group": "Messaging",
       "module": "titan_plugin_slack.steps.message_steps",
       "function": "post_message_step",
-      "summary": "Post a plain-text Slack message to the prepared conversation.",
+      "summary": "Post a plain-text Slack message to the prepared conversation(s).",
       "docstring_sections": {
         "Requires": [
           "    ctx.slack: An initialized SlackClient."
         ],
         "Inputs (from ctx.data)": [
-          "    slack_conversation_id (str): Slack conversation ID to post into.",
+          "    slack_conversation_ids (list[str], optional): Slack conversation IDs to post into. Takes",
+          "        priority over `slack_conversation_id` when set.",
+          "    slack_conversation_id (str, optional): Single Slack conversation ID to post into. Used",
+          "        when `slack_conversation_ids` is not set.",
           "    slack_message_text (str): Message body to post.",
-          "    slack_thread_ts (str, optional): Thread timestamp for replies."
+          "    slack_thread_ts (str, optional): Thread timestamp for replies. Only applied when posting",
+          "        to a single conversation."
         ],
         "Outputs (saved to ctx.data)": [
-          "    slack_message (UISlackPostedMessage): Posted Slack message metadata.",
-          "    slack_message_ts (str): Timestamp of the posted message.",
-          "    slack_message_channel (str): Channel or conversation ID where the message was posted."
+          "    slack_message (UISlackPostedMessage, optional): Posted Slack message metadata, when a",
+          "        single conversation was used.",
+          "    slack_message_ts (str, optional): Timestamp of the posted message, when a single",
+          "        conversation was used.",
+          "    slack_message_channel (str, optional): Channel the message was posted to, when a single",
+          "        conversation was used.",
+          "    slack_messages (list[UISlackPostedMessage], optional): Posted message metadata for every",
+          "        conversation that succeeded, when multiple conversations were used.",
+          "    slack_message_channels (list[str], optional): Channels the message was successfully",
+          "        posted to, when multiple conversations were used."
         ],
         "Returns": [
-          "    Success: If the Slack message is posted successfully.",
-          "    Error: If Slack is unavailable, required context is missing, or the Slack request fails."
+          "    Success: If the Slack message is posted to at least one conversation.",
+          "    Error: If Slack is unavailable, required context is missing, or every post fails."
         ]
       },
       "used_by_workflows": [
@@ -276,21 +287,33 @@
       "group": "Messaging",
       "module": "titan_plugin_slack.steps.message_steps",
       "function": "prepare_message_destination_step",
-      "summary": "Prepare a Slack message destination from the selected target.",
+      "summary": "Prepare a Slack message destination from the selected target(s).",
       "docstring_sections": {
         "Requires": [
           "    ctx.slack: An initialized SlackClient."
         ],
         "Inputs (from ctx.data)": [
-          "    slack_target (UISlackTarget): Selected Slack target. Must be a `user` or `channel` target."
+          "    slack_targets (list[UISlackTarget], optional): Selected Slack channel targets, when",
+          "        multiple channels were checked via a checklist (e.g.",
+          "        `select_default_or_search_channel_target`). Takes priority over `slack_target`.",
+          "    slack_target (UISlackTarget, optional): Selected Slack target. Must be a `user` or",
+          "        `channel` target. Used when `slack_targets` is not set."
         ],
         "Outputs (saved to ctx.data)": [
-          "    slack_conversation (UISlackConversation): Resolved Slack destination conversation.",
-          "    slack_conversation_id (str): Conversation or channel ID used for later message operations."
+          "    slack_conversation (UISlackConversation, optional): Resolved Slack destination",
+          "        conversation, when a single `slack_target` was used.",
+          "    slack_conversation_id (str, optional): Conversation or channel ID used for later message",
+          "        operations, when a single `slack_target` was used.",
+          "    slack_conversation_name (str, optional): User-facing name of the destination, set",
+          "        together with `slack_conversation_id`.",
+          "    slack_conversation_ids (list[str], optional): Conversation IDs for every channel in",
+          "        `slack_targets`, when multiple targets were used.",
+          "    slack_conversation_names (list[str], optional): User-facing names for every channel in",
+          "        `slack_conversation_ids`, set together with `slack_conversation_ids`."
         ],
         "Returns": [
-          "    Success: If the Slack message destination is ready.",
-          "    Error: If Slack is unavailable, the target is missing or invalid, or the Slack request fails."
+          "    Success: If the Slack message destination(s) are ready.",
+          "    Error: If Slack is unavailable, no target is provided, or the Slack request fails."
         ]
       },
       "used_by_workflows": [
@@ -389,7 +412,7 @@
       "group": "Selection and Target Resolution",
       "module": "titan_plugin_slack.steps.target_steps",
       "function": "select_default_or_search_channel_target_step",
-      "summary": "Select a Slack target from a preferred value or configured default, or search.",
+      "summary": "Select Slack targets from a preferred value, configured defaults, or search.",
       "docstring_sections": {
         "Requires": [
           "    ctx.slack: An initialized SlackClient."
@@ -398,22 +421,28 @@
           "    slack_preferred_target (str, optional): Person or channel name (without `#`) to select",
           "        automatically without prompting, when it resolves to exactly one match. Takes priority",
           "        over configured default channels and manual search.",
-          "    slack_target_query (str, optional): Pre-filled query used if the user chooses to search manually.",
+          "    slack_target_query (str, optional): Pre-filled query used if the user falls back to search.",
           "    slack_search_limit (int, optional): Maximum number of matches to return during manual search. Defaults to 20.",
           "    slack_search_page_size (int, optional): Page size used while scanning Slack. Defaults to 1000.",
           "    slack_search_max_pages (int, optional): Maximum pages to scan while searching. Defaults to 50.",
           "    slack_exclude_archived (bool, optional): Whether to exclude archived channels while searching. Defaults to True."
         ],
         "Outputs (saved to ctx.data)": [
-          "    slack_target (UISlackTarget): Canonical selected Slack target.",
-          "    slack_target_type (str): Selected target type (`user` or `channel`).",
-          "    slack_target_id (str): Slack target identifier.",
-          "    slack_target_name (str): User-facing target name.",
-          "    slack_target_query (str): Query used to resolve the selection, when manual search was used."
+          "    slack_target (UISlackTarget, optional): Canonical selected Slack target, when exactly one",
+          "        target was resolved via `slack_preferred_target` or manual search.",
+          "    slack_targets (list[UISlackTarget], optional): Resolved targets for every checked channel",
+          "        that resolved successfully, when one or more configured default channels were",
+          "        selected via the checklist.",
+          "    slack_conversation_ids (list[str], optional): Conversation IDs for every checked channel",
+          "        that resolved successfully, set together with `slack_targets`.",
+          "    slack_unresolved_channels (list[str], optional): Names of checked channels that could not",
+          "        be resolved, set together with `slack_targets`. Empty when every checked channel",
+          "        resolved."
         ],
         "Returns": [
-          "    Success: If the target is selected successfully.",
-          "    Error: If Slack is unavailable, or no match is selected."
+          "    Success: If at least one selected target was resolved (channels that failed to resolve",
+          "        are skipped with a warning, the rest still get posted to).",
+          "    Error: If Slack is unavailable, or none of the selected channels could be resolved."
         ]
       },
       "used_by_workflows": [
@@ -500,7 +529,8 @@
           "    slack_auth (UISlackAuth): Slack auth identity details from `auth_test()`.",
           "    slack_team_id (str | None): Team identifier reported by Slack.",
           "    slack_team_name (str | None): Team name reported by Slack.",
-          "    slack_user_id (str | None): User identifier reported by Slack."
+          "    slack_user_id (str | None): User identifier reported by Slack.",
+          "    slack_user_name (str | None): User name reported by Slack."
         ],
         "Returns": [
           "    Success: If the Slack connection validates successfully.",
