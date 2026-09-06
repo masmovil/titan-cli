@@ -47,13 +47,9 @@ For high-level architecture overview, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 Project-maintained agent skills now live in `.claude/skills/`.
 
-- Use `.claude/skills/titan-project-workflow-builder/` for end-to-end project workflow creation under `.titan/`.
 - Use `.claude/skills/titan-official-plugin-workflow-builder/` for workflows that belong to official plugins inside this repository.
-- Use `.claude/skills/titan-public-plugin-workflow-builder/` for workflows that belong to public or community plugin packages.
-- Use `.claude/skills/titan-workflow-architecture/` for deciding the minimum correct architecture.
-- Use `.claude/skills/titan-capability-discovery/` to inspect what Titan, the current project, or the target plugin already provide before creating new code.
 
-These skills generate project artifacts under `.titan/`, but `.titan/skills/` is no longer the canonical location for workflow-authoring skills.
+Shared workflow-authoring skills are maintained outside this repository. In `titan-cli`, keep only the official-plugin skill here.
 
 ---
 
